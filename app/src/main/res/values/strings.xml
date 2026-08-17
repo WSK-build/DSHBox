@@ -1,0 +1,156 @@
+<resources>
+    <string name="app_name">Dsh</string>
+
+    <!-- Navigation -->
+    <string name="tab_home">首页</string>
+    <string name="tab_files">文件</string>
+    <string name="tab_sandbox">沙盒</string>
+    <string name="tab_settings">设置</string>
+
+    <!-- Home / Launcher -->
+    <string name="home_ready">DSH 运行中</string>
+    <string name="home_stopped">DSH 已停止</string>
+    <string name="home_starting">正在准备运行环境…</string>
+    <string name="home_address_hint">本机访问地址</string>
+    <string name="home_address_caption">仅本设备可访问，无需联网</string>
+    <string name="home_copy">复制</string>
+    <string name="home_copied">已复制</string>
+    <string name="home_open">在浏览器中打开 DSH</string>
+    <string name="home_restart">重启 DSH</string>
+    <string name="home_stop">停止</string>
+    <string name="home_stop_confirm_title">停止 DSH？</string>
+    <string name="home_stop_confirm_message">停止后浏览器里的 DSH 将无法访问。你可以随时在首页重新启动。</string>
+    <string name="home_stop_confirm">停止</string>
+    <string name="home_stop_cancel">取消</string>
+    <string name="home_environment_error">运行环境异常</string>
+    <string name="home_uptime_format">已运行 %1$s</string>
+    <string name="home_version_format">版本号 %1$s</string>
+    <string name="home_retry">重试</string>
+    <string name="home_view_diagnostics">查看诊断</string>
+    <string name="home_runtime_missing">尚未安装运行环境</string>
+    <string name="home_runtime_missing_hint">首次使用需要先导入 DSH 运行环境包。</string>
+    <string name="home_runtime_import">去设置导入</string>
+    <string name="home_runtime_installing">正在自动安装运行环境</string>
+    <string name="home_runtime_installing_hint">首次使用会自动解包内置运行环境（约 1~3 分钟），请稍候，无需手动操作。</string>
+
+    <!-- Placeholder tabs -->
+    <string name="sandbox_placeholder_title">沙盒终端</string>
+
+    <!-- Files -->
+    <string name="files_directory">目录</string>
+    <string name="files_import">从安卓导入</string>
+    <string name="files_export">导出到安卓</string>
+    <string name="files_export_dir">导出目录为 ZIP</string>
+    <string name="files_selected_count">已选 %1$d 项</string>
+    <string name="files_delete">删除</string>
+    <string name="files_cancel">取消</string>
+    <string name="files_new_folder">新建文件夹</string>
+    <string name="files_new_folder_hint">请输入文件夹名称</string>
+    <string name="files_new_folder_confirm">创建</string>
+    <string name="files_rename">重命名</string>
+    <string name="files_rename_hint">请输入新名称</string>
+    <string name="files_rename_confirm">确定</string>
+    <string name="files_read_only">只读</string>
+    <string name="files_refresh">刷新</string>
+    <string name="files_root_sandbox">沙盒文件</string>
+    <string name="files_root_workspace">工作区</string>
+    <string name="files_operation_failed">操作失败</string>
+
+    <!-- Sandbox -->
+    <string name="sandbox_ready">运行环境正常</string>
+    <string name="sandbox_stopped">已停止</string>
+    <string name="sandbox_starting">正在准备运行环境…</string>
+    <string name="sandbox_open_terminal">打开终端</string>
+    <string name="sandbox_diagnostics">诊断</string>
+    <string name="terminal_input_hint">输入命令</string>
+    <string name="terminal_clear">清屏</string>
+    <string name="terminal_new">新建</string>
+    <string name="terminal_session_label">终端 %1$d</string>
+    <string name="terminal_close">关闭</string>
+    <string name="terminal_key_keyboard">⌨</string>
+    <string name="terminal_key_enter">⏎</string>
+    <string name="terminal_key_space">空格</string>
+    <string name="terminal_key_tab">Tab</string>
+    <string name="terminal_key_esc">Esc</string>
+    <string name="terminal_key_ctrl">Ctrl</string>
+    <string name="terminal_key_alt">Alt</string>
+    <string name="terminal_key_up">↑</string>
+    <string name="terminal_key_down">↓</string>
+    <string name="terminal_key_left">←</string>
+    <string name="terminal_key_right">→</string>
+    <string name="terminal_key_backspace">⌫</string>
+    <string name="terminal_key_home">Home</string>
+    <string name="terminal_key_end">End</string>
+    <string name="terminal_prompt">dsh@dsh-sandbox:~$ </string>
+
+    <!-- Settings -->
+    <string name="settings_section_dsh">DSH</string>
+    <string name="settings_section_sandbox">沙盒</string>
+    <string name="settings_sandbox_runtime_env">运行环境</string>
+    <string name="settings_sandbox_ready">正常</string>
+    <string name="settings_sandbox_not_ready">未就绪</string>
+    <string name="settings_sandbox_storage_usage">存储占用</string>
+    <string name="settings_sandbox_start">启动</string>
+    <string name="settings_sandbox_stop">停止</string>
+    <string name="settings_sandbox_restart">重启</string>
+    <string name="settings_sandbox_repair">修复</string>
+    <string name="settings_sandbox_repair_message">请先停止沙盒后重新安装运行环境</string>
+    <string name="settings_section_appearance">外观</string>
+    <string name="settings_appearance">主题</string>
+    <string name="settings_appearance_follow_system">跟随系统</string>
+    <string name="settings_appearance_light">浅色</string>
+    <string name="settings_appearance_dark">深色</string>
+    <string name="settings_section_permissions">权限</string>
+    <string name="settings_battery_whitelist">厂商后台保活引导</string>
+    <string name="settings_battery_whitelist_message">请在系统设置中允许 DeepSeek Harness 后台运行、自启动并忽略电池优化，否则 DSH 可能在后台被系统杀死。</string>
+    <string name="settings_section_update">更新</string>
+    <string name="settings_check_update">检查更新</string>
+    <string name="settings_import_update">离线导入更新包</string>
+    <string name="settings_rollback">回滚上一版本</string>
+    <string name="settings_rollback_done">回滚成功，请重新启动 DSH</string>
+    <string name="settings_rollback_failed">回滚失败</string>
+    <string name="settings_update_imported">更新包已导入并切换，请重新启动 DSH</string>
+    <string name="settings_update_import_failed">导入更新失败：%1$s</string>
+    <string name="settings_update_available">发现 %1$d 个本地更新包</string>
+    <string name="settings_update_none">没有可用的本地更新包</string>
+    <string name="settings_section_about">关于</string>
+    <string name="settings_diagnostics">诊断</string>
+    <string name="diagnostics_back">返回</string>
+    <string name="diagnostics_log_title">运行日志</string>
+    <string name="diagnostics_dsh_address">DSH 地址</string>
+    <string name="diagnostics_status_running">运行中</string>
+    <string name="diagnostics_status_not_ready">未就绪</string>
+    <string name="diagnostics_log_empty">暂无日志</string>
+    <string name="diagnostics_export">导出日志</string>
+    <string name="diagnostics_export_done">日志已导出</string>
+
+    <string name="error_runtime">运行环境异常</string>
+    <string name="action_restart">重新启动</string>
+    <string name="action_view_logs">查看日志</string>
+    <string name="files_search_hint">搜索文件/文件夹</string>
+    <string name="files_sort">排序</string>
+    <string name="files_sort_name">按名称排序</string>
+    <string name="files_sort_time">按修改时间排序</string>
+    <string name="files_sort_size">按大小排序</string>
+    <string name="files_view_list">列表视图</string>
+    <string name="files_view_grid">网格视图</string>
+    <string name="files_more">更多操作</string>
+    <string name="files_share">导出/分享</string>
+    <string name="files_empty_title">暂无文件</string>
+    <string name="files_empty_hint">此目录还没有内容</string>
+    <string name="files_no_match">未找到匹配项</string>
+    <string name="files_clear_search">清除搜索</string>
+    <string name="files_delete_confirm_title">删除确认</string>
+    <string name="files_delete_confirm_msg">确定删除所选 %1$d 项？此操作不可撤销。</string>
+    <string name="files_import_confirm_title">导入到沙盒</string>
+    <string name="files_import_confirm_msg">文件将导入到以下目录：</string>
+    <string name="files_import_confirm_hint">从安卓存储选择一个文件，复制到沙盒指定目录。</string>
+    <string name="files_import_confirm_action">选择文件</string>
+    <string name="files_import_done_to">已导入到 %1$s</string>
+    <string name="files_export_picker_title">选择要导出的文件</string>
+    <string name="files_export_picker_empty">此目录没有可导出的文件</string>
+    <string name="files_export_done_name">已导出 %1$s</string>
+    <string name="files_rename_conflict">已存在同名文件，请换一个名称</string>
+    <string name="files_delete_confirm_single">确定删除 %1$s？此操作不可撤销。</string>
+    <string name="files_name_invalid">名称无效（不能为空或含 / 等特殊字符）</string>
+</resources>

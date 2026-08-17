@@ -1,0 +1,24 @@
+# Runtime Bundle manifest (actual build, generated in Linux subsystem).
+bundle:
+  kind: runtime
+  name: dshapp-runtime-debian-arm64
+  version: 0.1.0
+  arch: arm64
+  built_at: 2026-08-16T07:33:00Z
+  source: debootstrap trixie + Node 22.17.0 + DSH 0.1.0-rc.6 + native arm64 modules
+  sha256: 7690fbe693a1956f30858810b8c7aae435ac0ab8f0bd56c809862c23794b1d1c
+  size_bytes: 392621186
+  components:
+    - debian-rootfs
+    - node
+    - npm
+    - corepack
+    - git
+    - python3
+    - dsh
+  android_side_bundle: dshapp-android-proot-runtime.tar.gz
+  android_side_sha256: 65a887ba5d621a2e637c09fb4b48b623751219984550c6cbccd58a1f26b34af0
+  android_side_components:
+    - proot-android-binary
+    - libandroid-shmem
+    - libtalloc
