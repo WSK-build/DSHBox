@@ -24,8 +24,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: 'platforms;android-36,build-tools;36.0.0,platform-tools'
+
+      - name: Accept licenses & install SDK packages
+        run: |
+          sdkmanager --update >/dev/null 2>&1 || true
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       - name: Grant execute permission to scripts
         run: chmod +x gradlew tools/*.sh runtime-bundle/scripts/*.sh runtime-bundle/build_rootfs.sh
