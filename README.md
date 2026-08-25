@@ -1,27 +1,36 @@
-# DSHBox — DeepSeek Harness Mobile Agent Sandbox
+# DSHBox — DeepSeek Harness Android Runtime
 
-DSHBox 是在 Android 上运行 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的沙箱 App：Android 原生 UI + PRoot 用户态 Linux 沙箱，**DSH WebUI 通过系统浏览器使用**。
+DSHBox 是在 Android（ARM64）上运行 **DeepSeek Harness（DSH）** 的完整运行环境应用。
+它把 Debian 根文件系统 + Node.js + DSH（DeepSeek Agent Runtime）打包成分层运行环境，
+用 **PRoot** 做用户态 Linux 沙箱（无需 root），并在 App 内以 **WebView 内嵌** DSH 的 WebUI，
+附加文件管理、持久终端与一体化的运行环境/DSH 更新管理。**装 APK 即用**。
 
-## 使用（装 APK 即用）
+---
 
-1. 从 [Releases](https://github.com/your-name/DSHBox/releases) 下载 APK（完整版约 236MB，已内置运行环境+DSH）并安装。
-2. 打开 App，DSH 在沙箱内自动启动（首次启动需 1~3 分钟解包运行环境）。
-3. 点击首页「打开 DSH」按钮，或在系统浏览器访问 `http://127.0.0.1:3080`，进入 DSH WebUI。
-4. 首次使用请在 WebUI 的模型设置中填入你的 **DeepSeek API Key**。
+## 核心特性
 
-> 说明：DSH 以 WebUI 形式运行在沙箱内（App 私有空间），App 通过系统浏览器承载访问。沙箱与 Android 宿主隔离，无需 root；运行环境与用户数据相互独立。
+- **DeepSeek Harness 全内嵌**：DSH（Agent Runtime）随 APK 内置，`DSH` 标签页通过内嵌 WebView
+  打开 `http://127.0.0.1:3080`（移动模式 WebView，原生键盘自适应）；首页也可一键用**系统浏览器**打开。
+- **完整分层运行环境**：Debian（base）+ Node.js（node）+ PRoot（android-side）+ DSH 层，
+  PRoot 用户态沙箱，与 Android 宿主隔离，无需 root；运行环境与用户数据相互独立。
+- **更新/导入管理**：设置页可**离线导入运行环境包**、**离线/在线更新 DSH**（内置多镜像源）、
+  装配 DSH 移动端适配插件（cordis `@local/dsh-mobile-adapt`），并带实时进度与失败回滚。
+- **文件管理**：沙盒/工作区双视图（`/root/projects` 工作区 + 沙盒根），导入/导出引导，目录 ZIP，
+  搜索、排序、网格/列表切换。
+- **持久终端**：App 内常驻 shell 会话（`terminal-session` 模块）。
+- **前台服务保活** + 常驻通知（Android 13+ 已支持 `POST_NOTIFICATIONS` 运行时权限）。
+- **运行环境独立性**：`src/main/assets` 不含运行环境大层；运行时从分层包/导入包装配到
+  `runtime-current/{base,node,android-side,dsh}`，互不写入用户数据。
 
-## 浏览器适配提示
+## 界面（底部 5 个标签）
 
-- 安卓**平板**浏览器展示效果最佳；**手机**浏览器页面较拥挤（可横屏使用），功能均可正常使用。
-- 安装有谷歌浏览器时，建议用 Chrome 打开 `http://127.0.0.1:3080` 并「添加到主屏幕 / 安装为桌面 App」，画面显示更稳定。
-
-## 功能
-
-- **DSH Agent（WebUI 内）**：模型对话、文件工具、bash 终端、子代理、目标管理
-- **文件页**：沙盒文件 / 工作区双视图浏览，导入/导出引导，目录 ZIP，搜索、排序、网格/列表切换
-- **沙盒终端**：App 内持久 shell 会话
-- **运行环境管理**：内置运行环境、更新导入、回滚；前台服务保活
+| 标签 | 功能 |
+|---|---|
+| 首页 | 沙箱/DSH 状态，启动/停止/重启，复制地址，在系统浏览器中打开 DSH |
+| 文件 | 沙盒 + 工作区双视图浏览、导入/导出、目录 ZIP、搜索/排序 |
+| DSH | 内嵌 WebView 加载 `http://127.0.0.1:3080` 的 DSH WebUI |
+| 终端 | App 内持久 shell 会话 |
+| 设置 | 运行环境包导入、DSH 离线/在线更新、移动端适配装配、诊断、版本信息 |
 
 ## 从源码构建
 
@@ -48,6 +57,13 @@ DSHBox 是在 Android 上运行 [DeepSeek Harness](https://github.com/deepseek-a
 - **构建前置条件**：`assembleRelease` 前需先获取 `runtime/`（若目录缺失则无法内嵌完整运行环境）。
 - **签名密钥**：`keystore.properties`、`local.properties` 未包含；请用 `tools/create_keystore.sh` 自建开发签名后构建 release APK。
 
+## 离线导入运行环境包
+
+运行环境主体（base + node + android-side）对外以**一个文件** `dshapp-runtime-debian-arm64-0.1.0.zip`
+交付，在设置页「离线导入运行环境包」选择即可；DSH 更新走「更新 DSH（离线）」单文件 `0.1.1-rc.2-patched.tar.zst`。
+
 ## 许可证
 
-本项目采用 **GPL v3** 许可（见 [LICENSE](LICENSE)）。第三方组件许可见 `THIRD_PARTY_NOTICES.md`。
+本项目采用 **GPL v3** 许可（见 [LICENSE](LICENSE)）。第三方组件许可见 `THIRD_PARTY_NOTICES.md`：
+PRoot（GPL-2+）、talloc（LGPL-3+）、Debian rootfs（各包按 Debian 版权文件）、DeepSeek Harness / Cordis（MIT）、
+Termux terminal-emulator / terminal-view（Apache-2.0，未修改）等，均按其各自原许可继续适用。
