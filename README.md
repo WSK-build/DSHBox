@@ -40,4 +40,4 @@ tools/build_apk.sh dist/dshapp-runtime-debian-arm64-rootfs-0.1.0.tar.gz release
 
 ## 许可证
 
-[Apache-2.0](LICENSE)。第三方组件许可见 `THIRD_PARTY_NOTICES.md`。
+[GNU General Public License v3.0](LICENSE)。第三方组件许可见 `THIRD_PARTY_NOTICES.md`。
