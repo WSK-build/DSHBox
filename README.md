@@ -5,6 +5,8 @@ DSHBox 是在 Android（ARM64）上运行 **DeepSeek Harness（DSH）** 的完�
 用 **PRoot** 做用户态 Linux 沙箱（无需 root），并在 App 内以 **WebView 内嵌** DSH 的 WebUI，
 附加文件管理、持久终端与一体化的运行环境/DSH 更新管理。**装 APK 即用**。
 
+DSHBox is a complete mobile runtime for running DeepSeek Harness (DSH) on Android (ARM64). It packages a Debian rootfs, Node.js, and DSH — the DeepSeek Agent Runtime — into a layered runtime, runs it inside a rootless PRoot user-space sandbox, and embeds DSH's WebUI in an in-app WebView. It also ships a file manager, a persistent terminal, and unified runtime/DSH update management. Install the APK and you're ready to go.
+
 ---
 
 ## 核心特性
