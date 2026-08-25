@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dshbox.app.BuildConfig
 import com.dshbox.app.R
@@ -58,15 +59,29 @@ import java.util.Locale
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
-    sandboxReady: Boolean,
+    sandboxRunning: Boolean,
     sandboxError: Boolean,
-    sandboxStopped: Boolean = false,
+    dshReady: Boolean,
+    dshError: Boolean,
     runtimeInstalled: Boolean,
     bundledRuntimeAvailable: Boolean,
     onNavigateToSettings: () -> Unit,
 ) {
     val context = LocalContext.current
-    var showStopDialog by remember { mutableStateOf(false) }
+    var showSandboxStopDialog by remember { mutableStateOf(false) }
+    var showDshStopDialog by remember { mutableStateOf(false) }
+    var dshNeedsSandboxToast by remember { mutableStateOf(false) }
+
+    if (dshNeedsSandboxToast) {
+        LaunchedEffect(Unit) {
+            Toast.makeText(
+                context,
+                R.string.home_start_dsh_needs_sandbox,
+                Toast.LENGTH_LONG,
+            ).show()
+            dshNeedsSandboxToast = false
+        }
+    }
 
     Column(
         modifier = modifier
@@ -116,83 +131,88 @@ fun HomeScreen(
             }
         }
 
-        StatusCard(
-            sandboxReady = sandboxReady,
+        SandboxStatusCard(
+            sandboxRunning = sandboxRunning,
             sandboxError = sandboxError,
-            sandboxStopped = sandboxStopped,
-            onRetry = { SandboxService.restart(context) },
-            onViewDiagnostics = onNavigateToSettings,
+            onStart = { SandboxService.startSandbox(context) },
+            onStop = { showSandboxStopDialog = true },
+            onRestart = { SandboxService.restartSandbox(context) },
         )
+
+        DshStatusCard(
+            dshReady = dshReady,
+            dshError = dshError,
+            sandboxRunning = sandboxRunning,
+            onStart = {
+                if (sandboxRunning) {
+                    SandboxService.startDsh(context)
+                } else {
+                    dshNeedsSandboxToast = true
+                }
+            },
+            onStop = { showDshStopDialog = true },
+            onRestart = { SandboxService.restartDsh(context) },
+        )
+
         AddressCard(context = context)
-        Spacer(modifier = Modifier.height(8.dp))
+
         Button(
             shape = MaterialTheme.shapes.medium,
             onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(Constants.DSH_BASE_URL))
                 context.startActivity(intent)
             },
-            enabled = sandboxReady,
+            enabled = dshReady,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
         ) {
             Text(stringResource(R.string.home_open))
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            OutlinedButton(
-                shape = MaterialTheme.shapes.medium,
-                onClick = { SandboxService.restart(context) },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.home_restart))
-            }
-            OutlinedButton(
-                shape = MaterialTheme.shapes.medium,
-                onClick = { showStopDialog = true },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp),
-            ) {
-                Icon(
-                    imageVector = AppIconsStop,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.home_stop))
-            }
-        }
     }
 
-    if (showStopDialog) {
+    if (showSandboxStopDialog) {
         AlertDialog(
-            onDismissRequest = { showStopDialog = false },
-            title = { Text(stringResource(R.string.home_stop_confirm_title)) },
-            text = { Text(stringResource(R.string.home_stop_confirm_message)) },
+            onDismissRequest = { showSandboxStopDialog = false },
+            title = { Text(stringResource(R.string.home_sandbox_stop_confirm_title)) },
+            text = { Text(stringResource(R.string.home_sandbox_stop_confirm_message)) },
             confirmButton = {
                 TextButton(
                     shape = MaterialTheme.shapes.medium,
                     onClick = {
-                        showStopDialog = false
-                        SandboxService.stop(context)
+                        showSandboxStopDialog = false
+                        SandboxService.stopSandbox(context)
                     },
                 ) {
                     Text(stringResource(R.string.home_stop_confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showStopDialog = false }) {
+                TextButton(onClick = { showSandboxStopDialog = false }) {
+                    Text(stringResource(R.string.home_stop_cancel))
+                }
+            },
+        )
+    }
+
+    if (showDshStopDialog) {
+        AlertDialog(
+            onDismissRequest = { showDshStopDialog = false },
+            title = { Text(stringResource(R.string.home_dsh_stop_confirm_title)) },
+            text = { Text(stringResource(R.string.home_dsh_stop_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = {
+                        showDshStopDialog = false
+                        SandboxService.stopDsh(context)
+                    },
+                ) {
+                    Text(stringResource(R.string.home_stop_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDshStopDialog = false }) {
                     Text(stringResource(R.string.home_stop_cancel))
                 }
             },
@@ -201,20 +221,119 @@ fun HomeScreen(
 }
 
 @Composable
-private fun StatusCard(
-    sandboxReady: Boolean,
+private fun SandboxStatusCard(
+    sandboxRunning: Boolean,
     sandboxError: Boolean,
-    sandboxStopped: Boolean = false,
-    onRetry: () -> Unit,
-    onViewDiagnostics: () -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onRestart: () -> Unit,
+) {
+    val statusText = stringResource(
+        when {
+            sandboxError -> R.string.home_sandbox_error
+            sandboxRunning -> R.string.home_sandbox_running
+            else -> R.string.home_sandbox_stopped
+        },
+    )
+    val statusColor = when {
+        sandboxError -> MaterialTheme.colorScheme.error
+        sandboxRunning -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outline
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = when {
+            sandboxError -> MaterialTheme.colorScheme.errorContainer
+            sandboxRunning -> MaterialTheme.colorScheme.surface
+            else -> MaterialTheme.colorScheme.surfaceVariant
+        },
+        border = BorderStroke(
+            1.dp,
+            when {
+                sandboxError -> MaterialTheme.colorScheme.error
+                sandboxRunning -> MaterialTheme.colorScheme.outlineVariant
+                else -> MaterialTheme.colorScheme.outlineVariant
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(statusColor, CircleShape),
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OutlinedButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = onStart,
+                    enabled = !sandboxRunning,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.home_sandbox_start))
+                }
+                OutlinedButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = onRestart,
+                    enabled = sandboxRunning,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_sandbox_restart))
+                }
+                OutlinedButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = onStop,
+                    enabled = sandboxRunning,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = AppIconsStop,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_sandbox_stop))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DshStatusCard(
+    dshReady: Boolean,
+    dshError: Boolean,
+    sandboxRunning: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onRestart: () -> Unit,
 ) {
     var elapsedSeconds by remember { mutableStateOf(0L) }
-    // The uptime clock starts when the sandbox becomes ready and resets when
-    // it leaves the ready state (e.g. after a restart), matching the real
-    // runtime instead of the composable lifetime.
-    LaunchedEffect(sandboxReady) {
+    LaunchedEffect(dshReady) {
         elapsedSeconds = 0L
-        if (sandboxReady) {
+        if (dshReady) {
             while (true) {
                 delay(1_000)
                 elapsedSeconds += 1
@@ -229,16 +348,14 @@ private fun StatusCard(
     }
     val statusText = stringResource(
         when {
-            sandboxStopped -> R.string.home_stopped
-            sandboxReady -> R.string.home_ready
-            sandboxError -> R.string.home_environment_error
-            else -> R.string.home_starting
+            dshError -> R.string.home_dsh_error
+            dshReady -> R.string.home_dsh_ready
+            else -> R.string.home_dsh_stopped
         },
     )
     val statusColor = when {
-        sandboxStopped -> MaterialTheme.colorScheme.outline
-        sandboxReady -> MaterialTheme.colorScheme.primary
-        sandboxError -> MaterialTheme.colorScheme.error
+        dshError -> MaterialTheme.colorScheme.error
+        dshReady -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outline
     }
 
@@ -246,79 +363,104 @@ private fun StatusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         color = when {
-            sandboxReady -> MaterialTheme.colorScheme.surface
-            sandboxError -> MaterialTheme.colorScheme.errorContainer
+            dshError -> MaterialTheme.colorScheme.errorContainer
+            dshReady -> MaterialTheme.colorScheme.surface
             else -> MaterialTheme.colorScheme.surfaceVariant
         },
         border = BorderStroke(
             1.dp,
             when {
-                sandboxReady -> MaterialTheme.colorScheme.outlineVariant
-                sandboxError -> MaterialTheme.colorScheme.error
+                dshError -> MaterialTheme.colorScheme.error
+                dshReady -> MaterialTheme.colorScheme.outlineVariant
                 else -> MaterialTheme.colorScheme.outlineVariant
             },
         ),
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(statusColor, CircleShape),
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = when {
-                        sandboxReady -> MaterialTheme.colorScheme.onSurface
-                        sandboxError -> MaterialTheme.colorScheme.onErrorContainer
-                        else -> MaterialTheme.colorScheme.onSurface
-                    },
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(statusColor, CircleShape),
                 )
-                Text(
-                    text = Constants.DSH_BASE_URL,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.home_uptime_format, uptime),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                )
-                Text(
-                    text = stringResource(R.string.home_version_format, BuildConfig.VERSION_NAME),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                )
-                if (sandboxError) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Button(
-                            shape = MaterialTheme.shapes.medium,
-                            onClick = onRetry,
-                            modifier = Modifier.height(36.dp),
-                        ) {
-                            Text(stringResource(R.string.home_retry))
-                        }
-                        OutlinedButton(
-                            shape = MaterialTheme.shapes.medium,
-                            onClick = onViewDiagnostics,
-                            modifier = Modifier.height(36.dp),
-                        ) {
-                            Text(stringResource(R.string.home_view_diagnostics))
-                        }
-                    }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = Constants.DSH_BASE_URL,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                    Text(
+                        text = stringResource(R.string.home_uptime_format, uptime),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                    Text(
+                        text = stringResource(R.string.home_version_format, BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
                 }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OutlinedButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = onStart,
+                    enabled = sandboxRunning && !dshReady,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.home_dsh_start))
+                }
+                OutlinedButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = onRestart,
+                    enabled = dshReady || sandboxRunning,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_dsh_restart))
+                }
+                OutlinedButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = onStop,
+                    enabled = dshReady || dshError,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = AppIconsStop,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_dsh_stop))
+                }
+            }
+            if (!sandboxRunning) {
+                Text(
+                    text = stringResource(R.string.home_dsh_needs_sandbox_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

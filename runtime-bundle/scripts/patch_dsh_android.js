@@ -8,10 +8,30 @@
 //
 // The patch is applied to the installed DSH packages inside the runtime rootfs;
 // it does not change the upstream source repository.
+//
+// Phase D: the patch is now PER-VERSION CONDITIONAL. Because DSH is a separate
+// product that ships versions independently of this app, package internals can
+// shift between releases. This script therefore never aborts when a module does
+// not match the expected shape for the CURRENT version — it logs a "skip" and
+// moves on, so a newer/older DSH is left untouched instead of breaking the
+// install. Pass --strict to restore the previous fail-fast behavior.
+//
+// Usage:
+//   node patch_dsh_android.js [runtimeRoot] [--strict]
+//   runtimeRoot default: /opt/dshapp/runtime/node_modules/@deepseek-ai
 
 const fs = require('node:fs')
 
-function patchFile(target, marker, importOld, importNew, oldBlock, newBlock) {
+const argv = process.argv.slice(2)
+const STRICT = argv.includes('--strict')
+const runtimeRoot = argv.find((a) => !a.startsWith('--')) || '/opt/dshapp/runtime/node_modules/@deepseek-ai'
+
+function patchFile(target, marker, importOld, importNew, oldBlock, newBlock, label) {
+  if (!fs.existsSync(target)) {
+    console.log(`[patch:skip] not found (version mismatch?): ${label ? `${label} ` : ''}${target}`)
+    if (STRICT) process.exit(1)
+    return
+  }
   const source = fs.readFileSync(target, 'utf8')
 
   if (source.includes(marker)) {
@@ -22,23 +42,29 @@ function patchFile(target, marker, importOld, importNew, oldBlock, newBlock) {
   let patched = source
   if (importOld !== null) {
     if (!source.includes(importOld)) {
-      console.error(`[patch] unexpected import in ${target}; aborting`)
-      process.exit(1)
+      if (STRICT) {
+        console.error(`[patch] unexpected import in ${target}; aborting`)
+        process.exit(1)
+      }
+      console.log(`[patch:skip] import shape changed for ${target} (${label || 'dsh'})`)
+      return
     }
     patched = source.replace(importOld, importNew)
   }
 
   if (!patched.includes(oldBlock)) {
-    console.error(`[patch] unexpected block in ${target}; aborting`)
-    process.exit(1)
+    if (STRICT) {
+      console.error(`[patch] unexpected block in ${target}; aborting`)
+      process.exit(1)
+    }
+    console.log(`[patch:skip] block shape changed for ${target} (${label || 'dsh'})`)
+    return
   }
   patched = patched.replace(oldBlock, newBlock)
 
   fs.writeFileSync(target, patched)
   console.log(`[patch] applied: ${target}`)
 }
-
-const runtimeRoot = process.argv[2] || '/opt/dshapp/runtime/node_modules/@deepseek-ai'
 
 // 1. dsh-session-persistence-jsonl: new session files are published with link().
 patchFile(
@@ -74,12 +100,15 @@ patchFile(
 // 2a. Make the attachment cleanup tolerant of rename() having already moved
 // the temp file away (Android fallback).
 const attachmentPath = `${runtimeRoot}/dsh-attachment-local/lib/index.js`
-const attachmentSource = fs.readFileSync(attachmentPath, 'utf8')
+const attachmentSource = fs.existsSync(attachmentPath) ? fs.readFileSync(attachmentPath, 'utf8') : null
 const oldUnlink = '\t\tawait unlink(temporary);'
 const newUnlink = '\t\tawait unlink(temporary).catch(() => {});'
-if (attachmentSource.includes(oldUnlink) && !attachmentSource.includes(newUnlink)) {
+if (attachmentSource && attachmentSource.includes(oldUnlink) && !attachmentSource.includes(newUnlink)) {
   fs.writeFileSync(attachmentPath, attachmentSource.replace(oldUnlink, newUnlink))
   console.log('[patch] attachment unlink cleanup made tolerant')
+} else if (!attachmentSource) {
+  console.log(`[patch:skip] not found (version mismatch?): ${attachmentPath}`)
+  if (STRICT) process.exit(1)
 }
 
 // 2. dsh-attachment-local: immutable attachment objects are published with link().

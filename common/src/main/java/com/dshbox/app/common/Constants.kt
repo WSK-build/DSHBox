@@ -7,6 +7,26 @@ object Constants {
     /** WebView loads the DSH loopback URL. Both localhost and 127.0.0.1 are allowed by NSC. */
     const val DSH_BASE_URL = "http://$DSH_DEFAULT_HOST:$DSH_DEFAULT_PORT"
 
+    /**
+     * §7.6 — npm mirrors that actually serve @deepseek-ai/dsh (verified: all
+     * return 200 + dist-tags.latest = current). Ordered China-fast first,
+     * then the authoritative upstream. (registry.npnnpmirror.com is NOT a real
+     * host — the correct Alibaba address is registry.npmmirror.com.)
+     */
+    val DSH_MIRRORS = listOf(
+        "https://registry.npmmirror.com",               // 阿里 npmmirror（国内，实测通）
+        "https://mirrors.cloud.tencent.com/npm/",       // 腾讯云（国内，实测通）
+        "https://repo.huaweicloud.com/repository/npm/", // 华为云（国内，实测通）
+        "https://registry.npmjs.org",                   // 官方上游（权威）
+    )
+
+    /**
+     * §7.6 — base URL hosting the prebuilt DSH layer (one <version>/dsh_layer.tar.zst
+     * + .sha256 per version) for online update. Empty means the online update source
+     * is not configured yet; [RuntimeUpdateManager] fails gracefully then.
+     */
+    const val DSH_LAYER_BASE_URL = ""
+
     const val MIN_SUPPORTED_SDK = 29
 
     /** Default Linux workspace inside the Debian sandbox. */
@@ -24,4 +44,21 @@ object Constants {
 
     const val HEALTHCHECK_TIMEOUT_MS = 5_000L
     const val DSH_READY_TIMEOUT_MS = 120_000L
+
+    /** SharedPreferences key: whether the app has completed the first-run bootstrap. */
+    const val PREFS_NAME = "dshapp_prefs"
+    const val PREF_FIRST_RUN_COMPLETED = "first_run_completed"
+
+    /** Marker embedded in the sandbox keepalive command to distinguish the PRoot process. */
+    const val SANDBOX_KEEPALIVE_MARKER = "dshapp-sandbox-keepalive"
+
+    /**
+     * Marker used to locate the DSH PRoot process at stop time. The DSH layer is
+     * mounted at /opt/dshapp/runtime (bound by BOTH sandbox and DSH proot), so
+     * "/opt/dshapp/runtime" would also match the sandbox keepalive cmdline and
+     * stopDsh() would kill the whole sandbox tree. Instead match the DSH-ONLY
+     * entry token `@deepseek-ai/dsh/lib/bin.js` (present only in the DSH PRoot
+     * cmdline: `node --expose-internals .../@deepseek-ai/dsh/lib/bin.js --profile web`).
+     */
+    const val DSH_START_SCRIPT = "@deepseek-ai/dsh/lib/bin.js"
 }

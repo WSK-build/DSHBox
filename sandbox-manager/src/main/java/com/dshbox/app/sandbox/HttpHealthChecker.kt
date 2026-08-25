@@ -28,7 +28,6 @@ class HttpHealthChecker(
         val portOpen = isPortOpen(host, port, connectTimeoutMs)
         val httpAlive = if (portOpen) httpProbe() else false
         SandboxHealth(
-            sandboxState = if (httpAlive) SandboxState.READY else SandboxState.RUNNING,
             dshProcessRunning = portOpen,
             portOpen = portOpen,
             webUiReady = httpAlive,

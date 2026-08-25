@@ -34,6 +34,9 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.commons.compress)
+    // zstd-jni (Android AAR classes) so BundleManager can decompress zstd layers.
+    // The arm64-v8a .so is packaged via app/src/main/jniLibs (see app build).
+    implementation(files("$rootDir/libs/zstd-jni-1.5.7-15-classes.jar"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

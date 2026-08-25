@@ -47,15 +47,15 @@ class DevInstallReceiver : BroadcastReceiver() {
                 // cannot reach SandboxService (not exported), so the dev
                 // install path stops it itself (idempotent when already
                 // stopped; waits out an in-flight start via the lifecycle lock).
-                manager.stop()
+                manager.stopSandbox()
                 when (val installed = manager.installRuntimeBundle(File(bundlePath), sha256)) {
                     is AppResult.Success -> {
                         // Extraction took minutes; SandboxService may have
                         // auto-started the sandbox again in the meantime.
-                        manager.stop()
+                        manager.stopSandbox()
                         manager.promoteRuntimeBundle()
                         if (autoStart) {
-                            manager.start()
+                            manager.startSandbox()
                         }
                         android.util.Log.i(TAG, "runtime bundle installed and promoted")
                     }

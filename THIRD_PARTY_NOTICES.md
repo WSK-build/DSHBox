@@ -1,6 +1,6 @@
 # Third-Party Notices（第三方组件与许可证清单）
 
-本项目包含或依赖以下第三方组件。各组件许可证与再分发义务说明如下。
+本项目自身采用 **GPL v3**（GNU General Public License, version 3，见 `LICENSE`）。以下为项目包含或依赖的第三方组件及各组件许可证与再分发义务。注意：本项目整体以 GPL v3 发布，但内含的第三方组件按其**各自原有许可证**继续适用（PRoot GPL-2+、talloc LGPL-3+、Termux terminal-emulator/view Apache-2.0、DeepSeek Harness/Cordis MIT、AndroidX/Kotlin Apache-2.0 等），未因本项目整体采用 GPL v3 而改变其许可。
 
 | 组件 | 用途 | 许可证 | 说明 |
 |---|---|---|---|
@@ -14,9 +14,12 @@
 | AndroidX / Jetpack | Android 兼容层 | Apache-2.0 | Gradle 依赖 |
 | Jetpack Compose / Material3 / material-icons | UI 框架与图标 | Apache-2.0 | Gradle 依赖 |
 | Kotlin stdlib / Coroutines | 语言运行时与异步 | Apache-2.0 | Gradle 依赖 |
+| Termux terminal-emulator（`terminal-emulator/` 模块） | 终端模拟器（VT100/xterm 解析 + pty JNI） | Apache-2.0 | 源码取自 termux/termux-app v0.118.0，未修改；源自 jackpal/Android-Terminal-Emulator |
+| Termux terminal-view（`terminal-view/` 模块） | 终端视图渲染与输入 | Apache-2.0 | 源码取自 termux/termux-app v0.118.0，未修改 |
 
 ## 再分发合规说明
 
+- **Termux terminal-emulator / terminal-view（Apache-2.0）**：源码原样引入（仅构建脚本数值适配）。termux-app 仓库整体为 GPLv3，但其 LICENSE.md 明示这两个库模块为 Apache-2.0 例外（代码源自 https://github.com/jackpal/Android-Terminal-Emulator ）。上游地址：https://github.com/termux/termux-app 。严禁从该仓库的 GPLv3 部分（termux-shared、app 层等）复制代码。
 - **PRoot（GPL-2+）**：本项目以二进制形式内置 PRoot 及配套 loader/shmem。对应源码可通过以下地址获取，或从 termux-packages 的 proot 包导出：
   - https://github.com/termux/termux-packages （proot 包）
   - https://github.com/proot-me/PRoot

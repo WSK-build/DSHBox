@@ -1,0 +1,8 @@
+# Patch layer for @local/dsh-mobile-adapt.
+# Registers the host half as a cordis plugin entry (mirrors how @deepseek-ai/dsh-web-app
+# registers itself). The client half is discovered by the client-modules node half
+# through this package's `dsh.client` declaration and served at
+# /plugins/@local/dsh-mobile-adapt/client.js. The host half is a no-op Loader entry.
+- insert:
+    - id: '@local/dsh-mobile-adapt'
+      name: '@local/dsh-mobile-adapt'

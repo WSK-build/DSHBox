@@ -11,6 +11,9 @@ app/build/
 sandbox-manager/build/
 bridge/build/
 common/build/
+terminal-emulator/build/
+terminal-view/build/
+terminal-session/build/
 *.apk
 *.aab
 *.keystore

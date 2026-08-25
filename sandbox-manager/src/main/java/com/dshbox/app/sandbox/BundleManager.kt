@@ -3,6 +3,7 @@ package com.dshbox.app.sandbox
 import android.system.Os
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
+import com.github.luben.zstd.ZstdInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.BufferedInputStream
@@ -10,6 +11,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 
 /**
@@ -76,16 +78,33 @@ class BundleManager(
         destDir.mkdirs()
         val destRoot = destDir.canonicalFile
         return try {
-            GzipCompressorInputStream(
-                BufferedInputStream(FileInputStream(tarFile)),
-            ).use { gzip ->
-                TarArchiveInputStream(gzip).use { tar ->
+            // Dispatch on the container format: zstd layers use zstd-jni, gzip
+            // layers use commons-compress. zstd-jni is now wired as a local
+            // classes.jar file dependency with the arm64 .so in jniLibs.
+            val decompressed: InputStream = if (isZstdFile(tarFile)) {
+                ZstdInputStream(BufferedInputStream(FileInputStream(tarFile)))
+            } else {
+                GzipCompressorInputStream(BufferedInputStream(FileInputStream(tarFile)))
+            }
+            decompressed.use { dec ->
+                TarArchiveInputStream(dec).use { tar ->
                     var entry = tar.nextEntry
                     while (entry != null) {
                         val relative = entry.name.trimStart('/')
                         if (relative.isEmpty()) {
                             entry = tar.nextEntry
                             continue
+                        }
+                        // Phase C hardening: never allow a bundle to write into the
+                        // protected user-data/.dsh tree (defense-in-depth, on top of
+                        // the canonical-path confinement below).
+                        val relLower = relative.lowercase()
+                        if (relLower == "user-data" || relLower.startsWith("user-data/") ||
+                            relLower.contains("/user-data/") || relLower.endsWith("/user-data") ||
+                            relLower == ".dsh" || relLower.startsWith(".dsh/") ||
+                            relLower.contains("/.dsh/")
+                        ) {
+                            return AppResult.Failure(AppError("BUNDLE_PROTECTED_PATH", "protected path in bundle: ${entry.name}"))
                         }
                         val target = File(destRoot, relative).canonicalFile
                         if (!target.path.startsWith(destRoot.path + File.separator) && target != destRoot) {
@@ -246,5 +265,15 @@ class BundleManager(
         val rootPath = root.canonicalFile.absolutePath.trimEnd(File.separatorChar)
         val pathPath = path.canonicalFile.absolutePath
         return pathPath == rootPath || pathPath.startsWith("$rootPath${File.separator}")
+    }
+
+    /** True when [file] begins with the zstd frame magic (0x28 0xB5 0x2F 0xFD). */
+    private fun isZstdFile(file: File): Boolean = try {
+        file.inputStream().use { input ->
+            val b1 = input.read(); val b2 = input.read(); val b3 = input.read(); val b4 = input.read()
+            b1 == 0x28 && b2 == 0xB5 && b3 == 0x2F && b4 == 0xFD
+        }
+    } catch (_: Exception) {
+        false
     }
 }

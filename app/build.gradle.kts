@@ -33,8 +33,8 @@ android {
         applicationId = "com.dshbox.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -64,7 +64,16 @@ android {
         compose = true
         buildConfig = true
     }
+    sourceSets {
+        getByName("main") {
+            // 运行环境大层（base/node/android-side/dsh）不进入源码仓库，单独放在发布目录
+            // runtime/android-assets（runtime/ 与 dsh/ 子目录），保证打包后仍是 assets/runtime/*
+            // 与 assets/dsh/* 路径。仓库单独 clone 时请先获取 runtime/（见根 README）。
+            assets.srcDirs("../../runtime/android-assets")
+        }
+    }
     packaging {
+        jniLibs.useLegacyPackaging = true
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 }
@@ -73,6 +82,8 @@ dependencies {
     implementation(project(":common"))
     implementation(project(":bridge"))
     implementation(project(":sandbox-manager"))
+    implementation(project(":terminal-session"))
+    implementation(project(":terminal-view"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -86,6 +97,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.webkit)
+    implementation(libs.androidx.documentfile)
+    implementation(libs.commons.compress)
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
