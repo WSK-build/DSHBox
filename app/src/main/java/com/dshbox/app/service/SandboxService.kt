@@ -1,5 +1,6 @@
 package com.dshbox.app.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,6 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
@@ -270,21 +272,44 @@ class SandboxService : Service() {
 
     private fun startAsForeground() {
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "startForeground failed due to missing notification permission", e)
         }
     }
 
     private fun updateNotification() {
         val notification = buildNotification()
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+        try {
+            if (hasNotificationPermission()) {
+                NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+            } else {
+                Log.w(TAG, "updateNotification: POST_NOTIFICATIONS not granted - skipping notify")
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "updateNotification: notify threw SecurityException", e)
+        }
     }
+
+    /** Android 13+ requires the POST_NOTIFICATIONS runtime permission before notify(). */
+    private fun hasNotificationPermission(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
 
     private fun buildNotification(): Notification {
         val sandboxState = sandboxManager.sandboxState.value
