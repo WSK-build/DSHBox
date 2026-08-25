@@ -3,8 +3,10 @@ package com.dshbox.app.di
 import android.content.Context
 import com.dshbox.app.bridge.BridgeRouter
 import com.dshbox.app.bridge.api.BridgeApi
+import com.dshbox.app.runtime.RuntimeUpdateManager
 import com.dshbox.app.sandbox.DefaultSandboxManager
 import com.dshbox.app.sandbox.SandboxConfig
+import com.dshbox.terminal.DshTerminalManager
 
 /**
  * Creates the MVP graph. BridgeApi is stubbed in Phase 0/1; the first working
@@ -42,6 +44,39 @@ object ServiceLocator {
             override suspend fun clipboardWrite(text: String) = Unit
         }
         val bridgeRouter = BridgeRouter(delegate = noopBridge, expectedDshToken = "")
-        return AppContainer(context, sandboxConfig, sandboxManager, bridgeRouter)
+        val overlayAssets = listOf(
+            "vim_9.1.1230-2_arm64.deb",
+            "vim-common_9.1.1230-2_all.deb",
+            "vim-runtime_9.1.1230-2_all.deb",
+            "xxd_9.1.1230-2_arm64.deb",
+            "htop_3.4.1-5_arm64.deb",
+            "libgpm2_1.20.7-11+b2_arm64.deb",
+            "libsodium23_1.0.18-1+deb13u1_arm64.deb",
+        )
+        val overlayInstaller = com.dshbox.terminal.TerminalOverlayInstaller(
+            assetBridge = { name, target ->
+                try {
+                    context.assets.open("terminal-packages/$name").use { input ->
+                        target.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    true
+                } catch (t: Throwable) {
+                    android.util.Log.e("DshOverlay", "asset copy failed: $name", t)
+                    false
+                }
+            },
+            assetNames = overlayAssets,
+        )
+        val dshTerminalManager = DshTerminalManager(
+            pathsProvider = {
+                com.dshbox.terminal.TerminalPathsResolver.resolve(
+                    appFilesDir = sandboxConfig.appFilesDir,
+                    nativeLibraryDir = sandboxConfig.nativeLibraryDir,
+                )
+            },
+            overlayInstaller = overlayInstaller,
+        )
+        val runtimeUpdateManager = RuntimeUpdateManager(context, sandboxManager)
+        return AppContainer(context, sandboxConfig, sandboxManager, bridgeRouter, dshTerminalManager, runtimeUpdateManager)
     }
 }

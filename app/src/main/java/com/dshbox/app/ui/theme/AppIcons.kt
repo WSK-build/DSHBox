@@ -2,6 +2,7 @@ package com.dshbox.app.ui.theme
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
@@ -109,7 +110,8 @@ val AppIconsStop: ImageVector by lazy {
 enum class AppIcons(val imageVector: ImageVector) {
     Home(Icons.Filled.Home),
     Files(AppIconsFolder),
-    Sandbox(AppIconsTerminal),
+    Dsh(Icons.Filled.Language),
+    Terminal(AppIconsTerminal),
     Settings(Icons.Filled.Settings);
 
     @Composable

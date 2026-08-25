@@ -14,8 +14,9 @@ class DshApp : Application() {
         super.onCreate()
         container = ServiceLocator.createAppContainer(this)
         AppThemeState.load(this)
-        // Start the sandbox-owning foreground service as early as possible so
-        // DSH keeps running while the user works in the system browser.
+        // Start the foreground service as early as possible. On first run it
+        // will bootstrap both the sandbox and DSH; afterwards the user controls
+        // each independently.
         SandboxService.start(this)
     }
 }

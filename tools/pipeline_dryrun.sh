@@ -1,31 +1,64 @@
 #!/usr/bin/env bash
-# Non-root pipeline dry run: validates the build-script changes that can be
-# validated without root (npm install + arm64 rg swap + DSH patches + syntax).
-set -euo pipefail
+# pipeline_dryrun.sh - Pre-flight check + dry-run of the layered runtime bundle
+# pipeline (Phase D gate). MUST run in WSL2/Linux.
+#
+# It does NOT build anything. It verifies the host toolchain and prints the
+# exact steps build_arm64_runtime_bundle.sh will take, so problems are found
+# before a long debootstrap run. Run this FIRST after entering WSL2.
+#
+# Usage:   tools/pipeline_dryrun.sh
+# Exit 0  = prerequisites OK;   Exit 1 = a hard prerequisite is missing.
+set -u
+
+fatal() { echo "[FAIL] $1" >&2; exit 1; }
+warn()  { echo "[warn] $1" >&2; }
+ok()    { echo "[ok]   $1"; }
+
+echo "== pipeline dry-run: prerequisites =="
+
+# Hard prerequisites (missing -> abort).
+for tool in debootstrap qemu-user-static; do
+    if command -v "$tool" >/dev/null 2>&1; then ok "found: $tool"; else fatal "missing: $tool (sudo apt-get install $tool)"; fi
+done
+command -v tar >/dev/null 2>&1 && ok "found: tar" || fatal "missing: tar"
+
+# Compression: zstd preferred (>= level 19), degrade to gzip with a recorded reason.
+if command -v zstd >/dev/null 2>&1; then
+    ok "found: zstd ($(zstd --version 2>/dev/null | head -1))"
+else
+    warn "zstd NOT found -> layers will pack as gzip per degrade policy (see CHANGELOG/Pack section)"
+fi
+
+# Network is required for debootstrap/apt and the Node download.
+if command -v apt-get >/dev/null 2>&1; then
+    ok "found: apt-get"
+else
+    warn "apt-get NOT found; cannot debootstrap from mirror"
+fi
+
+# Node: must be 24.19.0 to match the bundle's node layer.
+NODE_VERSION="${NODE_VERSION:-24.19.0}"
+if command -v node >/dev/null 2>&1; then
+    hv="$(node --version | sed 's/^v//')"
+    if [ "$hv" = "$NODE_VERSION" ]; then ok "node $hv == $NODE_VERSION"; else warn "node $hv != $NODE_VERSION (bundle node layer will be $NODE_VERSION)"; fi
+else
+    warn "node CLI not found on host; the node layer is downloaded by build_node.sh"
+fi
+
+# Cross-arch: user-mode emulation for the foreign arch build.
+if command -v qemu-aarch64-static >/dev/null 2>&1; then ok "found: qemu-aarch64-static"; else warn "qemu-aarch64-static not on PATH (qemu-user-static must provide it for arm64)"; fi
+
+echo
+echo "== pipeline dry-run: steps build_arm64_runtime_bundle.sh will run =="
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$ROOT_DIR/build/pipeline-test"
-NPM_CACHE="$ROOT_DIR/.npm-cache"
-rm -rf "$TMP"; mkdir -p "$TMP/native"
-echo "==> npm install DSH (x64 host, like build Stage 5)"
-npm install --prefix "$TMP/runtime" "npm:@deepseek-ai/dsh@${DSH_VERSION:-0.1.0-rc.6}" \
-  --registry=https://registry.npmjs.org --no-audit --no-fund --cache "$NPM_CACHE"
-echo "==> rg arm64 swap (build Stage 5 logic)"
-RG_VERSION="$(node -p "require('$TMP/runtime/node_modules/@vscode/ripgrep/package.json').version")"
-echo "installed @vscode/ripgrep version: $RG_VERSION"
-(cd "$TMP/native" && npm pack "@vscode/ripgrep-linux-arm64@${RG_VERSION}" --registry=https://registry.npmjs.org --cache "$NPM_CACHE" >/dev/null)
-mkdir -p "$TMP/native/pkg"
-tar -xzf "$TMP/native"/*.tgz -C "$TMP/native/pkg"
-rm -rf "$TMP/runtime/node_modules/@vscode/ripgrep-linux-arm64"
-cp -r "$TMP/native/pkg/package" "$TMP/runtime/node_modules/@vscode/ripgrep-linux-arm64"
-rm -rf "$TMP/runtime/node_modules/@vscode/ripgrep-linux-x64"
-ls "$TMP/runtime/node_modules/@vscode/ripgrep-linux-arm64/bin/"
-echo "==> DSH android patches (build Stage 6)"
-node "$ROOT_DIR/runtime-bundle/scripts/patch_dsh_android.js" "$TMP/runtime/node_modules/@deepseek-ai"
-echo "==> re-run patches (idempotence)"
-node "$ROOT_DIR/runtime-bundle/scripts/patch_dsh_android.js" "$TMP/runtime/node_modules/@deepseek-ai"
-echo "==> start_dsh.sh syntax"
-bash -n "$ROOT_DIR/runtime-bundle/scripts/start_dsh.sh" && echo "start_dsh.sh OK"
-echo "==> markers"
-grep -c "DSH_PERMISSION_MODE" "$ROOT_DIR/runtime-bundle/scripts/start_dsh.sh"
-grep -c "fs-local" "$TMP/runtime/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js"
-echo "PIPELINE-DRYRUN-OK"
+for step in \
+    "L0 base:        $ROOT_DIR/runtime-bundle/build_base.sh trixie arm64" \
+    "L1 node:        $ROOT_DIR/runtime-bundle/build_node.sh (NODE_VERSION=$NODE_VERSION)" \
+    "L3 android-side:$ROOT_DIR/runtime-bundle/build_android_side.sh" \
+    "pack each:      $ROOT_DIR/tools/pack_runtime.sh <layer> <src> <layers> <ver> <arch> <zstd_level>" \
+    "profile:        $ROOT_DIR/runtime-bundle/scripts/gen_profile.sh <layers> <out> <ver> <arch> <zstd> <nodever>" ; do
+    echo "  - $step"
+done
+echo
+echo "NOTE: the pipeline packs base/node/android-side ONLY. DSH is a separate product and is NOT in the bundle."
+echo "dry-run complete."

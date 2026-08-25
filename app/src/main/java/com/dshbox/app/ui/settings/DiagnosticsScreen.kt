@@ -34,10 +34,15 @@ fun DiagnosticsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val logPath = context.filesDir.absolutePath + "/logs/process-proot.log"
-    val logLines = remember(logPath) {
+    val logsDir = File(context.filesDir, "logs")
+    val logLines = remember(logsDir) {
         runCatching {
-            File(logPath).readLines().takeLast(30)
+            val dshLog = File(logsDir, "process-dsh.log")
+            val sandboxLog = File(logsDir, "process-sandbox.log")
+            buildList {
+                if (dshLog.isFile) addAll(dshLog.readLines().takeLast(15))
+                if (sandboxLog.isFile) addAll(sandboxLog.readLines().takeLast(15))
+            }.takeLast(30)
         }.getOrDefault(emptyList())
     }
 

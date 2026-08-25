@@ -12,8 +12,16 @@ class SandboxStateTest {
     }
 
     @Test
-    fun stateCoversStartupAndRecovery() {
-        assertTrue(SandboxState.entries.contains(SandboxState.READY))
+    fun sandboxStateCoversLifecycle() {
+        assertTrue(SandboxState.entries.contains(SandboxState.RUNNING))
+        assertTrue(SandboxState.entries.contains(SandboxState.STOPPED))
         assertTrue(SandboxState.entries.contains(SandboxState.RECOVERING))
+    }
+
+    @Test
+    fun dshStateIsSeparate() {
+        assertTrue(DshState.entries.contains(DshState.READY))
+        assertTrue(DshState.entries.contains(DshState.RUNNING))
+        assertTrue(DshState.entries.contains(DshState.STOPPED))
     }
 }
