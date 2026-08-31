@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.dshbox.app.DshApp
+import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.R
 import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.Constants
@@ -108,8 +109,13 @@ class SandboxService : Service() {
      * then on first launch start both sandbox and DSH. Subsequent launches leave
      * control to the user. The first-run marker is persisted only when BOTH
      * started successfully, so a failed first boot is retried on the next launch.
+     *
+     * 1.1.0 (M12.1 P1③): the whole bootstrap runs inside [BackgroundOps.runTracked] —
+     * it writes cleanup targets (bundled-runtime-staging, cacheDir/dsh-bundled-*.tar,
+     * dsh-staging via updateDsh), so the settings cleanup entry must stay disabled
+     * until it finishes.
      */
-    private suspend fun bootstrap() {
+    private suspend fun bootstrap() = BackgroundOps.runTracked {
         sandboxManager.initialize()
         provisionMobileAdaptPlugin()
         val container = (application as DshApp).container
@@ -194,7 +200,14 @@ class SandboxService : Service() {
         // the actual compression from the stream magic, not the extension.
         val dshTarball = entries.firstOrNull { it.endsWith(".tar.zst") }
             ?: entries.firstOrNull { it.endsWith(".tar.gz") } ?: return
-        val version = dshTarball.removeSuffix(".tar.zst").removeSuffix(".tar.gz")
+        // 1.1.0 (M3): strip the build-side "-patched" marker from the derived version.
+        // The asset is named e.g. "0.1.1-rc.2-patched.tar.zst" but the RELEASE it packs is
+        // 0.1.1-rc.2. With the suffix left in, the arbitration below treats a legitimately
+        // offline-imported "0.1.1-rc.2" (or a version discovered as "unknown") as OLDER and
+        // silently re-provisioned the bundled layer over it on every boot — offline imports
+        // appeared to "not stick". Removing the marker makes the comparison exact; existing
+        // installs that already recorded "...-patched" still compare as newer (kept, no churn).
+        val version = dshTarball.removeSuffix(".tar.zst").removeSuffix(".tar.gz").removeSuffix("-patched")
         val out = File(cacheDir, "dsh-bundled-$version.tar")
         try {
             assetManager.open("dsh/$dshTarball").use { input ->

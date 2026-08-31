@@ -75,13 +75,43 @@ interface SandboxManager {
 
     /**
      * Updates the standalone DSH layer (runtime-current/dsh) from a DSH bundle
-     * (tar.gz) with version arbitration: installed-newer wins, incoming-newer
-     * replaces (old -> previous/dsh). Does not touch user-data/.dsh.
+     * (tar.gz / tar.zst / plain tar) with version arbitration: installed-newer
+     * wins, incoming-newer replaces (old -> previous/dsh). Does not touch
+     * user-data/.dsh.
+     *
+     * 1.1.0: [allowDowngrade] overrides the arbitration for EXPLICIT user choices
+     * (the online-update screen offers older versions with a double confirm);
+     * the bundled-provision path never sets it, so APK baselines still never
+     * downgrade an installed layer.
      */
     suspend fun updateDsh(
         bundle: java.io.File,
         expectedSha256: String?,
         newVersion: String?,
+        allowDowngrade: Boolean = false,
+    ): AppResult<DshUpdateOutcome>
+
+    /**
+     * 1.1.0 (M7) — online DSH update step 2: build a fresh DSH layer from the
+     * npm registry [registryUrl] by running npm INSIDE the guest Debian
+     * (replicating runtime-bundle/scripts/install_dsh.sh, the exact way the
+     * bundled layer is produced), packing it and installing through the normal
+     * updateDsh pipeline (staging -> validate -> previous/dsh -> Android patch
+     * -> version record -> auto restart).
+     *
+     * Starts the sandbox when it is not running (npm needs the guest). Streams
+     * human-readable stage names via [onStage] and the raw npm/tar output lines
+     * via [onLog]; hands the spawned guest Process to [onProcess] so the caller
+     * can offer cancellation (destroying the proot root tears the guest tree
+     * down via --kill-on-exit).
+     */
+    suspend fun installDshFromNpm(
+        registryUrl: String,
+        version: String,
+        allowDowngrade: Boolean = false,
+        onStage: (String) -> Unit = {},
+        onLog: (String) -> Unit = {},
+        onProcess: (java.lang.Process) -> Unit = {},
     ): AppResult<DshUpdateOutcome>
 
     /**
@@ -97,7 +127,12 @@ interface SandboxManager {
      * Inject a one-off command into the DSH guest (fresh PRoot process) and
      * stream each output line to [onLine]. Used for 指令注入 — e.g. running a
      * plugin's install.sh inside the guest. Does NOT require the sandbox
-     * keepalive to be running.
+     * keepalive to be running. [onProcess] (1.1.0) receives the spawned host
+     * Process so long-running callers can destroy it to cancel the command.
      */
-    suspend fun runGuestCommand(command: String, onLine: (String) -> Unit = {}): AppResult<Unit>
+    suspend fun runGuestCommand(
+        command: String,
+        onLine: (String) -> Unit = {},
+        onProcess: (java.lang.Process) -> Unit = {},
+    ): AppResult<Unit>
 }

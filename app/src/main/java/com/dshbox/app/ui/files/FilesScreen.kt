@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
 import com.dshbox.app.util.ArchiveExtractor
+import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.util.ConflictMode
 import com.dshbox.app.util.FileEntry
 import com.dshbox.app.util.FileOps
@@ -515,6 +516,9 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     fun mergeExtracted(extractedDir: File, targetDir: File, mode: ConflictMode) {
         cancelProgressJob()
         progressJob = scope.launch {
+            // 1.1.0 (M12.1 P1③)：合并期间 extractedDir 仍在 cacheDir，登记后台操作
+            // 阻止设置页清理并发删除它。begin→end 跨越整个协程（含取消路径）。
+            BackgroundOps.begin()
             showProgress(context.getString(R.string.files_progress_merging))
             val self = currentCoroutineContext()[Job]
             try {
@@ -535,6 +539,8 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 FileOps.deleteQuietly(extractedDir)
                 clearProgress()
                 showError(context.getString(R.string.files_merge_failed, e.message ?: "未知错误"))
+            } finally {
+                BackgroundOps.end()
             }
         }
     }
@@ -543,6 +549,9 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     fun startExtractImport(uri: Uri, targetDir: File) {
         cancelProgressJob()
         progressJob = scope.launch {
+            // 1.1.0 (M12.1 P1③)：import_*/extract_* 都在 cacheDir，登记后台操作
+            // 阻止设置页清理并发删除（切走页后协程仍存活但进度 UI 不可见）。
+            BackgroundOps.begin()
             val self = currentCoroutineContext()[Job]
             val physicalTarget = mapper.resolvePhysical(targetDir)
             var tmpArchive: File? = null
@@ -612,6 +621,8 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 FileOps.deleteQuietly(tmpExtract)
                 clearProgress()
                 showError(context.getString(R.string.files_extract_failed, e.message ?: "未知错误"))
+            } finally {
+                BackgroundOps.end()
             }
         }
     }

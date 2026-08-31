@@ -216,8 +216,12 @@ private fun TabContent(
                 .zIndex(if (selectedTab == 4) 1f else 0f)
                 .alpha(if (selectedTab == 4) 1f else 0f)
                 .then(if (selectedTab == 4) Modifier else Modifier.keepAliveHidden()),
+            // 1.1.0 (M12)：设置页常驻组合（keepAlive），存储占用统计需要在切进
+            // 设置页时重新触发；dshActive 供 /tmp 智能清理判定使用。
+            isActive = selectedTab == 4,
             sandboxRunning = sandboxRunning,
             dshReady = dshReady,
+            dshActive = dshState == DshState.STARTING || dshState == DshState.RUNNING || dshState == DshState.READY,
         )
     }
 }

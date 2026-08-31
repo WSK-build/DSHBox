@@ -18,8 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import android.util.Log
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipFile
 
 /**
  * Default SandboxManager state machine.
@@ -406,9 +405,29 @@ class DefaultSandboxManager(
     /**
      * Offline-import a layered runtime bundle (per plan §2.3) as EITHER:
      *  - a ZIP holding the body layer archives (base/node/android-side <layer>.tar.*
-     *    + .sha256 sidecars + runtime-profile.json), OR
-     *  - a single .tar.gz / .tar.zst snapshot whose contents are the layered body
-     *    (base/, node/, android-side/, runtime-profile.json).
+     *    + .sha256 sidecars + runtime-profile.json), flat or under ONE common
+     *    top-level folder (Windows 右键压缩文件夹会产生该前缀), OR
+     *  - a single tar-family outer package (.tar.gz / .tar.zst / .tar / .tar.bz2 /
+     *    .tar.xz by magic) whose contents are EITHER the layered body snapshot
+     *    (base/, node/, android-side/, runtime-profile.json) OR — 1.1.0 M12.4 —
+     *    the layer archives themselves (tar of archives: base.tar.* etc.), which
+     *    is then processed through the same archive-validation pipeline as a zip.
+     *
+     * 1.1.0 fixes / hardening (MODIFICATION_LOG.md M1/M2):
+     *  - layer archives are matched EXACTLY (<layer>.tar.<ext>). 1.0.0 used
+     *    startsWith("<layer>.tar."), which ALSO matched the "<layer>.tar.zst.sha256"
+     *    sidecar; ZipInputStream walks entries in archive order, so the 92-byte
+     *    sidecar overwrote the real archive in the map and EVERY official zip
+     *    import then died with "Not in GZIP format";
+     *  - runtime-profile.json is REQUIRED. Without it the old profile stayed in
+     *    place, its declared layer checksums then failed verifyLayersBroken() on
+     *    the next launch and the bundled runtime was silently reinstalled OVER
+     *    the user's import;
+     *  - when both the sidecar and the profile declare a layer checksum they must
+     *    agree; the archive is verified against the declared checksum;
+     *  - every zip destination is validated against path traversal (Zip-Slip)
+     *    before a single byte is written.
+     *
      * Cleanly replaces the runtime body moving the old body -> previous/ (single copy).
      * **Never** touches `runtime-current/dsh` (DSH layer) nor `user-data` /
      * `user-data/.dsh`. Sandbox must be stopped first.
@@ -424,51 +443,103 @@ class DefaultSandboxManager(
         }
         try {
             if (isZip(source)) {
-                // ZIP: layer archives + sidecars + runtime-profile.json.
-                val layerArchives = mutableMapOf<String, File>()
-                ZipInputStream(source.inputStream().buffered()).use { zip ->
-                    var entry = zip.nextEntry
-                    while (entry != null) {
-                        if (!entry.isDirectory) {
-                            val name = entry.name.removePrefix("./")
-                            val out = File(staging, name)
-                            out.parentFile?.mkdirs()
-                            out.outputStream().use { zip.copyTo(it) }
-                            val layer = layerNames.firstOrNull { name.startsWith("$it.tar.") }
-                            if (layer != null) layerArchives[layer] = out
+                val archives = mutableMapOf<String, File>() // layer -> staged <layer>.tar.<ext>
+                val sidecars = mutableMapOf<String, String>() // layer -> declared sha256
+                var profileFile: File? = null
+                ZipFile(source).use { zip ->
+                    val fileEntries = zip.entries().asSequence().filterNot { it.isDirectory }.toList()
+                    if (fileEntries.isEmpty()) {
+                        return@withLock AppResult.Failure(AppError("BUNDLE_EMPTY", "压缩包内没有文件"))
+                    }
+                    // Name-level analysis (exact layer matching, common folder prefix,
+                    // traversal rejection) lives in the pure, unit-tested RuntimeBundleLayout.
+                    val layout = when (val parsed = RuntimeBundleLayout.analyze(fileEntries.map { it.name })) {
+                        is RuntimeBundleLayout.Result.Unsafe -> return@withLock AppResult.Failure(
+                            AppError("BUNDLE_UNSAFE_PATH", "压缩包包含非法路径（..），已拦截：${parsed.entryName}"),
+                        )
+                        is RuntimeBundleLayout.Result.Ok -> parsed
+                    }
+                    // Zip-Slip guard: validate every canonical destination BEFORE writing anything.
+                    val targets = LinkedHashMap<java.util.zip.ZipEntry, File>()
+                    for (entry in fileEntries) {
+                        val norm = layout.targets[entry.name] ?: continue
+                        val target = File(staging, norm).canonicalFile
+                        if (!isWithinDir(target, staging)) {
+                            return@withLock AppResult.Failure(
+                                AppError("BUNDLE_UNSAFE_PATH", "压缩包路径越界，已拦截：${entry.name}"),
+                            )
                         }
-                        entry = zip.nextEntry
+                        targets[entry] = target
                     }
-                }
-                if (layerArchives["base"] == null) {
-                    return@withLock AppResult.Failure(AppError("BUNDLE_NO_BASE", "运行环境包缺少 base 层（应为 zip，内含 base/node/android-side .tar.* + runtime-profile.json）"))
-                }
-                // Verify SHA-256 (if sidecar present) + extract each layer into staging/<layer>.
-                for ((name, arch) in layerArchives) {
-                    val sidecar = File(staging, "${arch.name}.sha256")
-                    val expected = if (sidecar.isFile) sidecar.readText().trim().split(Regex("\\s+")).firstOrNull() else null
-                    if (!expected.isNullOrBlank() && !bundleManager.verifySha256(arch, expected)) {
-                        return@withLock AppResult.Failure(AppError("BUNDLE_SHA256_MISMATCH", "层 $name SHA-256 校验失败"))
-                    }
-                    val dest = File(staging, name)
-                    when (val r = bundleManager.extractTarGz(arch, dest)) {
-                        is AppResult.Failure -> return@withLock r
-                        is AppResult.Success -> {
-                            if (!expected.isNullOrBlank()) {
-                                runCatching {
-                                    val sentinel = File(dest, ".dshbox/layer-$name.sha256")
-                                    sentinel.parentFile?.mkdirs()
-                                    sentinel.writeText(expected)
-                                }
-                            }
+                    for ((entry, target) in targets) {
+                        target.parentFile?.mkdirs()
+                        zip.getInputStream(entry).use { input ->
+                            target.outputStream().use { output -> input.copyTo(output) }
                         }
                     }
+                    // Materialize the analyzed layout into staged files.
+                    for ((layer, archiveName) in layout.archives) {
+                        archives[layer] = File(staging, archiveName)
+                        val sidecarName = layout.sidecars[layer]
+                        if (sidecarName != null) {
+                            sidecars[layer] = File(staging, sidecarName).readText().trim()
+                                .split(Regex("\\s+")).firstOrNull().orEmpty()
+                        }
+                    }
+                    layout.profilePath?.let { profileFile = File(staging, it) }
+                }
+                when (val r = extractStagedLayers(staging, archives, sidecars,
+                    profileFile ?: return@withLock AppResult.Failure(
+                        AppError("BUNDLE_NO_PROFILE", "运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）"),
+                    ),
+                )) {
+                    is AppResult.Failure -> return@withLock r
+                    is AppResult.Success -> Unit
                 }
             } else {
-                // Single .tar.gz / .tar.zst snapshot: extract directly; staging holds base/, node/, android-side/.
+                // 单 tar/gz/zst/裸 tar 外层包：支持两种内容布局（M12.4）——
+                //  A) 快照布局：直接是 base/、node/、android-side/ 目录 + runtime-profile.json；
+                //  B) 层归档布局（tar of archives）：把官方 zip 的内容（base.tar.* 等层归档 +
+                //     profile）原样打成 tar —— 自动按 zip 同款逻辑识别层归档并解压，
+                //     消除「tar 里装的是归档文件就报缺少 base 层」的坑。
                 when (val r = bundleManager.extractTarGz(source, staging)) {
                     is AppResult.Failure -> return@withLock r
                     is AppResult.Success -> Unit
+                }
+                if (!File(staging, "runtime-profile.json").isFile) {
+                    return@withLock AppResult.Failure(
+                        AppError("BUNDLE_NO_PROFILE", "运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）"),
+                    )
+                }
+                if (!File(staging, "base").isDirectory) {
+                    // 布局 B：根目录没有 base/ 目录 → 递归识别 <layer>.tar[.ext] 层归档。
+                    val archives = mutableMapOf<String, File>()
+                    val sidecars = mutableMapOf<String, String>()
+                    staging.walkTopDown().forEach { f ->
+                        if (!f.isFile) return@forEach
+                        val rel = f.relativeTo(staging).path.replace('\\', '/')
+                        val layer = RuntimeBundleLayout.layerOfArchiveName(rel)
+                        if (layer != null) {
+                            archives[layer] = f
+                            val sidecar = File(f.path + ".sha256")
+                            if (sidecar.isFile) {
+                                sidecars[layer] = sidecar.readText().trim()
+                                    .split(Regex("\\s+")).firstOrNull().orEmpty()
+                            }
+                        }
+                    }
+                    if (archives.isEmpty()) {
+                        return@withLock AppResult.Failure(
+                            AppError(
+                                "BUNDLE_NO_BASE",
+                                "运行环境包缺少 base 层（快照布局需 base/ 目录；层归档布局需 <layer>.tar[.zst/.gz/.bz2/.xz]）",
+                            ),
+                        )
+                    }
+                    when (val r = extractStagedLayers(staging, archives, sidecars, File(staging, "runtime-profile.json"))) {
+                        is AppResult.Failure -> return@withLock r
+                        is AppResult.Success -> Unit
+                    }
                 }
             }
             if (!File(staging, "base").isDirectory) {
@@ -497,6 +568,7 @@ class DefaultSandboxManager(
             }
             val stagedProfile = File(staging, "runtime-profile.json")
             if (stagedProfile.isFile) stagedProfile.copyTo(File(runtimeDir, "runtime-profile.json"), overwrite = true)
+            Log.i(TAG, "importRuntimeBundle: layered body replaced (base/node/android-side + profile), dsh & user-data untouched")
             return@withLock AppResult.Success(Unit)
         } catch (t: Throwable) {
             Log.e(TAG, "importRuntimeBundle failed: ${t.message}", t)
@@ -504,6 +576,13 @@ class DefaultSandboxManager(
         } finally {
             staging.deleteRecursively()
         }
+    }
+
+    /** True when [path] (canonical) equals or lives under [dir] (canonical). */
+    private fun isWithinDir(path: File, dir: File): Boolean {
+        val rootPath = dir.canonicalFile.absolutePath.trimEnd(File.separatorChar)
+        val pathPath = path.canonicalFile.absolutePath
+        return pathPath == rootPath || pathPath.startsWith("$rootPath${File.separator}")
     }
 
     /** True when [file] is a ZIP (PK magic). Non-zip is treated as a single tar snapshot. */
@@ -517,7 +596,70 @@ class DefaultSandboxManager(
         false
     }
 
-    override suspend fun runGuestCommand(command: String, onLine: (String) -> Unit): AppResult<Unit> = withContext(Dispatchers.IO) {
+    /**
+     * 共享的「层归档 → 校验 → 解压 → sentinel」步骤（1.1.0 M12.4 从 zip 分支抽出，
+     * zip 布局与 tar-of-archives 布局共用）：要求 runtime-profile.json 存在且可解析；
+     * 逐层做 .sha256 侧车与 profile 声明的交叉核对 + SHA-256 校验；解压到
+     * staging/<layer> 并记录 sentinel；每层解压完成后立即删除层归档以压低峰值磁盘。
+     * 解压失败/校验失败时 staging 由调用方 finally 清理，现有层不受影响。
+     */
+    private suspend fun extractStagedLayers(
+        staging: File,
+        archives: Map<String, File>,
+        sidecars: Map<String, String>,
+        profileFile: File,
+    ): AppResult<Unit> {
+        if (!profileFile.isFile) {
+            return AppResult.Failure(
+                AppError("BUNDLE_NO_PROFILE", "运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）"),
+            )
+        }
+        val parsedProfile = RuntimeProfile.parse(profileFile)
+        if (parsedProfile == null) {
+            return AppResult.Failure(AppError("BUNDLE_BAD_PROFILE", "runtime-profile.json 无法解析"))
+        }
+        for (layer in listOf("base", "node", "android-side")) {
+            val arch = archives[layer]
+                ?: return AppResult.Failure(
+                    AppError("BUNDLE_MISSING_LAYER", "运行环境包缺少 $layer 层归档（<layer>.tar[.zst/.gz/.bz2/.xz]）"),
+                )
+            val inProfile = parsedProfile.layer(layer)?.sha256?.takeIf { it.isNotBlank() }
+            val inSidecar = sidecars[layer]?.takeIf { it.isNotBlank() }
+            if (inProfile != null && inSidecar != null && !inProfile.equals(inSidecar, ignoreCase = true)) {
+                return AppResult.Failure(
+                    AppError("BUNDLE_SHA256_MISMATCH", "层 $layer 的 .sha256 侧车与 runtime-profile.json 声明不一致"),
+                )
+            }
+            val expected = inSidecar ?: inProfile
+            if (expected != null && !bundleManager.verifySha256(arch, expected)) {
+                return AppResult.Failure(AppError("BUNDLE_SHA256_MISMATCH", "层 $layer SHA-256 校验失败"))
+            }
+            val dest = File(staging, layer)
+            when (val r = bundleManager.extractTarGz(arch, dest)) {
+                is AppResult.Failure -> return r
+                is AppResult.Success -> {
+                    val recorded = expected ?: inProfile
+                    if (recorded != null) {
+                        runCatching {
+                            val sentinel = File(dest, ".dshbox/layer-$layer.sha256")
+                            sentinel.parentFile?.mkdirs()
+                            sentinel.writeText(recorded)
+                        }
+                    }
+                }
+            }
+            // The archive is no longer needed once its layer is extracted; drop it
+            // right away so staging never holds both archives AND extracted layers.
+            arch.delete()
+        }
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun runGuestCommand(
+        command: String,
+        onLine: (String) -> Unit,
+        onProcess: (java.lang.Process) -> Unit,
+    ): AppResult<Unit> = withContext(Dispatchers.IO) {
         val proot = prootBinary().absolutePath
         val cmd = buildList {
             add(proot)
@@ -531,13 +673,14 @@ class DefaultSandboxManager(
             add("/system/bin/sh"); add("-c")
             add(command)
         }
-        processRunner.runGuestCommand(cmd, buildProotEnv(runtimeCurrentDir(), "guest"), onLine)
+        processRunner.runGuestCommand(cmd, buildProotEnv(runtimeCurrentDir(), "guest"), onLine, onProcess)
     }
 
     override suspend fun updateDsh(
         bundle: File,
         expectedSha256: String?,
         newVersion: String?,
+        allowDowngrade: Boolean,
     ): AppResult<DshUpdateOutcome> {
         // Phase 1: stop DSH + install the layer, serialized under the lock, but using the
         // LOCK-FREE stopDshLocked() (calling public stopDsh() here would re-enter the same
@@ -546,7 +689,7 @@ class DefaultSandboxManager(
             _dshUpdateProgress.value = "installing DSH ${newVersion ?: ""}"
             try {
                 if (_dshState.value == DshState.RUNNING) stopDshLocked()
-                when (val r = dshLayer.installFromBundle(bundle, expectedSha256, newVersion)) {
+                when (val r = dshLayer.installFromBundle(bundle, expectedSha256, newVersion, allowDowngrade)) {
                     is AppResult.Success -> r.value
                     is AppResult.Failure -> return r
                 }
@@ -565,6 +708,113 @@ class DefaultSandboxManager(
             }
         }
         return AppResult.Success(outcome)
+    }
+
+    /**
+     * 1.1.0 (M7): build + install a fresh DSH layer from an npm registry by running
+     * npm INSIDE the guest Debian — replicating runtime-bundle/scripts/install_dsh.sh,
+     * the exact way the bundled layer is produced. Flow:
+     *   1. storage preflight (~1 GB free) + shell-injection guard on both params;
+     *   2. ensure the sandbox is running (npm needs the guest);
+     *   3. guest: stage /tmp/dsh-stage, write the layer stub package.json, then
+     *      `npm install --prefix /tmp/dsh-stage @deepseek-ai/dsh@<version> --registry <url>`
+     *      with output streamed to [onLog];
+     *   4. host: verify the staged tree holds bin.js (guest /tmp IS host
+     *      runtime-current/base/tmp — the same directory through PRoot);
+     *   5. guest: pack the stage into /tmp/dsh-stage.tar.gz (base has GNU tar+gzip;
+     *      BundleManager re-extracts by magic, symlinks included);
+     *   6. install through [updateDsh] (staging -> validate -> previous/dsh ->
+     *      Android patch -> version record -> auto restart when the sandbox runs);
+     *   7. clean the guest stage in every path.
+     */
+    override suspend fun installDshFromNpm(
+        registryUrl: String,
+        version: String,
+        allowDowngrade: Boolean,
+        onStage: (String) -> Unit,
+        onLog: (String) -> Unit,
+        onProcess: (java.lang.Process) -> Unit,
+    ): AppResult<DshUpdateOutcome> = withContext(Dispatchers.IO) {
+        // Both values end up inside `sh -c` — allow only a strict safe charset.
+        if (!Regex("^https?://[A-Za-z0-9.:/_%~#?=&+-]+$").matches(registryUrl)) {
+            return@withContext AppResult.Failure(AppError("DSH_NPM_BAD_REGISTRY", "registry 地址不合法：$registryUrl"))
+        }
+        if (!Regex("^[A-Za-z0-9.+-]+$").matches(version)) {
+            return@withContext AppResult.Failure(AppError("DSH_NPM_BAD_VERSION", "版本号不合法：$version"))
+        }
+        val freeBytes = runCatching {
+            android.os.StatFs(config.runtimeDir.absolutePath).availableBytes
+        }.getOrDefault(Long.MAX_VALUE)
+        if (freeBytes < Constants.DSH_INSTALL_MIN_FREE_BYTES) {
+            return@withContext AppResult.Failure(
+                AppError(
+                    "DSH_NPM_LOW_STORAGE",
+                    "存储空间不足（需约 1GB 可用，当前仅 ${freeBytes / (1024 * 1024)}MB）",
+                ),
+            )
+        }
+        // The guest must be alive for npm.
+        if (_sandboxState.value != SandboxState.RUNNING) {
+            onStage("正在启动沙箱…")
+            startSandbox()
+            if (_sandboxState.value != SandboxState.RUNNING) {
+                return@withContext AppResult.Failure(AppError("SANDBOX_NOT_RUNNING", "沙箱启动失败，无法执行 npm 安装"))
+            }
+        }
+
+        val stage = "/tmp/dsh-stage"
+        val tarPath = "/tmp/dsh-stage.tar.gz"
+        val pkgSpec = "@deepseek-ai/dsh@$version"
+        // Layer-root stub package.json (matches the bundled layer's shape). Single-quoted
+        // in the shell script; version/registry are charset-validated above.
+        val pkgJson = "{\"name\":\"dsh-layer\",\"version\":\"$version\"}"
+        // TMPDIR must point INSIDE the guest: the guest process inherits the Android
+        // app's cache dir which does not exist in the rootfs (same trap as the DSH
+        // role in buildProotEnv — npm does mkdtemp on it too).
+        val npmScript = buildString {
+            append("export TMPDIR=/tmp TMP=/tmp TEMP=/tmp; ")
+            append("rm -rf '$stage' '$tarPath'; ")
+            append("mkdir -p '$stage'; ")
+            append("printf '%s' '$pkgJson' > '$stage/package.json'; ")
+            append("npm install --prefix '$stage' '$pkgSpec' --registry '$registryUrl' --no-audit --no-fund --loglevel=notice")
+        }
+        try {
+            onStage("正在从 $registryUrl 拉取 @deepseek-ai/dsh $version（含完整依赖，需要几分钟）…")
+            when (val r = runGuestCommand(npmScript, onLog, onProcess)) {
+                is AppResult.Failure -> return@withContext AppResult.Failure(
+                    AppError("DSH_NPM_INSTALL_FAILED", "npm 安装失败：${r.error.message}（详见日志）"),
+                )
+                is AppResult.Success -> Unit
+            }
+            val stagedBin = File(baseRootfs(), "tmp/dsh-stage/node_modules/@deepseek-ai/dsh/lib/bin.js")
+            if (!stagedBin.isFile) {
+                return@withContext AppResult.Failure(
+                    AppError("DSH_NPM_VERIFY_FAILED", "npm 安装结果缺少 @deepseek-ai/dsh/lib/bin.js，无法继续"),
+                )
+            }
+            onStage("正在打包 DSH 层…")
+            when (val r = runGuestCommand("tar -C '$stage' -czf '$tarPath' .", onLog, onProcess)) {
+                is AppResult.Failure -> return@withContext AppResult.Failure(
+                    AppError("DSH_NPM_PACK_FAILED", "打包 DSH 层失败：${r.error.message}"),
+                )
+                is AppResult.Success -> Unit
+            }
+            val tarFile = File(baseRootfs(), "tmp/dsh-stage.tar.gz")
+            if (!tarFile.isFile || tarFile.length() < 1024) {
+                return@withContext AppResult.Failure(AppError("DSH_NPM_PACK_FAILED", "打包结果异常，无法继续"))
+            }
+            onStage("正在安装 DSH $version…")
+            val result = updateDsh(tarFile, null, version, allowDowngrade)
+            if (result is AppResult.Success) onStage("安装完成")
+            return@withContext result
+        } finally {
+            // Best-effort cleanup on every path (host side + guest side).
+            runCatching {
+                File(baseRootfs(), "tmp/dsh-stage").deleteRecursively()
+                File(baseRootfs(), "tmp/dsh-stage.tar.gz").deleteRecursively()
+            }
+            runCatching { runGuestCommand("rm -rf '$stage' '$tarPath'") { } }
+        }
     }
 
     private fun createDirectories() {

@@ -5,9 +5,14 @@ DSHBox 是在 Android（ARM64）上运行 **DeepSeek Harness（DSH）** 的完�
 用 **PRoot** 做用户态 Linux 沙箱（无需 root），并在 App 内以 **WebView 内嵌** DSH 的 WebUI，
 附加文件管理、持久终端与一体化的运行环境/DSH 更新管理。**装 APK 即用**。
 
-DSHBox is a complete mobile runtime for running DeepSeek Harness (DSH) on Android (ARM64). It packages a Debian rootfs, Node.js, and DSH — the DeepSeek Agent Runtime — into a layered runtime, runs it inside a rootless PRoot user-space sandbox, and embeds DSH's WebUI in an in-app WebView. It also ships a file manager, a persistent terminal, and unified runtime/DSH update management. Install the APK and you're ready to go.
-
 ---
+
+## v1.1.0 更新亮点（相对 v1.0.0）
+
+- **更新 DSH（在线）重构**：新界面并行探测各 npm 源（官方 / 阿里 npmmirror / 腾讯云 / 华为云）的版本号与网络延迟 → 选源选版本（降级二次确认）→ 沙箱内用 npm 从所选源拉取 `@deepseek-ai/dsh` 及完整依赖树 → 自动重启生效；实时日志流、可取消、退出界面不中断安装。
+- **离线导入修复**：运行环境包官方 zip 导入失败、DSH 层包版本变 unknown 且重启被内置层覆盖、损坏/截断/加密 zip 闪退——均已修复；导入全链路异常转为可读提示。
+- **存储占用与清理**：占用按系统同口径统计（分配块、含应用缓存、进设置页自动刷新、可手动刷新）；新增「清理缓存与垃圾文件」（应用缓存 / 访客临时文件 / 运行日志 / apt 缓存，逐项勾选；回滚备份可选），与后台安装/导入互斥，绝不触碰 user-data/.dsh 与运行环境本体。
+- **导入格式全覆盖**：层归档支持 `.tar.zst / .tar.gz / .tar / .tgz / .bz2 / .xz`（按魔数识别）；支持裸 `base.tar` 层归档与「外层 tar 装层归档」布局。
 
 ## 核心特性
 
@@ -17,6 +22,8 @@ DSHBox is a complete mobile runtime for running DeepSeek Harness (DSH) on Androi
   PRoot 用户态沙箱，与 Android 宿主隔离，无需 root；运行环境与用户数据相互独立。
 - **更新/导入管理**：设置页可**离线导入运行环境包**、**离线/在线更新 DSH**（内置多镜像源）、
   装配 DSH 移动端适配插件（cordis `@local/dsh-mobile-adapt`），并带实时进度与失败回滚。
+- **在线更新新界面**（v1.1.0）：并行探测各 npm 源（官方 / 阿里 npmmirror / 腾讯云 / 华为云）的版本与延迟，选源选版本（降级二次确认），沙箱内用 npm 拉取完整依赖树并自动重启；实时日志、可取消。
+- **存储占用与清理**（v1.1.0）：系统同口径统计（分配块、含缓存、自动刷新）；设置页「清理缓存与垃圾文件」按项勾选清理临时文件/日志/apt 缓存（回滚备份可选），与后台安装互斥，不触碰工作区与对话数据。
 - **文件管理**：沙盒/工作区双视图（`/root/projects` 工作区 + 沙盒根），导入/导出引导，目录 ZIP，
   搜索、排序、网格/列表切换。
 - **持久终端**：App 内常驻 shell 会话（`terminal-session` 模块）。

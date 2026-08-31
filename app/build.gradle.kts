@@ -33,8 +33,9 @@ android {
         applicationId = "com.dshbox.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.0"
+        // 1.1.0: versionCode 3 — 离线导入/在线更新改造（见 MODIFICATION_LOG.md）。
+        versionCode = 3
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

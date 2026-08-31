@@ -4,31 +4,65 @@ import android.content.Context
 import android.util.Log
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
-import com.dshbox.app.common.Constants
+import com.dshbox.app.common.DshNpmSource
+import com.dshbox.app.common.DshSources
+import com.dshbox.app.common.Versions
+import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.sandbox.DshUpdateOutcome
 import com.dshbox.app.sandbox.SandboxManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** Result of probing one npm source for @deepseek-ai/dsh registry metadata. */
+data class DshSourceProbe(
+    val source: DshNpmSource,
+    val reachable: Boolean,
+    /** Wall-clock ms of the full metadata fetch+parse (download + JSON). */
+    val latencyMs: Long,
+    /** dist-tags.latest, or null when unreachable / malformed. */
+    val latestVersion: String?,
+    /** All published versions, newest first. */
+    val versions: List<String>,
+    val error: String? = null,
+)
+
+/** UI-facing state of the online DSH install started from the update screen. */
+data class DshOnlineInstallState(
+    val running: Boolean = false,
+    val stage: String = "",
+    /** Recent npm/tar output lines (bounded, oldest first). */
+    val logs: List<String> = emptyList(),
+    /** Set once the install settles (success or failure). */
+    val result: AppResult<DshUpdateOutcome>? = null,
+    val cancelled: Boolean = false,
+)
+
 /**
- * §7.6 — online DSH update via mirror source.
+ * 1.1.0 (M6/M7) — online DSH update, redesigned:
+ *  - probe every source in [DshSources.ALL] IN PARALLEL: latency + dist-tags.latest
+ *    + the full published-version list. (1.0.0 probed mirrors one by one and could
+ *    then only fail at the never-configured prebuilt-layer download — the feature
+ *    could never install anything.)
+ *  - install a chosen version from a chosen source by BUILDING the layer inside
+ *    the guest via npm ([SandboxManager.installDshFromNpm]) — replicating
+ *    runtime-bundle/scripts/install_dsh.sh, the exact way the bundled layer is
+ *    produced — then hand it to the normal updateDsh pipeline.
  *
- * Flow (per plan §7.6):
- *   1. Probe the npm mirror(s) for `@deepseek-ai/dsh` latest version.
- *   2. Compare with the installed DSH layer (arbitration: installed >= latest -> keep).
- *   3. If newer, download the prebuilt `dsh_layer.tar.zst` (+ .sha256) from
- *      [Constants.DSH_LAYER_BASE_URL].
- *   4. Verify SHA-256, then hand off to [SandboxManager.updateDsh] which does a
- *      single-live-copy replace (old -> previous/dsh) + rollback. Never touches
- *      user-data/.dsh.
- *
- * The mirror probe is real; the prebuilt-layer download requires a configured
- * [Constants.DSH_LAYER_BASE_URL] host (deployment concern) and fails gracefully
- * when absent.
+ * The install runs in this manager's own SupervisorJob scope (the manager lives
+ * in AppContainer for the whole process), so closing the update screen never
+ * aborts a running install; progress is published via [installState]. The guest
+ * proot process of the current step is captured so [cancelDshInstall] can tear
+ * it down.
  */
 class RuntimeUpdateManager(
     private val appContext: Context,
@@ -36,104 +70,156 @@ class RuntimeUpdateManager(
 ) {
     private val tag = "RuntimeUpdate"
 
-    suspend fun updateDshLatest(onProgress: (String) -> Unit): AppResult<DshUpdateOutcome> =
-        withContext(Dispatchers.IO) {
-            onProgress("正在探测 DSH 最新版本…")
-            val latest = runCatching { queryLatestVersion() }.getOrElse { t ->
-                Log.w(tag, "mirror probe failed: ${t.message}")
-                return@withContext AppResult.Failure(AppError("NETWORK_ERROR", "无法连接镜像源：${t.message}"))
-            }
-            if (latest.isNullOrBlank()) {
-                onProgress("")
-                return@withContext AppResult.Failure(AppError("NO_LATEST", "未获取到 DSH 最新版本"))
-            }
-            val installed = sandboxManager.dshVersion.value
-            if (installed != null && compareVersions(installed, latest) >= 0) {
-                onProgress("")
-                return@withContext AppResult.Success(DshUpdateOutcome(version = installed, changed = false))
-            }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-            val base = Constants.DSH_LAYER_BASE_URL.trim().trimEnd('/')
-            if (base.isEmpty()) {
-                onProgress("")
-                return@withContext AppResult.Failure(AppError("NO_UPDATE_SOURCE", "在线更新源未配置（DSH_LAYER_BASE_URL）"))
-            }
-            val layerUrl = "$base/$latest/dsh_layer.tar.zst"
-            val shaUrl = "$layerUrl.sha256"
-            onProgress("正在下载 DSH $latest …")
-            val layer = File(appContext.cacheDir, "dsh-online-$latest.tar.zst")
-            try {
-                downloadToFile(layerUrl, layer)
-            } catch (t: Throwable) {
-                Log.e(tag, "download failed: ${t.message}", t)
-                onProgress("")
-                return@withContext AppResult.Failure(AppError("DOWNLOAD_FAILED", "下载失败：${t.message}"))
-            }
-            val sha = runCatching { downloadText(shaUrl).trim().split(Regex("\\s+")).firstOrNull() }.getOrNull()
-            onProgress("正在安装 DSH $latest …")
-            val result = sandboxManager.updateDsh(layer, sha, latest)
-            onProgress("")
-            result
-        }
+    @Volatile private var activeGuestProcess: java.lang.Process? = null
+    @Volatile private var installCancelled = false
 
-    /** Query the npm mirrors for @deepseek-ai/dsh dist-tags.latest; try each until one succeeds. */
-    private fun queryLatestVersion(): String {
-        val errors = mutableListOf<String>()
-        for (mirror in Constants.DSH_MIRRORS) {
-            try {
-                return downloadText("$mirror/@deepseek-ai/dsh")
-                    .let { JSONObject(it).optJSONObject("dist-tags")?.optString("latest")?.takeIf { v -> v.isNotBlank() } }
-                    ?: throw IllegalStateException("no dist-tags.latest")
-            } catch (t: Throwable) {
-                errors.add("$mirror: ${t.message}")
+    private val _installState = MutableStateFlow(DshOnlineInstallState())
+    val installState: StateFlow<DshOnlineInstallState> = _installState.asStateFlow()
+
+    // --------------------------------------------------------------- probing
+
+    /**
+     * Probes all sources in parallel, reporting each result to [onEach] as soon
+     * as it completes (marshalled to the main thread for UI convenience).
+     */
+    suspend fun probeSources(onEach: (DshSourceProbe) -> Unit) = coroutineScope {
+        for (source in DshSources.ALL) {
+            launch {
+                val probe = probeOne(source)
+                withContext(Dispatchers.Main) { onEach(probe) }
             }
         }
-        throw IllegalStateException("所有镜像源均不可达：" + errors.joinToString("；"))
     }
 
-    private fun downloadText(url: String): String {
-        val conn = open(url)
+    private suspend fun probeOne(source: DshNpmSource): DshSourceProbe = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         try {
-            if (conn.responseCode !in 200..299) throw IllegalStateException("HTTP ${conn.responseCode} for $url")
+            val text = downloadText(source.metadataUrl(), connectTimeoutMs = 8_000, readTimeoutMs = 8_000)
+            val latency = System.currentTimeMillis() - startedAt
+            val json = JSONObject(text)
+            val latest = json.optJSONObject("dist-tags")?.optString("latest")?.takeIf { it.isNotBlank() }
+            val versions = json.optJSONObject("versions")?.keys()?.asSequence()?.toList().orEmpty()
+                .sortedWith { a, b -> Versions.compare(b, a) }
+            DshSourceProbe(
+                source = source,
+                reachable = true,
+                latencyMs = latency,
+                latestVersion = latest,
+                versions = versions,
+            )
+        } catch (t: Throwable) {
+            Log.w(tag, "probe ${source.url} failed: ${t.message}")
+            DshSourceProbe(
+                source = source,
+                reachable = false,
+                latencyMs = System.currentTimeMillis() - startedAt,
+                latestVersion = null,
+                versions = emptyList(),
+                error = t.message ?: "未知错误",
+            )
+        }
+    }
+
+    // -------------------------------------------------------------- installing
+
+    /**
+     * Starts installing [version] of @deepseek-ai/dsh from [source] in the
+     * background. Progress is published on [installState]. No-op while another
+     * install is running. [allowDowngrade] must be set for versions not newer
+     * than the installed one (the UI double-confirms such a choice first).
+     */
+    fun startDshInstall(source: DshNpmSource, version: String, allowDowngrade: Boolean) {
+        if (_installState.value.running) return
+        installCancelled = false
+        activeGuestProcess = null
+        _installState.value = DshOnlineInstallState(running = true, stage = "准备安装…")
+        scope.launch {
+            // 1.1.0 (M12.1 P1③)：登记后台操作，阻止设置页清理与其并发——
+            // npm 安装写 base/tmp（GUEST_TMP）与 dsh-staging（CACHE），均为清理目标。
+            BackgroundOps.runTracked {
+                appendLog("· 源：${source.name}（${source.url}）")
+                appendLog("· 包：@deepseek-ai/dsh@$version")
+                val result = sandboxManager.installDshFromNpm(
+                    registryUrl = source.url,
+                    version = version,
+                    allowDowngrade = allowDowngrade,
+                    onStage = { stage -> update { it.copy(stage = stage) } },
+                    onLog = ::appendLog,
+                    onProcess = { process -> activeGuestProcess = process },
+                )
+                if (result is AppResult.Failure) {
+                    Log.w(tag, "dsh npm install failed: ${result.error.code}: ${result.error.message}")
+                }
+                _installState.value = _installState.value.copy(
+                    running = false,
+                    stage = if (result is AppResult.Success) "安装完成" else "安装失败",
+                    result = result,
+                    cancelled = installCancelled,
+                )
+                activeGuestProcess = null
+            }
+        }
+    }
+
+    /**
+     * Cancels the running install by destroying the current guest proot process;
+     * --kill-on-exit cleans the guest-side tree. The pipeline then settles into
+     * a failure with [DshOnlineInstallState.cancelled] set.
+     */
+    fun cancelDshInstall() {
+        if (!_installState.value.running) return
+        installCancelled = true
+        appendLog("· 用户取消了安装")
+        runCatching { activeGuestProcess?.destroy() }
+    }
+
+    /** Clears a finished install result (e.g. when the user returns to the list). */
+    fun clearInstallResult() {
+        if (!_installState.value.running) {
+            _installState.value = DshOnlineInstallState()
+        }
+    }
+
+    // ----------------------------------------------------------------- helpers
+
+    private fun update(block: (DshOnlineInstallState) -> DshOnlineInstallState) {
+        _installState.value = block(_installState.value)
+    }
+
+    private fun appendLog(line: String) {
+        // Filter proot/guest linker warnings (meaningless noise), keep real output.
+        if (line.contains("WARNING: linker", ignoreCase = true) || line.contains("linkerconfig")) return
+        update { state -> state.copy(logs = (state.logs + line).takeLast(MAX_LOG_LINES)) }
+    }
+
+    private fun downloadText(
+        url: String,
+        connectTimeoutMs: Long = 10_000,
+        readTimeoutMs: Long = 15_000,
+    ): String {
+        val conn = open(url, connectTimeoutMs, readTimeoutMs)
+        try {
+            if (conn.responseCode !in 200..299) throw IllegalStateException("HTTP ${conn.responseCode}")
             return conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
             conn.disconnect()
         }
     }
 
-    private fun downloadToFile(url: String, target: File) {
-        val conn = open(url)
-        try {
-            if (conn.responseCode !in 200..299) throw IllegalStateException("HTTP ${conn.responseCode} for $url")
-            conn.inputStream.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    private fun open(url: String): HttpURLConnection =
+    private fun open(url: String, connectTimeoutMs: Long, readTimeoutMs: Long): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 15_000
-            setRequestProperty("User-Agent", "DSHapp/0.1")
+            connectTimeout = connectTimeoutMs.toInt()
+            readTimeout = readTimeoutMs.toInt()
+            setRequestProperty("User-Agent", "DSHBox/1.1")
             setRequestProperty("Accept", "application/json")
             // Do NOT call connect() here: responseCode/getInputStream triggers it lazily
             // (calling it eagerly for HTTPS can surface TLS-only shutdowns on some
             // carrier networks; we let the read path surface the real error instead).
         }
 
-    /** Best-effort semantic-ish compare; mirrors DshLayer.compareVersions. */
-    internal fun compareVersions(a: String, b: String): Int {
-        val clean = { s: String -> s.trim().trimStart('v').split('-').first() }
-        val pa = clean(a).split('.').mapNotNull { it.toIntOrNull() }
-        val pb = clean(b).split('.').mapNotNull { it.toIntOrNull() }
-        for (i in 0 until maxOf(pa.size, pb.size)) {
-            val x = pa.getOrElse(i) { 0 }
-            val y = pb.getOrElse(i) { 0 }
-            if (x != y) return x - y
-        }
-        val ra = a.split('-').drop(1).joinToString("-")
-        val rb = b.split('-').drop(1).joinToString("-")
-        return if (ra == rb) 0 else ra.compareTo(rb)
+    private companion object {
+        const val MAX_LOG_LINES = 400
     }
 }

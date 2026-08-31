@@ -152,11 +152,16 @@ class SandboxProcessRunner(
      * stdout/stderr line to [onLine] (for live assembly status) and returning
      * an [AppResult] based on the process exit code. Used for "指令注入" — e.g.
      * running a plugin's install.sh inside the DSH guest.
+     *
+     * 1.1.0 (M7): [onProcess] receives the spawned host Process right after
+     * start so long-running callers (guest npm install) can destroy it to
+     * cancel; proot's --kill-on-exit cleans the guest-side tree.
      */
     fun runGuestCommand(
         command: List<String>,
         env: Map<String, String> = emptyMap(),
         onLine: (String) -> Unit = {},
+        onProcess: (Process) -> Unit = {},
     ): AppResult<Unit> {
         val pb = try {
             ProcessBuilder(command).also {
@@ -171,6 +176,7 @@ class SandboxProcessRunner(
         } catch (t: Throwable) {
             return AppResult.Failure(AppError("GUEST_SPAWN_FAILED", "cannot spawn guest command: ${t.message}"))
         }
+        runCatching { onProcess(process) }
         val logFile = File(logsDir(), "process-guest.log")
         val thread = Thread({
             try {
