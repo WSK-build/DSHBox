@@ -3,6 +3,7 @@ package com.dshbox.app.sandbox
 import android.util.Log
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
+import com.dshbox.app.common.Versions
 import java.io.File
 
 /**
@@ -123,39 +124,38 @@ class DshLayer(
     fun installedVersion(): String? {
         val vf = File(dshDir(), VERSION_FILE)
         if (vf.isFile) return vf.readText().trim().takeIf { it.isNotEmpty() }
-        val pkg = File(dshDir(), PROFILE_VERSION_FILE)
-        if (pkg.isFile) {
-            return try {
-                org.json.JSONObject(pkg.readText()).optString("version").takeIf { it.isNotEmpty() }
-            } catch (t: Throwable) {
-                Log.w(TAG, "cannot read ${pkg.name} version: ${t.message}")
-                null
-            }
-        }
-        return null
+        return versionFromPackage(dshDir())
     }
 
     /**
-     * Installs (or replaces) the DSH layer from [bundle] (a .tar.gz of the DSH
-     * runtime content) with version arbitration:
-     *   - if [newVersion] is provided and the currently installed version is
-     *     NEWER, keep the installed copy (user-newer wins) -> changed=false.
-     *   - otherwise move the installed copy to previous/dsh (one copy only),
-     *     extract [bundle] into dsh/, and record [newVersion].
+     * Installs (or replaces) the DSH layer from [bundle] (a tar.gz / tar.zst /
+     * plain tar of the DSH runtime content) with version arbitration:
+     *   - if [newVersion] is provided, the currently installed version is newer
+     *     (or equal) and [allowDowngrade] is false, keep the installed copy
+     *     (installed-newer wins) -> changed=false;
+     *   - otherwise the bundle is extracted into a STAGING directory first
+     *     (1.1.0, M4): the staged tree is shape-validated (bin.js present) and
+     *     its version discovered BEFORE the live layer is touched; only then the
+     *     old layer moves to previous/dsh (single copy) and staging renames into
+     *     dsh/. A corrupt or WRONG file (e.g. a runtime zip's base.tar.zst picked
+     *     by mistake) can therefore never leave a half-extracted dsh/ behind —
+     *     the 1.0.0 code extracted straight into dsh/ and its failure path could
+     *     not roll back a partial extraction.
      *
-     * Only [dshDir] and [previousDshDir] are touched. Returns whether a change
-     * was applied and the resulting version.
+     * Only [dshDir], [previousDshDir] and the staging dir are touched. Returns
+     * whether a change was applied and the resulting version.
      */
     suspend fun installFromBundle(
         bundle: File,
         expectedSha256: String?,
         newVersion: String?,
+        allowDowngrade: Boolean = false,
     ): AppResult<DshUpdateOutcome> {
         if (!bundle.isFile) {
             return AppResult.Failure(AppError("DSH_BUNDLE_NOT_FOUND", "dsh bundle not found: ${bundle.absolutePath}"))
         }
         val current = installedVersion()
-        if (current != null && newVersion != null && compareVersions(current, newVersion) >= 0) {
+        if (!allowDowngrade && current != null && newVersion != null && compareVersions(current, newVersion) >= 0) {
             // Installed is the same or newer; keep it (APK/newer must not downgrade).
             Log.i(TAG, "dsh update skipped: installed $current >= incoming $newVersion")
             return AppResult.Success(DshUpdateOutcome(version = current, changed = false))
@@ -166,7 +166,26 @@ class DshLayer(
 
         val previous = previousDshDir()
         val dsh = dshDir()
+        val staging = File(runtimeDir, "dsh-staging")
         try {
+            // Stage 1: extract + validate AWAY from the live layer.
+            staging.deleteRecursively()
+            staging.mkdirs()
+            when (val r = bundleManager.extractTarGz(bundle, staging)) {
+                is AppResult.Failure -> return r
+                is AppResult.Success -> Unit
+            }
+            if (!File(staging, DSHPK_GUEST_PATH).isFile) {
+                staging.deleteRecursively()
+                return AppResult.Failure(
+                    AppError(
+                        "DSH_BUNDLE_INVALID",
+                        "所选文件不是有效的 DSH 层包（缺少 node_modules/@deepseek-ai/dsh/lib/bin.js）",
+                    ),
+                )
+            }
+            val discovered = versionFromPackage(staging)
+            // Stage 2: atomic swap old <-> new (same filesystem, rename first).
             if (previous.exists()) previous.deleteRecursively()
             if (dsh.exists()) {
                 // Old object -> previous (guaranteed single previous copy).
@@ -175,40 +194,35 @@ class DshLayer(
                     dsh.deleteRecursively()
                 }
             }
-            dsh.mkdirs()
-            val extract = when (val r = bundleManager.extractTarGz(bundle, dsh)) {
-                is AppResult.Success -> true
-                is AppResult.Failure -> {
-                    // roll back the current slot so a failed update leaves the
-                    // previous copy in place for the next boot.
-                    if (previous.exists() && !dsh.exists()) previous.renameTo(dsh)
-                    return AppResult.Failure(r.error)
+            if (!staging.renameTo(dsh)) {
+                if (!staging.copyRecursively(dsh, overwrite = true)) {
+                    // Restore the previous layer so the next boot still works.
+                    if (!dsh.exists() && previous.exists()) previous.renameTo(dsh)
+                    return AppResult.Failure(AppError("DSH_INSTALL_FAILED", "无法将新 DSH 层就位（rename/copy 均失败）"))
                 }
+                staging.deleteRecursively()
             }
-            if (!extract) {
-                return AppResult.Failure(AppError("DSH_EXTRACT_FAILED", "dsh bundle extraction failed"))
-            }
-            // Android compat (defense in depth): DSH publishes files via fs.link() which
-            // Android app-data filesystems deny (EACCES). Apply the link()->rename() fallback
-            // to this layer too (idempotent; covers online-updated layers, not just the embedded
+            // Stage 3: Android compat (defense in depth) + version record.
+            // DSH publishes files via fs.link() which Android app-data filesystems
+            // deny (EACCES); apply the link()->rename() fallback to every layer
+            // (idempotent; covers online/npm-updated layers, not just the embedded
             // baseline that is pre-patched at build time).
             applyAndroidDshPatch(dsh)
-            if (!newVersion.isNullOrBlank()) {
+            val version = newVersion?.takeIf { it.isNotBlank() } ?: discovered ?: "unknown"
+            runCatching {
                 val vf = File(dsh, VERSION_FILE)
                 vf.parentFile?.mkdirs()
-                vf.writeText(newVersion)
-            } else {
-                // no explicit version: fall back to the discovered package.json version
-                val disc = versionFromPackage(dsh) ?: "unknown"
-                val vf = File(dsh, VERSION_FILE)
-                vf.parentFile?.mkdirs()
-                vf.writeText(disc)
-            }
-            Log.i(TAG, "dsh layer updated to ${newVersion ?: installedVersion()}")
+                vf.writeText(version)
+            }.onFailure { Log.w(TAG, "write dsh version file failed: ${it.message}") }
+            Log.i(TAG, "dsh layer updated to $version")
             return AppResult.Success(DshUpdateOutcome(version = installedVersion(), changed = true))
         } catch (t: Throwable) {
             Log.e(TAG, "dsh install failed: ${t.message}", t)
+            // Best-effort restore of the previous layer so the next boot still works.
+            if (!dsh.exists() && previous.exists()) runCatching { previous.renameTo(dsh) }
             return AppResult.Failure(AppError("DSH_INSTALL_FAILED", "dsh install failed: ${t.message}"))
+        } finally {
+            if (staging.exists()) staging.deleteRecursively()
         }
     }
 
@@ -265,33 +279,37 @@ class DshLayer(
         }.onFailure { Log.w(TAG, "android dsh patch failed: ${file.name}: ${it.message}") }
     }
 
-    private fun versionFromPackage(dshDirRoot: File): String? = try {
-        val pkg = File(dshDirRoot, PROFILE_VERSION_FILE)
-        if (pkg.isFile) org.json.JSONObject(pkg.readText()).optString("version").takeIf { it.isNotEmpty() } else null
-    } catch (t: Throwable) {
-        null
+    private fun versionFromPackage(dshDirRoot: File): String? {
+        // 1.1.0 (M3): prefer the REAL product version from
+        // node_modules/@deepseek-ai/dsh/package.json; the layer-root package.json
+        // is only a build stub. Both are parsed BOM-tolerantly — the shipped stub
+        // starts with a UTF-8 BOM (EF BB BF) and Android's org.json throws on it,
+        // which made every offline import record version "unknown" (and the next
+        // boot then re-provisioned the bundled layer OVER the user's import).
+        val candidates = listOf(
+            File(dshDirRoot, "node_modules/@deepseek-ai/dsh/package.json"),
+            File(dshDirRoot, PROFILE_VERSION_FILE),
+        )
+        for (pkg in candidates) {
+            if (!pkg.isFile) continue
+            val v = runCatching {
+                val text = pkg.readText().trimStart('\uFEFF')
+                org.json.JSONObject(text).optString("version").takeIf { it.isNotEmpty() }
+            }.getOrElse {
+                Log.w(TAG, "cannot read ${pkg.name} version: ${it.message}")
+                null
+            }
+            if (v != null) return v
+        }
+        return null
     }
 
     /**
-     * Best-effort semantic-ish comparison (handles "0.1.0-rc.6" style). Returns
-     * >0 when [a] is newer than [b], <0 when older, 0 when equal.
+     * Best-effort semantic-ish version comparison. Kept for source compatibility;
+     * the implementation lives in common [Versions] (1.1.0, M6 — was duplicated
+     * here and in RuntimeUpdateManager with identical bodies).
      */
-    fun compareVersions(a: String, b: String): Int {
-        val clean = { s: String -> s.trim().trimStart('v').split('-').first() }
-        val pa = clean(a).split('.').mapNotNull { it.toIntOrNull() }
-        val pb = clean(b).split('.').mapNotNull { it.toIntOrNull() }
-        for (i in 0 until maxOf(pa.size, pb.size)) {
-            val x = pa.getOrElse(i) { 0 }
-            val y = pb.getOrElse(i) { 0 }
-            if (x != y) return x - y
-        }
-        // Pre-release marker: a "-rc.N" is newer than the plain release if the
-        // numeric parts are equal, but treat equal-numbered differently releases
-        // as equal to avoid churn in arbitration.
-        val ra = a.split('-').drop(1).joinToString("-")
-        val rb = b.split('-').drop(1).joinToString("-")
-        return if (ra == rb) 0 else ra.compareTo(rb)
-    }
+    fun compareVersions(a: String, b: String): Int = Versions.compare(a, b)
 }
 
 /** Outcome of a DSH update attempt. */

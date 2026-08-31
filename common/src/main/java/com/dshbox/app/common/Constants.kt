@@ -7,25 +7,12 @@ object Constants {
     /** WebView loads the DSH loopback URL. Both localhost and 127.0.0.1 are allowed by NSC. */
     const val DSH_BASE_URL = "http://$DSH_DEFAULT_HOST:$DSH_DEFAULT_PORT"
 
-    /**
-     * §7.6 — npm mirrors that actually serve @deepseek-ai/dsh (verified: all
-     * return 200 + dist-tags.latest = current). Ordered China-fast first,
-     * then the authoritative upstream. (registry.npnnpmirror.com is NOT a real
-     * host — the correct Alibaba address is registry.npmmirror.com.)
-     */
-    val DSH_MIRRORS = listOf(
-        "https://registry.npmmirror.com",               // 阿里 npmmirror（国内，实测通）
-        "https://mirrors.cloud.tencent.com/npm/",       // 腾讯云（国内，实测通）
-        "https://repo.huaweicloud.com/repository/npm/", // 华为云（国内，实测通）
-        "https://registry.npmjs.org",                   // 官方上游（权威）
-    )
+    // 1.1.0：旧的 DSH_MIRRORS / DSH_LAYER_BASE_URL（预构建 dsh_layer.tar.zst 下载源）已废弃——
+    // 该下载源从未存在，在线更新改为「探测 npm 源 + guest 内 npm 拉包」，
+    // 见 common/DshSources.kt 与 SandboxManager.installDshFromNpm。
 
-    /**
-     * §7.6 — base URL hosting the prebuilt DSH layer (one <version>/dsh_layer.tar.zst
-     * + .sha256 per version) for online update. Empty means the online update source
-     * is not configured yet; [RuntimeUpdateManager] fails gracefully then.
-     */
-    const val DSH_LAYER_BASE_URL = ""
+    /** Online-update guard: minimum free bytes on the app storage before a guest npm install starts. */
+    const val DSH_INSTALL_MIN_FREE_BYTES = 1L * 1024 * 1024 * 1024 // 1 GiB
 
     const val MIN_SUPPORTED_SDK = 29
 

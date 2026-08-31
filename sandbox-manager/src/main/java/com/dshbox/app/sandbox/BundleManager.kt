@@ -5,7 +5,9 @@ import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
 import com.github.luben.zstd.ZstdInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -71,6 +73,19 @@ class BundleManager(
         }
     }
 
+    /**
+     * Extracts a compressed-or-plain tar archive into [destDir]. The destination
+     * must already be the target slot directory. The caller is responsible for
+     * clearing any stale slot contents before calling this.
+     *
+     * 1.1.0 (M5): the container is sniffed from the stream magic, never the file
+     * name — zstd (0x28 B5 2F FD), gzip (0x1F 8B) and plain tar ("ustar" at
+     * offset 257) are all accepted, so a user-supplied layer package in any of
+     * these shapes installs without renaming.
+     * 1.1.0 (M12.4): bzip2 ("BZh") and xz (FD 37 7A 58 5A 00) dispatched by
+     * magic as well, closing the format-coverage gaps (they were heading into
+     * the gzip branch and failing with a misleading error).
+     */
     fun extractTarGz(tarFile: File, destDir: File): AppResult<Unit> {
         if (!tarFile.isFile) {
             return AppResult.Failure(AppError("BUNDLE_NOT_FOUND", "bundle not found: ${tarFile.absolutePath}"))
@@ -78,13 +93,17 @@ class BundleManager(
         destDir.mkdirs()
         val destRoot = destDir.canonicalFile
         return try {
-            // Dispatch on the container format: zstd layers use zstd-jni, gzip
-            // layers use commons-compress. zstd-jni is now wired as a local
-            // classes.jar file dependency with the arm64 .so in jniLibs.
-            val decompressed: InputStream = if (isZstdFile(tarFile)) {
-                ZstdInputStream(BufferedInputStream(FileInputStream(tarFile)))
-            } else {
-                GzipCompressorInputStream(BufferedInputStream(FileInputStream(tarFile)))
+            // Dispatch on the container format: zstd layers use zstd-jni, bzip2/xz
+            // use commons-compress (+org.tukaani:xz for xz). zstd-jni is wired as a
+            // local classes.jar file dependency with the arm64 .so in jniLibs.
+            val decompressed: InputStream = when {
+                isZstdFile(tarFile) -> ZstdInputStream(BufferedInputStream(FileInputStream(tarFile)))
+                isBzip2File(tarFile) ->
+                    BZip2CompressorInputStream(BufferedInputStream(FileInputStream(tarFile)))
+                isXzFile(tarFile) ->
+                    XZCompressorInputStream(BufferedInputStream(FileInputStream(tarFile)))
+                isTarFile(tarFile) -> BufferedInputStream(FileInputStream(tarFile))
+                else -> GzipCompressorInputStream(BufferedInputStream(FileInputStream(tarFile)))
             }
             decompressed.use { dec ->
                 TarArchiveInputStream(dec).use { tar ->
@@ -272,6 +291,53 @@ class BundleManager(
         file.inputStream().use { input ->
             val b1 = input.read(); val b2 = input.read(); val b3 = input.read(); val b4 = input.read()
             b1 == 0x28 && b2 == 0xB5 && b3 == 0x2F && b4 == 0xFD
+        }
+    } catch (_: Exception) {
+        false
+    }
+
+    /** True when [file] begins with the bzip2 magic ("BZh" + level digit). 1.1.0 (M12.4). */
+    private fun isBzip2File(file: File): Boolean = try {
+        file.inputStream().use { input ->
+            val b1 = input.read(); val b2 = input.read(); val b3 = input.read()
+            b1 == 0x42 && b2 == 0x5A && b3 == 0x68
+        }
+    } catch (_: Exception) {
+        false
+    }
+
+    /** True when [file] begins with the xz magic (FD 37 7A 58 5A 00). 1.1.0 (M12.4). */
+    private fun isXzFile(file: File): Boolean = try {
+        file.inputStream().use { input ->
+            val head = ByteArray(6)
+            var read = 0
+            while (read < head.size) {
+                val n = input.read(head, read, head.size - read)
+                if (n < 0) break
+                read += n
+            }
+            read >= 6 &&
+                head[0] == 0xFD.toByte() && head[1] == 0x37.toByte() && head[2] == 0x7A.toByte() &&
+                head[3] == 0x58.toByte() && head[4] == 0x5A.toByte() && head[5] == 0x00.toByte()
+        }
+    } catch (_: Exception) {
+        false
+    }
+
+    /** True when [file] is an uncompressed tar ("ustar" magic at header offset 257). 1.1.0 (M5). */
+    private fun isTarFile(file: File): Boolean = try {
+        FileInputStream(file).use { input ->
+            val header = ByteArray(262)
+            var read = 0
+            while (read < header.size) {
+                val n = input.read(header, read, header.size - read)
+                if (n < 0) break
+                read += n
+            }
+            read >= 262 &&
+                header[257] == 0x75.toByte() && header[258] == 0x73.toByte() &&
+                header[259] == 0x74.toByte() && header[260] == 0x61.toByte() &&
+                header[261] == 0x72.toByte()
         }
     } catch (_: Exception) {
         false

@@ -34,6 +34,9 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.commons.compress)
+    // 1.1.0 (M12.4)：XZ 解压需要 org.tukaani:xz（commons-compress 的 XZ 支持不内嵌该实现；
+    // BZip2 为 commons-compress 自带，无需额外依赖）。
+    implementation("org.tukaani:xz:1.9")
     // zstd-jni (Android AAR classes) so BundleManager can decompress zstd layers.
     // The arm64-v8a .so is packaged via app/src/main/jniLibs (see app build).
     implementation(files("$rootDir/libs/zstd-jni-1.5.7-15-classes.jar"))

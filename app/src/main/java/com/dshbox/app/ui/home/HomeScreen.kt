@@ -407,7 +407,8 @@ private fun DshStatusCard(
                         ),
                     )
                     Text(
-                        text = stringResource(R.string.home_version_format, BuildConfig.VERSION_NAME),
+                        // M12.3：与设置页「v1.1.0」写法统一。
+                        text = stringResource(R.string.home_version_format, "v${BuildConfig.VERSION_NAME}"),
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
