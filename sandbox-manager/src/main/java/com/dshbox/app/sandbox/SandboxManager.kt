@@ -22,6 +22,14 @@ interface SandboxManager {
     /** Monotonic in-progress flag / message for DSH update. */
     val dshUpdateProgress: StateFlow<String?>
 
+    /**
+     * 1.1.1 (M10)：DSH 0.1.2-rc.1 起 web 服务使用进程级 launchToken 认证
+     * （`dsh web:` 启动 URL 携带）。app 从 DSH 进程原始输出解析后经此暴露给
+     * WebView：首次加载 `/?token=<值>` 完成 token→签名 cookie 交换，
+     * 此后凭持久 cookie 访问。null = 尚未解析到（旧版 DSH 无认证，忽略）。
+     */
+    val dshLaunchToken: StateFlow<String?>
+
     /** One-time directory initialization. Idempotent. */
     suspend fun initialize()
 
@@ -112,6 +120,8 @@ interface SandboxManager {
         onStage: (String) -> Unit = {},
         onLog: (String) -> Unit = {},
         onProcess: (java.lang.Process) -> Unit = {},
+        /** 1.1.1 (M7)：为 true 时 guest 命令等待循环立即中止（在线取消用）。 */
+        shouldAbort: () -> Boolean = { false },
     ): AppResult<DshUpdateOutcome>
 
     /**
@@ -134,5 +144,7 @@ interface SandboxManager {
         command: String,
         onLine: (String) -> Unit = {},
         onProcess: (java.lang.Process) -> Unit = {},
+        /** 1.1.1 (M7)：为 true 时等待循环立即中止。 */
+        shouldAbort: () -> Boolean = { false },
     ): AppResult<Unit>
 }

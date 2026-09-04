@@ -55,6 +55,7 @@ import com.dshbox.app.common.Versions
 import com.dshbox.app.runtime.DshOnlineInstallState
 import com.dshbox.app.runtime.DshSourceProbe
 import com.dshbox.app.sandbox.SandboxState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -401,19 +402,48 @@ private fun InstallProgressView(
     onDone: () -> Unit,
 ) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // 1.1.1 (M1)：去掉内层 verticalScroll —— 本视图直接位于更新页根
+    // Column(verticalScroll) 之内，嵌套滚动组件会被以无限最大高度约束测量，
+    // 首次组合即抛 IllegalStateException（点「安装」后整个 app 闪退，真机
+    // FATAL EXCEPTION: main 实证）。外层页面 Column 已可滚，日志区由固定
+    // 260dp 的 LazyColumn 自行滚动，此层无需再滚。
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
             .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         when {
             state.running -> {
+                // 1.1.1 (T1)：下载阶段展示「已用时」与保底提示（安装始终在后台
+                // scope 运行，离开本页不影响；本提示行不遮挡任何操作）。
+                var now by remember { mutableStateOf(System.currentTimeMillis()) }
+                LaunchedEffect(state.startedAtMs) {
+                    while (true) {
+                        now = System.currentTimeMillis()
+                        delay(1000)
+                    }
+                }
+                val elapsedSec = ((now - state.startedAtMs) / 1000).coerceAtLeast(0)
+                val elapsedText = buildString {
+                    if (elapsedSec >= 3600) append("${elapsedSec / 3600} 小时 ")
+                    if (elapsedSec >= 60) append("${(elapsedSec % 3600) / 60} 分 ")
+                    append("${elapsedSec % 60} 秒")
+                }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(modifier = Modifier.height(20.dp).width(20.dp), strokeWidth = 2.dp)
                     Text(text = state.stage, style = MaterialTheme.typography.bodyLarge)
                 }
+                Text(
+                    text = stringResource(R.string.dsh_update_elapsed, elapsedText),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(R.string.dsh_update_install_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             state.result is AppResult.Success -> {
                 Text(

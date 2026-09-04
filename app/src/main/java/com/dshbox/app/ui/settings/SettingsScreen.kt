@@ -28,6 +28,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -108,10 +111,107 @@ fun SettingsScreen(
     var lastScanAt by remember { mutableStateOf(0L) }
     var lastScanGuard by remember { mutableStateOf<Boolean?>(null) }
     // 装配 DSH 移动端适配包（cordis 插件，指令注入方式 B）
-    var showAssembleMobileAdapt by remember { mutableStateOf(false) }
     var assembleRunning by remember { mutableStateOf(false) }
-    var assembleLog by remember { mutableStateOf<String?>(null) }
-    var showAssembleResult by remember { mutableStateOf(false) }
+    var assembleChecking by remember { mutableStateOf(false) }
+    // 1.1.1 (T2 开关版)：装配状态本地标记（开关瞬时响应），进入设置页自动检测校准。
+    val assemblePrefs = remember { context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE) }
+    var assembleInstalled by remember {
+        mutableStateOf(assemblePrefs.getBoolean(PREF_MOBILE_ADAPT_INSTALLED, false))
+    }
+    // 装配行动作占位：运行函数定义在本函数体更后处，用 var 引用、点击时取值。
+    var assembleRowAction by remember { mutableStateOf<() -> Unit>({}) }
+
+    // 1.1.1 (T2 开关版)：仅首次（本地标记从未设置过）进入设置页时校准一次开关；
+    // 此后开关状态完全由本地标记保持（装配/移除成功时翻转），不再反复查询。
+    LaunchedEffect(isActive) {
+        if (isActive && !assembleRunning && !assemblePrefs.contains(PREF_MOBILE_ADAPT_INSTALLED)) {
+            assembleChecking = true
+            val res = sandboxManager.runGuestCommand(
+                "grep -q mobile-adapt /root/projects/.dsh/profiles/web",
+                onLine = {},
+            )
+            // 首启校准：内联写入本地标记（setAssembleInstalled 声明在其后，避免前向引用）。
+            val detected = res is AppResult.Success
+            assembleInstalled = detected
+            assemblePrefs.edit().putBoolean(PREF_MOBILE_ADAPT_INSTALLED, detected).apply()
+            assembleChecking = false
+        }
+    }
+
+    // 1.1.1 (T2)：本地装配标记持久化（免 guest 查询：点击即切，瞬时响应；仅装配/移除
+    // 成功时更新，失败保持原状）。
+    fun setAssembleInstalled(v: Boolean) {
+        assembleInstalled = v
+        assemblePrefs.edit().putBoolean(PREF_MOBILE_ADAPT_INSTALLED, v).apply()
+    }
+
+    // 装配 DSH 移动端适配包（指令注入方式 B）：往 DSH guest 注入 install.sh；
+    // 不重启 DSH、无弹窗，结果经 Toast 提示（重启 DSH 后生效）。
+    val runAssembleMobileAdapt = fun() {
+        if (assembleRunning) return
+        assembleRunning = true
+        scope.launch {
+            val profile = "/root/projects/.dsh/profiles/web"
+            val stage = "/root/projects/.dsh/mobile-adapt"
+            val res = sandboxManager.runGuestCommand("bash $stage/install.sh $profile", onLine = {})
+            assembleRunning = false
+            when (res) {
+                is AppResult.Success -> {
+                    setAssembleInstalled(true)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_assemble_mobile_adapt_success) +
+                            context.getString(R.string.settings_assemble_mobile_adapt_restart_hint),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                is AppResult.Failure -> {
+                    scope.launch { sandboxManager.runGuestCommand("bash $stage/uninstall.sh $profile", onLine = {}) }
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_assemble_mobile_adapt_failed) + "：" + res.error.message,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        }
+    }
+
+    // 1.1.1 (T2)：一键移除已装配的移动端适配插件（uninstall.sh）；不重启 DSH、无弹窗。
+    val runRemoveMobileAdapt = fun() {
+        if (assembleRunning) return
+        assembleRunning = true
+        scope.launch {
+            val profile = "/root/projects/.dsh/profiles/web"
+            val stage = "/root/projects/.dsh/mobile-adapt"
+            val res = sandboxManager.runGuestCommand("bash $stage/uninstall.sh $profile", onLine = {})
+            assembleRunning = false
+            when (res) {
+                is AppResult.Success -> {
+                    setAssembleInstalled(false)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_assemble_mobile_adapt_remove_success) +
+                            context.getString(R.string.settings_assemble_mobile_adapt_restart_hint),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                is AppResult.Failure -> {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_assemble_mobile_adapt_remove_failed) + "：" + res.error.message,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        }
+    }
+
+
+    // 装配行一键切换：已装配 → 移除；未装配 → 装配（本地标记瞬时响应）。
+    assembleRowAction = {
+        if (assembleInstalled) runRemoveMobileAdapt() else runAssembleMobileAdapt()
+    }
 
     // 沙箱或 DSH 任一运行中时，guest /tmp 与 proot 临时目录走 24h 智能清理。
     val tmpGuardActive = sandboxRunning || dshActive
@@ -371,10 +471,36 @@ fun SettingsScreen(
         }
 
         // 装配 DSH 移动端适配包（cordis 插件，指令注入方式 B）——位于「外观」上方。
-        SettingsActionRow(
-            title = stringResource(R.string.settings_assemble_mobile_adapt),
-            onClick = { showAssembleMobileAdapt = true },
-        )
+        // 1.1.1 (T2 开关版)：无弹窗开关，进入设置页自动检测校准；切换中禁用防连点。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !assembleRunning && !assembleChecking) { assembleRowAction() }
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.settings_assemble_mobile_adapt),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = assembleInstalled,
+                enabled = !assembleRunning && !assembleChecking,
+                onCheckedChange = { assembleRowAction() },
+                // 1.1.1 (T2)：打开=绿、关闭=灰白（覆盖 M3 默认主题色）。
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = Color(0xFF10A37F),
+                    uncheckedTrackColor = Color(0xFFD5D5D5),
+                    checkedThumbColor = Color.White,
+                    uncheckedThumbColor = Color(0xFF9E9E9E),
+                    checkedBorderColor = Color(0xFF10A37F),
+                    uncheckedBorderColor = Color(0xFFBDBDBD),
+                    disabledCheckedTrackColor = Color(0x6610A37F),
+                    disabledUncheckedTrackColor = Color(0xFFE3E3E3),
+                ),
+            )
+        }
 
         SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
             Text(
@@ -445,78 +571,6 @@ fun SettingsScreen(
                 value = "v${BuildConfig.VERSION_NAME}",
             )
         }
-    }
-
-    // 装配 DSH 移动端适配包（指令注入方式 B）：往 DSH guest 注入 install.sh，实时回传状态，失败自动 uninstall 回滚。
-    val runAssembleMobileAdapt = fun() {
-        if (assembleRunning) return
-        assembleRunning = true
-        assembleLog = null
-        showAssembleMobileAdapt = false
-        showAssembleResult = true
-        scope.launch {
-            val profile = "/root/projects/.dsh/profiles/web"
-            val stage = "/root/projects/.dsh/mobile-adapt"
-            val res = sandboxManager.runGuestCommand("bash $stage/install.sh $profile", onLine = { line ->
-                // 过滤 proot/guest 系统级 linker 警告（无意义噪音），只展示真实装配输出。
-                if (!(line.contains("WARNING: linker", ignoreCase = true) || line.contains("linkerconfig"))) {
-                    assembleLog = (assembleLog ?: "") + line + "\n"
-                }
-            })
-            assembleRunning = false
-            when (res) {
-                is AppResult.Success -> {
-                    runCatching { sandboxManager.restartDsh() }
-                    assembleLog = (assembleLog ?: "") + "\n[" + context.getString(R.string.settings_assemble_mobile_adapt_success) + "] " + context.getString(R.string.settings_assemble_mobile_adapt_restart_hint) + "\n"
-                }
-                is AppResult.Failure -> {
-                    scope.launch { sandboxManager.runGuestCommand("bash $stage/uninstall.sh $profile", onLine = {}) }
-                    assembleLog = (assembleLog ?: "") + "\n[" + context.getString(R.string.settings_assemble_mobile_adapt_failed) + "] " + res.error.message + "\n"
-                }
-            }
-        }
-    }
-
-    if (showAssembleMobileAdapt) {
-        AlertDialog(
-            onDismissRequest = { showAssembleMobileAdapt = false },
-            title = { Text(stringResource(R.string.settings_assemble_mobile_adapt)) },
-            text = { Text(stringResource(R.string.settings_assemble_mobile_adapt_confirm_msg)) },
-            confirmButton = {
-                TextButton(onClick = { runAssembleMobileAdapt() }) {
-                    Text(stringResource(R.string.settings_assemble_mobile_adapt_confirm_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAssembleMobileAdapt = false }) {
-                    Text(stringResource(R.string.settings_cancel_action))
-                }
-            },
-        )
-    }
-
-    if (showAssembleResult) {
-        AlertDialog(
-            onDismissRequest = { showAssembleResult = false },
-            title = { Text(stringResource(R.string.settings_assemble_mobile_adapt_result_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (assembleRunning) {
-                        Text(
-                            stringResource(R.string.settings_assemble_mobile_adapt_running),
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
-                    }
-                    val log = assembleLog
-                    if (!log.isNullOrBlank()) Text(log, style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAssembleResult = false }) {
-                    Text(stringResource(R.string.home_stop_cancel))
-                }
-            },
-        )
     }
 
     if (showDshOfflineInfo) {
@@ -834,6 +888,8 @@ private fun RefreshHintIcon() {
 private fun SettingsActionRow(
     title: String,
     onClick: () -> Unit,
+    /** 1.1.1 (T2)：行右侧状态文本（装配行用），显示在箭头前。 */
+    value: String? = null,
 ) {
     Row(
         modifier = Modifier
@@ -849,6 +905,14 @@ private fun SettingsActionRow(
             modifier = Modifier.weight(1f),
         )
         Spacer(modifier = Modifier.width(8.dp))
+        if (value != null) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+        }
         Text(
             text = "›",
             style = MaterialTheme.typography.titleLarge,
@@ -952,3 +1016,6 @@ private suspend fun installDshFromUri(
         staging.deleteRecursively()
     }
 }
+
+/** 装配移动端适配包状态标记（1.1.1 T2，持久化于 user-data 之外的应用偏好）。 */
+private const val PREF_MOBILE_ADAPT_INSTALLED = "mobile_adapt_installed"

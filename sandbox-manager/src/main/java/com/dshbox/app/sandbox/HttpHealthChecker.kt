@@ -53,7 +53,12 @@ class HttpHealthChecker(
             connection.instanceFollowRedirects = false
             val code = connection.responseCode
             connection.disconnect()
-            code in 200..299
+            // 1.1.1 (M9)：DSH 0.1.2-rc.1 起 webserver 启用 token 认证（dsh-host-webserver），
+            // 无 token 时 `/` 返回 401——此前只认 200..299 导致 DSH 被误判「未就绪」：
+            // 健康循环 120s 超时置 ERROR 后退场，但真实 DSH 进程仍占着 3080，后续一切
+            // 启动动作全部 EADDRINUSE（真机实证 401 + EADDRINUSE 链）。任何 HTTP 响应
+            // （含 401/302/404/5xx）都说明 webserver 存活，只把「连不上/超时」判为不健康。
+            code in 200..599
         } catch (_: Exception) {
             false
         }
