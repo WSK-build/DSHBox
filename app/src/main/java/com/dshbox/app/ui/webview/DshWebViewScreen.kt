@@ -50,6 +50,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -184,6 +186,26 @@ internal class DshWebContainer(
                     onError(error?.description?.toString() ?: "")
                 }
             }
+
+            // 1.1.1 (T2)：DSH 重启换新 launchToken 后，旧 token 的首次访问返回 401
+            // （WebView 显示 ERR_HTTP_RESPONSE_CODE_FAILURE）。此时签名 cookie 通常
+            // 已生效（或即将种入）——自动刷新一次即可恢复，无需用户手动刷新。
+            // 仅主框架 401 且尚未自动刷新过时触发，防死循环。
+            private var autoRefreshedForAuth = false
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: android.webkit.WebResourceResponse?,
+            ) {
+                if (!autoRefreshedForAuth &&
+                    request?.isForMainFrame == true &&
+                    errorResponse?.statusCode == 401
+                ) {
+                    autoRefreshedForAuth = true
+                    view?.reload()
+                }
+            }
         }
 
         // ── 滚动修复（关键）：强制父容器不拦截触摸 ─────────
@@ -261,6 +283,16 @@ internal class DshWebContainer(
     }
 }
 
+/**
+ * 1.1.1 (M10)：在 [base] 上追加 DSH launchToken 查询参数（`?token=<值>`）。
+ * 旧版 DSH / token 未就绪时原样返回；token 为 base64url 字符集（A-Za-z0-9_-），
+ * 无需 URL 编码。
+ */
+private fun webUrlWithToken(base: String, token: String?): String {
+    if (token == null || token.isEmpty() || base.contains("token=")) return base
+    return base + (if (base.contains('?')) "&" else "?") + "token=" + token
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DshWebViewScreen(
@@ -274,6 +306,11 @@ fun DshWebViewScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // 1.1.1 (M10)：DSH 进程级 launchToken（从 `dsh web:` 原始输出解析）——
+    // 首次加载携带它完成 token→签名 cookie 交换，此后 WebView 凭持久 cookie 访问。
+    val dshLaunchToken by (context.applicationContext as com.dshbox.app.DshApp)
+        .container.sandboxManager.dshLaunchToken.collectAsState()
 
     var webView by remember { mutableStateOf<WebView?>(null) }
     var loadProgress by remember { mutableIntStateOf(0) }
@@ -331,7 +368,19 @@ fun DshWebViewScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // 1.1.1 (M10)：launchToken 就绪后带 token 加载（首次完成 cookie 交换；
+        // DSH 重启 token 变化时再次触发，幂等）。401 认证页也会被覆盖为带 token 重载。
+        LaunchedEffect(dshLaunchToken, dshState) {
+            val token = dshLaunchToken
+            if (token != null && dshState == DshState.READY) {
+                val wv = webView
+                if (wv != null) {
+                    wv.loadUrl(webUrlWithToken(url, token))
+                }
+            }
+        }
+
+        Box(modifier = modifier.fillMaxSize()) {
         if (dshState != DshState.READY) {
             WaitingState(
                 dshState = dshState,
@@ -345,7 +394,7 @@ fun DshWebViewScreen(
                 factory = { ctx ->
                     DshWebContainer(
                         context = ctx,
-                        url = url,
+                        url = webUrlWithToken(url, dshLaunchToken),
                         onProgress = { loadProgress = it },
                         onPageStarted = {
                             loadProgress = 0

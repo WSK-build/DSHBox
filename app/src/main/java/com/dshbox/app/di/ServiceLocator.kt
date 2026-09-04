@@ -17,6 +17,9 @@ object ServiceLocator {
         val sandboxConfig = SandboxConfig(
             appFilesDir = context.filesDir,
             nativeLibraryDir = context.applicationInfo.nativeLibraryDir,
+            // 1.1.1 (M5)：npm 下载缓存宿主目录（guest 侧 bind 为 /root/.npm），
+            // 随「应用缓存」可一键清理，不再占 base/root/.npm 的红线区空间。
+            appCacheDir = context.cacheDir,
         )
         val sandboxManager = DefaultSandboxManager(sandboxConfig)
         val noopBridge = object : BridgeApi {

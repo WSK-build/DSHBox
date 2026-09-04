@@ -32,8 +32,34 @@ class SandboxProcessRunner(
 
     fun logsDir(): File = config.logsDir.also { it.mkdirs() }
 
+    /**
+     * 1.1.1 (T3)：带轮转的日志追加（策略 A：单文件 2MB，超限滚为 `<file>.prev`，
+     * 保留最近两代）。DSH 改坏自身导致无法启动时，"本次失败 + 上一份启动"两份
+     * 记录即足够对比排障；无限追加会让日志文件无限膨胀。进程写入在同一 app
+     * 进程内，synchronized 即可保证原子性。
+     */
+    private fun appendRotated(logFile: File, line: String) {
+        synchronized(logFile) {
+            runCatching {
+                if (logFile.length() + line.length.toLong() > MAX_LOG_BYTES) {
+                    val prev = File(logFile.parentFile, logFile.name + ".prev")
+                    // 覆盖式保留上一代；剩余的更旧代丢弃（策略 A 只保两代）。
+                    prev.delete()
+                    logFile.renameTo(prev)
+                }
+                logFile.appendText(line + "\n")
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "SandboxProcessRunner"
+
+        /** 单文件日志上限（策略 A 轮转）。 */
+        private const val MAX_LOG_BYTES = 2L * 1024 * 1024
+
+        /** guest 命令正常等待上限（npm 全量安装可达 10-20 分钟，兜底需留足）。 */
+        private const val GUEST_COMMAND_TIMEOUT_MS = 10L * 60 * 1000
     }
 
     fun redact(line: String): String = LogRedactor.redact(line)
@@ -116,6 +142,10 @@ class SandboxProcessRunner(
         tag: String,
         workingDir: File? = null,
         env: Map<String, String> = emptyMap(),
+        /** 1.1.1 (M10)：在 [redact] 打码**之前**收到进程的每一行原始输出（仅内存使用，
+         *  不写日志文件、不进 logcat）。DSH 宿主集成用它解析 `dsh web:` 启动 URL 里的
+         *  进程级 launchToken——URL 一旦经过 redact 即被打码无从复原。 */
+        onRawLine: (String) -> Unit = {},
     ): RunningProcess {
         val pb = ProcessBuilder(command)
         workingDir?.let { pb.directory(it) }
@@ -130,8 +160,9 @@ class SandboxProcessRunner(
         val thread = Thread({
             try {
                 input.bufferedReader(StandardCharsets.UTF_8).forEachLine { line ->
+                    runCatching { onRawLine(line) }
                     val cleaned = redact(line)
-                    logFile.appendText(cleaned + "\n")
+                    appendRotated(logFile, cleaned)
                     // Mirror to logcat so sandbox/DSH child output is observable
                     // adb (also useful for on-device diagnostics when the app data
                     // dir is not readable, e.g. non-rooted release builds).
@@ -162,6 +193,7 @@ class SandboxProcessRunner(
         env: Map<String, String> = emptyMap(),
         onLine: (String) -> Unit = {},
         onProcess: (Process) -> Unit = {},
+        shouldAbort: () -> Boolean = { false },
     ): AppResult<Unit> {
         val pb = try {
             ProcessBuilder(command).also {
@@ -182,7 +214,7 @@ class SandboxProcessRunner(
             try {
                 process.inputStream.bufferedReader(StandardCharsets.UTF_8).forEachLine { line ->
                     val cleaned = redact(line)
-                    runCatching { logFile.appendText(cleaned + "\n") }
+                    appendRotated(logFile, cleaned)
                     onLine(cleaned)
                 }
             } catch (_: IOException) {
@@ -191,10 +223,41 @@ class SandboxProcessRunner(
         }, "sandbox-log-guest")
         thread.isDaemon = true
         thread.start()
-        val code = try {
-            process.waitFor()
-        } catch (_: InterruptedException) {
-            -1
+        // 1.1.1 (M7)：waitFor 改为可中断轮询——在线安装点「取消」后立即收敛，
+        // 不再干等 proot 残壳自然退出（真机实测 npm 秒退后 proot 残留 ~20s，
+        // 期间取消按钮形同虚设）。取消分支等待 cancel 侧（RuntimeUpdateManager）
+        // 的 SIGKILL 整树落地，上限 5s，兜底 destroyForcibly。
+        // 1.1.1 (T4)：正常等待加 10 分钟超时兜底——proot/guest 异常卡死时
+        // （现场：装配状态检查 grep 卡住，界面「正在检查…」永转）命令必须有界。
+        val code: Int
+        if (!shouldAbort()) {
+            val deadline = System.currentTimeMillis() + GUEST_COMMAND_TIMEOUT_MS
+            while (process.isAlive && System.currentTimeMillis() < deadline) {
+                try {
+                    Thread.sleep(300)
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
+            if (process.isAlive) {
+                Log.w(TAG, "guest command timed out; killing process")
+                runCatching { process.destroyForcibly() }
+                code = -1
+            } else {
+                code = process.exitValue()
+            }
+        } else {
+            var waited = 0
+            while (process.isAlive && waited < 5_000) {
+                Thread.sleep(100)
+                waited += 100
+            }
+            if (process.isAlive) {
+                runCatching { process.destroyForcibly() }
+                code = -1
+            } else {
+                code = process.exitValue()
+            }
         }
         thread.join(2000)
         return if (code == 0) AppResult.Success(Unit)

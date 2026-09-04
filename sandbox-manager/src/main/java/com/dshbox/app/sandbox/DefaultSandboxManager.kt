@@ -55,6 +55,10 @@ class DefaultSandboxManager(
     private val _dshUpdateProgress = MutableStateFlow<String?>(null)
     override val dshUpdateProgress: StateFlow<String?> = _dshUpdateProgress.asStateFlow()
 
+    // 1.1.1 (M10)：DSH 进程级 launchToken（从 `dsh web:` 原始输出解析，仅内存）。
+    private val _dshLaunchToken = MutableStateFlow<String?>(null)
+    override val dshLaunchToken: StateFlow<String?> = _dshLaunchToken.asStateFlow()
+
     private val dshLayer = DshLayer(runtimeCurrentDir(), bundleManager)
 
     private val lifecycleMutex = Mutex()
@@ -77,6 +81,11 @@ class DefaultSandboxManager(
             _dshState.value = DshState.ERROR
             return
         }
+        // 1.1.1 (M5)：一次性迁移——旧实现把 npm 下载缓存留在 base/root/.npm
+        // （运行环境本体红线区，清理功能清不到，实测膨胀 446MB）。此后 npm 缓存
+        // 由 runGuestCommand 的 bind 指向宿主 cacheDir/npm-cache，base 内不再写入；
+        // 这里幂等删除旧残留以释放空间（缓存无状态，删除安全；无残留时为空操作）。
+        runCatching { File(baseRootfs(), "root/.npm").deleteRecursively() }
         _sandboxState.value = SandboxState.STOPPED
         _dshState.value = DshState.STOPPED
         _dshVersion.value = dshLayer.installedVersion()
@@ -120,6 +129,8 @@ class DefaultSandboxManager(
             // restarting the sandbox.
             if (_dshState.value != DshState.STOPPED && _dshState.value != DshState.ERROR) {
                 dshProcess?.let { processRunner.stop(it) }
+                // 1.1.1 (M8)：同上——句柄丢失时按 cmdline marker 兜底清扫 DSH 树。
+                runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
                 dshProcess = null
                 _dshState.value = DshState.STOPPED
             }
@@ -187,7 +198,7 @@ class DefaultSandboxManager(
                     )
                     val prootEnv = buildProotEnv(runtimeDir, "dsh")
                     Log.i(TAG, "starting dsh proot")
-                    dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv)
+                    dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv, onRawLine = ::ingestDshWebLaunchToken)
                     Log.i(TAG, "dsh proot process started")
                     true
                 } catch (t: Throwable) {
@@ -249,6 +260,11 @@ class DefaultSandboxManager(
         dshHealthLoopJob?.cancel()
         dshHealthLoopJob = null
         dshProcess?.let { processRunner.stop(it) }
+        // 1.1.1 (M8)：仅靠 dshProcess 句柄不可靠——真机实证句柄为 null 时旧 DSH
+        // proot 继续存活、占着 3080，换层后新 DSH 反复 EADDRINUSE 起不来。
+        // 按 cmdline marker（@deepseek-ai/dsh/lib/bin.js）兜底清扫旧 DSH 进程树，
+        // 保证停机路径 3080 必然释放（安装/重启用，含句柄丢失场景）。
+        runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
         dshProcess = null
         _dshState.value = DshState.STOPPED
         Log.i(TAG, "stopDsh(): dsh=STOPPED")
@@ -659,7 +675,13 @@ class DefaultSandboxManager(
         command: String,
         onLine: (String) -> Unit,
         onProcess: (java.lang.Process) -> Unit,
+        shouldAbort: () -> Boolean,
     ): AppResult<Unit> = withContext(Dispatchers.IO) {
+        // 1.1.1 (M5)：npm 的默认缓存位置是 ~/.npm（guest HOME=/root）。把它 bind 到宿主
+        // cacheDir/npm-cache，下载中间产物不再落 base/root/.npm（运行环境本体红线区、
+        // 清理功能清不到，实测曾膨胀 446MB）；缓存归 cacheDir 后随「应用缓存」可一键清理。
+        // bind 目标必须是已存在目录（proot 对不存在的 bind 目标会报错）。
+        config.npmCacheDir.mkdirs()
         val proot = prootBinary().absolutePath
         val cmd = buildList {
             add(proot)
@@ -668,12 +690,13 @@ class DefaultSandboxManager(
             add("--bind=${nodeLayerDir().absolutePath}:/usr/local")
             dshLayerDir().takeIf { it.isDirectory }?.let { add("--bind=${it.absolutePath}:/opt/dshapp/runtime") }
             add("--bind=${config.userDataDir.absolutePath}:/root/projects")
+            add("--bind=${config.npmCacheDir.absolutePath}:/root/.npm")
             add("--cwd=/root")
             add("--kill-on-exit")
             add("/system/bin/sh"); add("-c")
             add(command)
         }
-        processRunner.runGuestCommand(cmd, buildProotEnv(runtimeCurrentDir(), "guest"), onLine, onProcess)
+        processRunner.runGuestCommand(cmd, buildProotEnv(runtimeCurrentDir(), "guest"), onLine, onProcess, shouldAbort)
     }
 
     override suspend fun updateDsh(
@@ -688,7 +711,15 @@ class DefaultSandboxManager(
         val outcome = lifecycleMutex.withLock {
             _dshUpdateProgress.value = "installing DSH ${newVersion ?: ""}"
             try {
-                if (_dshState.value == DshState.RUNNING) stopDshLocked()
+                // 1.1.1 (M2)：旧条件 `== DshState.RUNNING` 是死代码——状态机只有
+                // STARTING/READY/ERROR/STOPPED，RUNNING 从不被赋值，导致换层前
+                // 旧 DSH 进程从未被主动停掉（其 proot 树仍持有旧层句柄，一直跑
+                // 到 phase 2 restartDsh() 才被终结）。改为停掉全部「在线」态；
+                // 1.1.1 (M9)：并纳入 ERROR——误判（健康检查 401 等）遗留的存活
+                // DSH 进程同样必须清掉，否则换层后重启 EADDRINUSE。
+                val dshActive = _dshState.value != DshState.STOPPED &&
+                    _dshState.value != DshState.UNINITIALIZED
+                if (dshActive) stopDshLocked()
                 when (val r = dshLayer.installFromBundle(bundle, expectedSha256, newVersion, allowDowngrade)) {
                     is AppResult.Success -> r.value
                     is AppResult.Failure -> return r
@@ -734,6 +765,7 @@ class DefaultSandboxManager(
         onStage: (String) -> Unit,
         onLog: (String) -> Unit,
         onProcess: (java.lang.Process) -> Unit,
+        shouldAbort: () -> Boolean,
     ): AppResult<DshUpdateOutcome> = withContext(Dispatchers.IO) {
         // Both values end up inside `sh -c` — allow only a strict safe charset.
         if (!Regex("^https?://[A-Za-z0-9.:/_%~#?=&+-]+$").matches(registryUrl)) {
@@ -780,7 +812,7 @@ class DefaultSandboxManager(
         }
         try {
             onStage("正在从 $registryUrl 拉取 @deepseek-ai/dsh $version（含完整依赖，需要几分钟）…")
-            when (val r = runGuestCommand(npmScript, onLog, onProcess)) {
+            when (val r = runGuestCommand(npmScript, onLog, onProcess, shouldAbort)) {
                 is AppResult.Failure -> return@withContext AppResult.Failure(
                     AppError("DSH_NPM_INSTALL_FAILED", "npm 安装失败：${r.error.message}（详见日志）"),
                 )
@@ -793,7 +825,7 @@ class DefaultSandboxManager(
                 )
             }
             onStage("正在打包 DSH 层…")
-            when (val r = runGuestCommand("tar -C '$stage' -czf '$tarPath' .", onLog, onProcess)) {
+            when (val r = runGuestCommand("tar -C '$stage' -czf '$tarPath' .", onLog, onProcess, shouldAbort)) {
                 is AppResult.Failure -> return@withContext AppResult.Failure(
                     AppError("DSH_NPM_PACK_FAILED", "打包 DSH 层失败：${r.error.message}"),
                 )
@@ -813,7 +845,7 @@ class DefaultSandboxManager(
                 File(baseRootfs(), "tmp/dsh-stage").deleteRecursively()
                 File(baseRootfs(), "tmp/dsh-stage.tar.gz").deleteRecursively()
             }
-            runCatching { runGuestCommand("rm -rf '$stage' '$tarPath'") { } }
+            runCatching { runGuestCommand("rm -rf '$stage' '$tarPath'", onLine = {}) }
         }
     }
 
@@ -987,6 +1019,32 @@ class DefaultSandboxManager(
     private fun isDshProcessAlive(): Boolean = dshProcess?.process?.isAlive == true
 
     /**
+     * 1.1.1 (M10)：从 DSH 进程原始输出解析进程级 launchToken。DSH 0.1.2-rc.1
+     * 启动打印 `dsh web: http://host:port/?token=<随机值>`；token 仅存在于进程
+     * 内存（不落盘），官方 printUrl 输出是宿主集成的唯一入口。在进程内再次启动
+     * 时 token 会刷新，但 WebView 的签名 cookie 持久有效，首次交换后无需重取；
+     * 仅在本进程尚未持有 token 时解析（DSH 重启更新已过期的场景由 WebView 401
+     * 重载配合）。
+     */
+    private fun ingestDshWebLaunchToken(line: String) {
+        val marker = "dsh web: http"
+        val idx = line.indexOf(marker)
+        if (idx < 0) return
+        val tokenAt = line.indexOf("token=", idx)
+        if (tokenAt < 0) return
+        val start = tokenAt + "token=".length
+        val end = line.indexOf('&', start).let { if (it < 0) line.length else it }
+        val token = line.substring(start, end).trim().takeIf { it.isNotEmpty() }
+        if (token != null) {
+            // 1.1.1 (T2 修正)：DSH 进程重启会生成新 launchToken，旧值随即失效——
+            // 每次捕获都更新（不因已持有旧值而跳过），WebView 侧随 StateFlow 变化
+            // 自动用新 token 重载，避免 401 + ERR_HTTP_RESPONSE_CODE_FAILURE。
+            _dshLaunchToken.value = token
+            Log.i(TAG, "dsh web launch token refreshed")
+        }
+    }
+
+    /**
      * Kills the current DSH process tree and launches a fresh one. Used ONLY
      * from the health loop so the loop itself is never cancelled. Returns true
      * on success (a new process is running); false when the relaunch failed
@@ -994,6 +1052,9 @@ class DefaultSandboxManager(
      */
     private suspend fun restartDshProcessInPlace(): Boolean = lifecycleMutex.withLock {
         dshProcess?.let { processRunner.stop(it) }
+        // 1.1.1 (M8)：健康循环重启同样需要 cmdline 兜底，否则旧树不清时
+        // 新进程 EADDRINUSE、循环重启陷入死转（真机 17:15~17:22 实证）。
+        runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
         dshProcess = null
         _dshState.value = DshState.STARTING
         try {
@@ -1007,7 +1068,7 @@ class DefaultSandboxManager(
                 dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
             )
             val prootEnv = buildProotEnv(runtimeDir, "dsh")
-            dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv)
+            dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv, onRawLine = ::ingestDshWebLaunchToken)
             Log.i(TAG, "dsh proot restarted in place")
             true
         } catch (t: Throwable) {
@@ -1043,6 +1104,11 @@ class DefaultSandboxManager(
                     restartAttempts++
                     if (restartAttempts >= Constants.MAX_AUTO_RESTART_ATTEMPTS) {
                         Log.w(TAG, "dsh health: reached max auto-restart attempts")
+                        // 1.1.1 (M9)：健康循环退场前清理 DSH 进程（可能占着 3080），
+                        // 否则 ERROR 状态下真实进程存活，后续启动全部 EADDRINUSE。
+                        dshProcess?.let { processRunner.stop(it) }
+                        runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
+                        dshProcess = null
                         _dshState.value = DshState.ERROR
                         return@launch
                     }
@@ -1057,6 +1123,10 @@ class DefaultSandboxManager(
                     // Initial startup gets the full configured timeout; do not
                     // give up after only a few fast probe failures.
                     Log.w(TAG, "dsh health: initial start timed out")
+                    // 1.1.1 (M9)：同上——退场前清掉仍存活（误判为不健康）的 DSH 进程。
+                    dshProcess?.let { processRunner.stop(it) }
+                    runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
+                    dshProcess = null
                     _dshState.value = DshState.ERROR
                     return@launch
                 }
