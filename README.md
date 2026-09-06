@@ -1,5 +1,14 @@
 # DSHBox — Run DeepSeek Harness Locally on Android
 
+
+[![Latest Release](https://img.shields.io/github/v/release/WSK-build/DSHBox?display_name=tag&sort=semver)](https://github.com/WSK-build/DSHBox/releases/latest)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/WSK-build/DSHBox/releases/latest)
+[![Architecture](https://img.shields.io/badge/Architecture-ARM64-0091BD?logo=arm&logoColor=white)](https://github.com/WSK-build/DSHBox)
+[![License](https://img.shields.io/github/license/WSK-build/DSHBox)](https://github.com/WSK-build/DSHBox/blob/main/LICENSE)
+[![Build Status](https://github.com/WSK-build/DSHBox/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/WSK-build/DSHBox/actions/workflows/android.yml)
+[![Download APK](https://img.shields.io/badge/Download-APK-2EA44F?logo=github)](https://github.com/WSK-build/DSHBox/releases/latest)
+
+
 DSHBox 是在 Android（ARM64）上运行 **DeepSeek Harness（DSH）** 的完整运行环境应用。
 它把 Debian 根文件系统 + Node.js + DSH（DeepSeek Agent Runtime）打包成分层运行环境，
 用 **PRoot** 做用户态 Linux 沙箱（无需 root），并在 App 内以 **WebView 内嵌** DSH 的 WebUI，
