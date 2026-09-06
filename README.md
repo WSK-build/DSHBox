@@ -8,6 +8,7 @@
 [![Build Status](https://github.com/WSK-build/DSHBox/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/WSK-build/DSHBox/actions/workflows/android.yml)
 [![Download APK](https://img.shields.io/badge/Download-APK-2EA44F?logo=github)](https://github.com/WSK-build/DSHBox/releases/latest)
 
+**DSHBox** is an open-source Android runtime for running the full DeepSeek Harness locally on ARM64 devices. It bundles Debian, Node.js, DSH, PRoot, and an embedded WebView in one APK. No root or separate Termux installation is required.
 
 DSHBox 是在 Android（ARM64）上运行 **DeepSeek Harness（DSH）** 的完整运行环境应用。
 它把 Debian 根文件系统 + Node.js + DSH（DeepSeek Agent Runtime）打包成分层运行环境，
