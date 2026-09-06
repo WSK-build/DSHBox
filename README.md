@@ -1,4 +1,4 @@
-# DSHBox — DeepSeek Harness Android Runtime
+# DSHBox — Run DeepSeek Harness Locally on Android
 
 DSHBox 是在 Android（ARM64）上运行 **DeepSeek Harness（DSH）** 的完整运行环境应用。
 它把 Debian 根文件系统 + Node.js + DSH（DeepSeek Agent Runtime）打包成分层运行环境，
