@@ -6,6 +6,19 @@ DSHBox 是在 Android（ARM64）上运行 **DeepSeek Harness（DSH）** 的完�
 附加文件管理、持久终端与一体化的运行环境/DSH 更新管理。**装 APK 即用**。
 
 ---
+## 快速安装
+
+- 支持：Android 8.0+ / ARM64
+- 无需 Root
+- 无需 Termux
+- 内置 Debian、Node.js、DSH 和 WebView
+
+[下载最新 APK](https://github.com/WSK-build/DSHBox/releases/latest)
+
+安装 APK → 启动应用 → 等待运行环境初始化 → 打开 DSH。
+
+
+---
 
 ## v1.1.1 更新亮点（相对 v1.1.0）
 
