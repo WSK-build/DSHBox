@@ -153,19 +153,29 @@ private fun isUnder(path: String, root: String?): Boolean {
 /**
  * 视图无关的物理层判定（1.2.0 §4.1，按顺序）：
  *
- * 1. **段匹配优先**：路径逐段比较，任一段等于 `.dsh` → [Layer.DSH_DATA]（覆盖任意嵌套深度，
- *    如 `user-data/foo/.dsh/secret.txt`）；任一段 ∈ [SYSTEM_DIR_NAMES] → [Layer.SYSTEM_DIR]。
- * 2. **前缀归属**：位于 node 层根及其下 → [Layer.NODE]；dsh 层根及其下 → [Layer.DSH]；
+ * 1. **`.dsh` 段匹配优先**：路径任一段等于 `.dsh` → [Layer.DSH_DATA]（任意嵌套深度，
+ *    如 `user-data/foo/.dsh/secret.txt`）。
+ * 2. **系统目录仅限 rootfs 顶层**：`proc/sys/dev/system/apex/tmp/.dshbox` 是 PRoot `--bind`
+ *    的一级挂载点，只存在于 sandbox 根的首段；**不按任意深度匹配**——用户自建目录
+ *    （如 workspace 下的 `tmp/`）不得被误判为系统目录（修正：此前任意深度段匹配在
+ *    Linux 环境下会把 `/tmp/...` 临时目录整体判为 SYSTEM_DIR，CI 测试与真实用例均受影响）。
+ * 3. **前缀归属**：位于 node 层根及其下 → [Layer.NODE]；dsh 层根及其下 → [Layer.DSH]；
  *    workspaceRoot 及其下 → [Layer.WORKSPACE]；其余（sandboxRoot 下）→ [Layer.BASE]。
- * 3. 层未安装（nodeLayer/dshLayer == null）时跳过相应前缀判断。
+ * 4. 层未安装（nodeLayer/dshLayer == null）时跳过相应前缀判断。
  *
  * 判定基于路径字符串，不做磁盘 IO；调用方传入的应为 [PathMapper.resolvePhysical] 之后的物理路径。
  */
 fun layerOf(physicalPath: String, roots: LayerRoots): Layer {
     val segments = pathSegments(physicalPath)
     if (DSH_DATA_SEGMENT in segments) return Layer.DSH_DATA
-    if (segments.any { it in SYSTEM_DIR_NAMES }) return Layer.SYSTEM_DIR
     val p = physicalPath.replace('/', File.separatorChar)
+    val sb = roots.sandboxRoot.absolutePath.trimEnd(File.separatorChar)
+    val sandboxPrefix = "$sb${File.separatorChar}"
+    val underSandbox = p == sb || p.startsWith(sandboxPrefix)
+    if (underSandbox && p.length > sandboxPrefix.length) {
+        val top = p.substring(sandboxPrefix.length).substringBefore(File.separatorChar)
+        if (top in SYSTEM_DIR_NAMES) return Layer.SYSTEM_DIR
+    }
     if (roots.nodeLayer != null && isUnder(p, roots.nodeLayer.absolutePath)) return Layer.NODE
     if (roots.dshLayer != null && isUnder(p, roots.dshLayer.absolutePath)) return Layer.DSH
     if (isUnder(p, roots.workspaceRoot.absolutePath)) return Layer.WORKSPACE

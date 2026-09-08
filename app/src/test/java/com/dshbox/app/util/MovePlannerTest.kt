@@ -69,13 +69,17 @@ class MovePlannerTest {
         val sandbox = tmp.newFolder("sandbox4")
         val workspace = tmp.newFolder("user-data4")
         val r = roots(sandbox, workspace)
-        // 系统目录段匹配：任意深度
+        // 系统目录仅 rootfs 顶层命中（修正口径：任意深度匹配会把用户自建目录误判为系统目录）
         assertEquals(Layer.SYSTEM_DIR, layerOf(File(sandbox, "proc").absolutePath, r))
-        assertEquals(Layer.SYSTEM_DIR, layerOf(File(sandbox, "etc/tmp/deep/file").absolutePath, r))
-        // 同名前缀的不同段不应命中（systemd ≠ system）
-        assertEquals(Layer.BASE, layerOf(File(sandbox, "var/systemd").absolutePath, r))
-        // .dshbox 属系统目录名单
+        assertEquals(Layer.SYSTEM_DIR, layerOf(File(sandbox, "system/bin/sh").absolutePath, r))
         assertEquals(Layer.SYSTEM_DIR, layerOf(File(sandbox, ".dshbox/layer.sha256").absolutePath, r))
+        // 非顶层同名段不命中（systemd ≠ system；etc/tmp 深层不是系统目录）
+        assertEquals(Layer.BASE, layerOf(File(sandbox, "var/systemd").absolutePath, r))
+        assertEquals(Layer.BASE, layerOf(File(sandbox, "etc/tmp/deep/file").absolutePath, r))
+        // 用户自建 tmp 目录（workspace 下）不得被误判（Linux 临时目录 /tmp 场景回归）
+        assertEquals(Layer.WORKSPACE, layerOf(File(workspace, "tmp/note.txt").absolutePath, r))
+        // sandbox 根本身 → BASE；绝对路径首段 tmp（Linux /tmp/junitXXX）不因“tmp 段”判系统目录
+        assertEquals(Layer.BASE, layerOf(sandbox.absolutePath, r))
     }
 
     @Test
