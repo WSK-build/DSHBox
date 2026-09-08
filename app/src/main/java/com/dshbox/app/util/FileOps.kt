@@ -34,6 +34,7 @@ fun interface ProgressListener {
 
 object FileOps {
 
+
     /**
      * 带进度与取消检查的流复制。
      * [offset] 为该文件开始前的已累计字节；[total] 为整批操作总字节（用于百分比）。
@@ -288,6 +289,10 @@ object FileOps {
         else -> 0L
     }
 
+    // ---------------- 移动引擎（1.2.0 §5.3） ----------------
+
+    // ---------------- 导出辅助 ----------------
+
     /** 计算导出相对路径的公共祖先，使多选导出保留目录结构。 */
     private fun computeExportItems(selected: List<File>): List<Pair<File, String>> {
         if (selected.isEmpty()) return emptyList()
@@ -318,3 +323,4 @@ object FileOps {
         return File(common)
     }
 }
+

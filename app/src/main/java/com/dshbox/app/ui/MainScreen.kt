@@ -30,6 +30,7 @@ import com.dshbox.app.R
 import com.dshbox.app.sandbox.BundledRuntimeInstaller
 import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.sandbox.SandboxState
+import com.dshbox.app.ui.files.keepAliveHidden
 import com.dshbox.app.ui.files.FilesScreen
 import com.dshbox.app.ui.home.HomeScreen
 import com.dshbox.app.ui.launch.LaunchScreen
@@ -236,7 +237,5 @@ private fun TabContent(
  * Zero-size placement achieves the same "no stray taps" goal without ever
  * touching the pointer stream.
  */
-private fun Modifier.keepAliveHidden(): Modifier = this.layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints)
-    layout(0, 0) { /* intentionally not placed */ }
-}
+// keepAliveHidden 自 2026-09-07 提权为 ui/files/FilesCommon.kt 的 internal 扩展，
+// 供覆盖式二级页（FileViewerScreen/FolderPickerScreen）与各 tab 共用（返工批次）。

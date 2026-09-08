@@ -256,7 +256,7 @@
     <!-- Files · 风险软保护 -->
     <string name="files_risk_title">风险提示</string>
     <string name="files_risk_system">%1$s 为系统目录，随意修改可能导致沙箱运行异常，请谨慎操作。确定继续？</string>
-    <string name="files_risk_dsh">%1$s 为 DSH 内部数据目录，随意修改可能导致 DSH 异常，请谨慎操作。确定继续？</string>
+    <string name="files_risk_dsh_data">「%1$s」属于 DSH 运行状态本体（含凭据与配置），改坏将导致 DSH 无法启动或认证失效。确定继续？</string>
     <string name="files_risk_generic">该位置为系统或内部数据目录，随意修改可能导致运行异常。确定继续？</string>
     <string name="files_risk_continue">继续</string>
 
@@ -284,7 +284,142 @@
     <string name="files_zip_done_count">已导出 %1$d 个文件为压缩包</string>
     <string name="files_rename_failed">重命名失败：%1$s</string>
     <string name="files_rename_done">已将 %1$s 重命名为 %2$s</string>
-    <string name="files_preview_not_supported">该文件类型暂不支持预览，可通过导出或分享查看</string>
-    <string name="files_preview_read_failed">读取文件失败：%1$s</string>
-    <string name="files_preview_loading">加载中…</string>
+
+    <!-- Files · 移动到指定文件夹（1.2.0 M1） -->
+    <string name="files_move">移动到…</string>
+    <string name="files_picker_title">移动到…</string>
+    <string name="files_picker_confirm">移动到当前文件夹（%1$d 项）</string>
+    <string name="files_picker_empty">此处没有文件夹</string>
+    <string name="files_picker_source_locked">位于所选源内部，不能作为目标</string>
+    <string name="files_picker_system_locked">系统目录，不能作为目标</string>
+    <string name="files_picker_hint_node">实际保存到运行环境层 /usr/local</string>
+    <string name="files_picker_hint_dsh">实际保存到 DSH 层 /opt/dshapp/runtime</string>
+    <string name="files_picker_hint_workspace">实际保存到工作区 /root/projects</string>
+    <string name="files_progress_move_prepare">正在准备移动…</string>
+    <string name="files_progress_moving">正在移动 %1$s</string>
+    <string name="files_move_system_forbidden">系统目录（proc/sys/dev/system/apex/tmp/.dshbox）不能作为移动的源或目标</string>
+    <string name="files_move_no_op">文件已在该文件夹内</string>
+    <string name="files_move_failed">移动失败：%1$s</string>
+    <string name="files_moved_to_workspace">已移动到工作区，切换到工作区视图可查看</string>
+    <string name="files_moved_to_sandbox">已移动到沙盒，切换到沙盒文件视图可查看</string>
+    <string name="files_conflict_move_file">目标位置已存在同名项 %1$s，如何处理？</string>
+    <string name="files_conflict_move_dir_merge">目标位置已存在同名文件夹 %1$s（合并时约 %2$d 项内容冲突），覆盖将合并两个文件夹的内容，不会删除目标中已有的其他文件</string>
+    <string name="files_conflict_remaining">还有 %1$d 项同名冲突待处理</string>
+    <string name="files_conflict_apply_all">应用到其余全部冲突项</string>
+    <string name="files_move_result_title">移动结果</string>
+    <string name="files_move_result_summary">成功 %1$d · 跳过 %2$d · 失败 %3$d</string>
+    <string name="files_move_result_cancelled">已取消：成功 %1$d · 跳过 %2$d · 失败 %3$d</string>
+    <string name="files_move_result_failures">失败明细：</string>
+    <string name="files_move_failed_item">%1$s：%2$s</string>
+    <string name="files_risk_move_layer">「%1$s」属于运行环境层，移动可能导致层完整性校验失配、影响更新与沙盒启动。确定继续？</string>
+    <string name="files_risk_move_layer_running">「%1$s」属于运行环境层，移动可能导致层完整性校验失配、影响更新与沙盒启动。沙盒正在运行，建议停止后操作。确定继续？</string>
+    <string name="files_risk_move_dsh">「%1$s」为 DSH 运行状态本体（含凭据与配置），移动改坏将导致 DSH 无法启动或认证失效。确定继续？</string>
+    <string name="files_risk_layer">「%1$s」属于运行环境层，改动可能导致层完整性校验失配、影响更新与沙盒启动。确定继续？</string>
+    <string name="files_risk_layer_running">「%1$s」属于运行环境层，改动可能导致层完整性校验失配、影响更新与沙盒启动。沙盒正在运行，建议停止后操作。确定继续？</string>
+    <string name="files_risk_move_multi">所选 %1$d 项中有 %2$d 项涉及风险目录，确认后整批继续。</string>
+    <string name="files_move_confirm_title">移动风险确认</string>
+    <string name="files_move_confirm_layer_target">目标「%1$s」位于运行环境层，移入可能导致层完整性校验失配、影响更新与沙盒启动。确定继续？</string>
+    <string name="files_move_confirm_target_dsh">目标「%1$s」为 DSH 运行状态本体（含凭据与配置），移入内容可能影响 DSH 的运行状态与认证。确定继续？</string>
+    <string name="files_move_confirm_base">「%1$s」属于沙盒系统（rootfs），移动可能影响沙盒系统结构或 guest 系统完整性。确定继续？</string>
+    <string name="files_move_confirm_generic">本次移动跨越沙盒系统、运行环境层与工作区，可能影响层完整性校验与沙盒更新。确定继续？</string>
+
+    <!-- 1.2.0 M2 查看器（§6.1–§6.5/§6.9/§6.11） -->
+    <string name="files_back">返回</string>
+    <string name="files_edit_toggle">编辑</string>
+    <string name="files_viewer_loading">正在打开…</string>
+    <string name="files_viewer_retry">重试</string>
+    <string name="files_viewer_read_failed">文件不可读或已被删除</string>
+    <string name="files_viewer_failed_generic">无法打开该文件</string>
+    <string name="files_info_title">文件信息</string>
+    <string name="files_info_kind">类型</string>
+    <string name="files_info_size">大小</string>
+    <string name="files_info_permission">权限</string>
+    <string name="files_info_modified">修改时间</string>
+    <string name="files_info_logical_path">逻辑路径</string>
+    <string name="files_info_physical_path">物理路径</string>
+    <string name="files_info_unknown">未知</string>
+    <string name="files_menu_info">文件信息</string>
+    <string name="files_menu_encoding">切换编码</string>
+    <string name="files_menu_newline">换行转换</string>
+    <string name="files_encoding_title">文本编码</string>
+    <string name="files_encoding_dirty_hint">当前有未保存修改，切换编码将从文件重新解码并丢弃修改。</string>
+    <string name="files_lossy_warning">当前编码下存在无法解码的字节，部分内容已显示为乱码；编辑保存将损坏原文。请先通过菜单「切换编码」选择正确编码。</string>
+    <string name="files_edit_lossy_block">文件包含无法解码的字节（当前编码），请先切换到正确编码后再编辑，否则保存会损坏原文。</string>
+    <string name="files_encoding_discard_title">切换编码并丢弃修改</string>
+    <string name="files_encoding_discard_msg">有未保存的修改。从 %1$s 切换到 %2$s 将按新编码重新解码文件，未保存的修改会丢失。</string>
+    <string name="files_encoding_discard_confirm">切换并丢弃</string>
+    <string name="files_encoding_detected">（自动检测）</string>
+    <string name="files_newline_hint">选择保存时使用的换行风格；「跟随原文件」保存时保持不变。</string>
+    <string name="files_newline_follow">跟随原文件</string>
+    <string name="files_save_done">已保存</string>
+    <string name="files_save_failed">保存失败：%1$s</string>
+    <string name="files_save_failed_generic">保存失败</string>
+    <string name="files_saveas_done">已另存</string>
+    <string name="files_ext_changed_title">文件已被外部修改</string>
+    <string name="files_ext_changed_msg">文件在打开后被其他应用修改。用我的覆盖将丢弃外部修改；重新载入将丢弃我的修改。</string>
+    <string name="files_ext_changed_overwrite">用我的覆盖</string>
+    <string name="files_ext_changed_reload">重新载入</string>
+    <string name="files_ext_changed_saveas">另存…</string>
+    <string name="files_unsaved_title">未保存的修改</string>
+    <string name="files_unsaved_msg">是否保存对「%1$s」的修改？</string>
+    <string name="files_unsaved_draft_hint">（草稿仅保存在内存中，进程退出后丢失）</string>
+    <string name="files_unsaved_save">保存</string>
+    <string name="files_unsaved_discard">不保存</string>
+    <string name="files_edit_big_title">编辑大文件</string>
+    <string name="files_edit_big_msg">该文件较大（2–10 MB），编辑需全量载入，可能卡顿并占用较多内存。仍要编辑？</string>
+    <string name="files_edit_big_confirm">仍要编辑</string>
+    <string name="files_edit_disabled_big">文件超过 10 MB，仅支持只读查看；如需编辑请导出后用外部应用打开。</string>
+    <string name="files_chunk_prev">上一块</string>
+    <string name="files_chunk_next">下一块</string>
+    <string name="files_chunk_tail">仅看最后 512 KB</string>
+    <string name="files_chunk_position">偏移 %1$d – %2$d / 共 %3$d 字节</string>
+    <string name="files_hex_size">大小：%1$s</string>
+    <string name="files_hex_entropy">熵估计：%1$.2f bits/byte</string>
+    <string name="files_image_decode_failed">无法解码该图片（可能系统不支持该格式或文件损坏）</string>
+    <string name="files_exit_external_open">外部打开</string>
+    <string name="files_exit_external_edit">外部编辑</string>
+    <string name="files_exit_share">分享</string>
+    <string name="files_exit_export">导出</string>
+    <string name="files_exit_open_as_text">按文本打开</string>
+    <string name="files_exit_open_as_hex">按 Hex 打开</string>
+    <string name="files_exit_no_app">没有可处理该文件的应用，可先导出后再打开</string>
+    <string name="files_exit_dirty_block">内建编辑存在未保存修改，请先保存或放弃后再用外部应用编辑</string>
+    <string name="files_exit_external_warning">\n\n注意：内容将交给外部应用，DSHBox 无法约束其后续留存与传播。</string>
+    <string name="files_ext_edit_changed">文件已被外部应用修改，已重新载入</string>
+    <string name="files_export_done">已导出</string>
+    <string name="files_export_failed_generic">导出失败</string>
+
+    <!-- 1.2.0 M3：PDF 查看（§6.6） -->
+    <string name="files_pdf_page_hint">共 %1$d 页</string>
+    <string name="files_pdf_page_loading">正在渲染…</string>
+    <string name="files_pdf_page_failed">该页渲染失败</string>
+    <string name="files_pdf_encrypted">该 PDF 已加密</string>
+    <string name="files_pdf_encrypted_title">加密 PDF</string>
+    <string name="files_pdf_encrypted_unsupported">该 PDF 已加密，当前系统版本（低于 Android 15）不支持输入密码打开</string>
+    <string name="files_pdf_password_hint">密码</string>
+    <string name="files_pdf_password_wrong">密码错误，请重试</string>
+    <string name="files_pdf_password_ok">打开</string>
+    <string name="files_pdf_show_info">查看文件信息</string>
+    <string name="files_pdf_external_hint">可通过顶栏菜单「外部打开」用其他应用打开</string>
+
+    <!-- 1.2.0 M3：压缩包浏览（§6.8） -->
+    <string name="files_archive_entries">%1$s · %2$d 个条目</string>
+    <string name="files_archive_truncated">（仅显示前 10 万条）</string>
+    <string name="files_archive_empty">压缩包内没有条目</string>
+    <string name="files_archive_encrypted_hint">含加密条目</string>
+    <string name="files_archive_encrypted_entry">加密条目不支持内建预览，可使用外部应用打开</string>
+    <string name="files_archive_binary_entry">该条目不是文本，请导出后查看</string>
+    <string name="files_archive_preview_failed">条目预览失败</string>
+    <string name="files_archive_export_all">全部导出</string>
+    <string name="files_archive_entry_export">导出</string>
+
+    <!-- 1.2.0 M3：Markdown / HTML / SVG 预览（§6.7） -->
+    <string name="files_markup_preview">预览</string>
+    <string name="files_markup_edit">编辑</string>
+    <string name="files_menu_save">保存</string>
+    <string name="files_office_no_text">未提取到文本：文档可能为空或格式不支持，可尝试外部打开</string>
+    <string name="files_markup_link_blocked">离线预览不支持该链接</string>
+    <string name="files_import_batch_done">已导入 %1$d 个文件</string>
+    <string name="files_import_batch_done_fail">已导入 %1$d 个文件，失败 %2$d 个</string>
+    <string name="files_markup_preview_too_big">文件过大，无法预览；可切换「编辑」查看源文</string>
 </resources>

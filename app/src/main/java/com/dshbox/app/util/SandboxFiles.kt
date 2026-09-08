@@ -116,6 +116,73 @@ class PathMapper(
 enum class RiskLevel { NORMAL, SYSTEM_DIR, DSH_DATA }
 
 /**
+ * 统一物理层判定结果（1.2.0 §4.1）。
+ *
+ * [WORKSPACE]/[BASE] 直接放行；[SYSTEM_DIR]/[NODE]/[DSH]/[DSH_DATA] 需强确认。
+ * 视图（沙盒/工作区）无关——UI 据此决定"某视图下哪些 Layer 要弹窗"。
+ */
+enum class Layer { WORKSPACE, BASE, NODE, DSH, SYSTEM_DIR, DSH_DATA }
+
+/** [layerOf] 所需的四层物理根（层未安装时对应字段为 null）。 */
+data class LayerRoots(
+    val sandboxRoot: File,
+    val workspaceRoot: File,
+    val nodeLayer: File?,
+    val dshLayer: File?,
+) {
+    constructor(mapper: PathMapper) : this(
+        mapper.sandboxRoot,
+        mapper.workspaceRoot,
+        mapper.nodeLayer,
+        mapper.dshLayer,
+    )
+}
+
+private const val DSH_DATA_SEGMENT = ".dsh"
+
+/** 路径按段拆分（兼容 / 与 \，Windows 测试环境友好）。 */
+private fun pathSegments(path: String): List<String> =
+    path.replace('\\', '/').split('/').filter { it.isNotEmpty() }
+
+private fun isUnder(path: String, root: String?): Boolean {
+    if (root.isNullOrEmpty()) return false
+    val r = root.trimEnd('/', '\\')
+    return path == r || path.startsWith("$r${File.separator}") || path.startsWith("$r/")
+}
+
+/**
+ * 视图无关的物理层判定（1.2.0 §4.1，按顺序）：
+ *
+ * 1. **`.dsh` 段匹配优先**：路径任一段等于 `.dsh` → [Layer.DSH_DATA]（任意嵌套深度，
+ *    如 `user-data/foo/.dsh/secret.txt`）。
+ * 2. **系统目录仅限 rootfs 顶层**：`proc/sys/dev/system/apex/tmp/.dshbox` 是 PRoot `--bind`
+ *    的一级挂载点，只存在于 sandbox 根的首段；**不按任意深度匹配**——用户自建目录
+ *    （如 workspace 下的 `tmp/`）不得被误判为系统目录（修正：此前任意深度段匹配在
+ *    Linux 环境下会把 `/tmp/...` 临时目录整体判为 SYSTEM_DIR，CI 测试与真实用例均受影响）。
+ * 3. **前缀归属**：位于 node 层根及其下 → [Layer.NODE]；dsh 层根及其下 → [Layer.DSH]；
+ *    workspaceRoot 及其下 → [Layer.WORKSPACE]；其余（sandboxRoot 下）→ [Layer.BASE]。
+ * 4. 层未安装（nodeLayer/dshLayer == null）时跳过相应前缀判断。
+ *
+ * 判定基于路径字符串，不做磁盘 IO；调用方传入的应为 [PathMapper.resolvePhysical] 之后的物理路径。
+ */
+fun layerOf(physicalPath: String, roots: LayerRoots): Layer {
+    val segments = pathSegments(physicalPath)
+    if (DSH_DATA_SEGMENT in segments) return Layer.DSH_DATA
+    val p = physicalPath.replace('/', File.separatorChar)
+    val sb = roots.sandboxRoot.absolutePath.trimEnd(File.separatorChar)
+    val sandboxPrefix = "$sb${File.separatorChar}"
+    val underSandbox = p == sb || p.startsWith(sandboxPrefix)
+    if (underSandbox && p.length > sandboxPrefix.length) {
+        val top = p.substring(sandboxPrefix.length).substringBefore(File.separatorChar)
+        if (top in SYSTEM_DIR_NAMES) return Layer.SYSTEM_DIR
+    }
+    if (roots.nodeLayer != null && isUnder(p, roots.nodeLayer.absolutePath)) return Layer.NODE
+    if (roots.dshLayer != null && isUnder(p, roots.dshLayer.absolutePath)) return Layer.DSH
+    if (isUnder(p, roots.workspaceRoot.absolutePath)) return Layer.WORKSPACE
+    return Layer.BASE
+}
+
+/**
  * 文件列表项：全部元数据在 IO 线程预计算，避免 Compose 渲染时在主线程执行
  * `isDirectory / length / lastModified` 磁盘 IO（大目录卡顿）。
  */
@@ -127,12 +194,17 @@ data class FileEntry(
     val size: Long,
     val lastModified: Long,
     val risk: RiskLevel,
+    /** 可执行位（IO 预计算，1.2.0 §6.11 查看器信息卡用；目录表示可进入）。 */
+    val canExecute: Boolean = false,
+    /** rwx 权限文本（如 `rwx` / `rw-`，IO 预计算）。 */
+    val permissionText: String = "",
 ) {
     val isHidden: Boolean get() = name.startsWith(".")
 }
 
-/** rootfs 顶层系统绑定目录（guest 内由 PRoot --bind 提供，修改无意义且风险高）+ 层元数据标记。 */
-private val SYSTEM_DIR_NAMES = listOf("proc", "sys", "dev", "system", "apex", "tmp", ".dshbox")
+/** rootfs 顶层系统绑定目录（guest 内由 PRoot --bind 提供，修改无意义且风险高）+ 层元数据标记。
+ *  1.2.0 §4.3：由 private 放开为 internal，供 MovePlanner / FolderPicker 等模块内复用。 */
+internal val SYSTEM_DIR_NAMES = listOf("proc", "sys", "dev", "system", "apex", "tmp", ".dshbox")
 
 /** 判断单个条目的风险级别：rootfs 顶层系统目录 / DSH 内部数据目录。 */
 fun riskOf(name: String, isTopLevelRootfs: Boolean): RiskLevel = when {
@@ -156,6 +228,10 @@ fun scanDirectory(logicalDir: File, mapper: PathMapper, isTopLevel: Boolean): Li
             size = if (f.isDirectory) 0L else runCatching { f.length() }.getOrDefault(0L),
             lastModified = runCatching { f.lastModified() }.getOrDefault(0L),
             risk = riskOf(name, isTopLevel),
+            canExecute = runCatching { f.canExecute() }.getOrDefault(false),
+            permissionText = runCatching {
+                (if (f.canRead()) "r" else "-") + (if (f.canWrite()) "w" else "-") + (if (f.canExecute()) "x" else "-")
+            }.getOrDefault(""),
         )
     } ?: emptyList()
 }
