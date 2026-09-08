@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.0 §6.11：FileProvider 四个物理根各声明精确 files-path（最小授权，不暴露整个 filesDir）。
+     legacy debian 单层根（旧安装回退）不在授权范围：该形态下外部打开返回空后自动降级导出。 -->
+<paths>
+    <files-path
+        name="base_layer"
+        path="runtime/runtime-current/base/" />
+    <files-path
+        name="node_layer"
+        path="runtime/runtime-current/node/" />
+    <files-path
+        name="dsh_layer"
+        path="runtime/runtime-current/dsh/" />
+    <files-path
+        name="user_data"
+        path="user-data/" />
+</paths>

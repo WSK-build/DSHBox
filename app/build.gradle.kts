@@ -33,9 +33,9 @@ android {
         applicationId = "com.dshbox.app"
         minSdk = 29
         targetSdk = 36
-        // 1.1.1: versionCode 4 — 在线更新安装页闪退修复 + 换层前主动停 DSH（见 MODIFICATION_LOG.md M1/M2）。
-        versionCode = 4
-        versionName = "1.1.1"
+        // 1.2.0: versionCode 5 — 文件管理增强：移动到指定文件夹 + 通用文件查看器/编辑器（见 MODIFICATION_LOG.md 1.2.0 各阶段）。
+        versionCode = 5
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -100,6 +100,17 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.documentfile)
     implementation(libs.commons.compress)
+    // 1.2.0 M2：代码编辑核心（撤销/搜索/行号），LGPL-2.1-or-later 未修改 aar（THIRD_PARTY_NOTICES 已登记）
+    implementation(libs.sora.editor)
+    // 1.2.0 M3：Markdown 预览（Apache-2.0，THIRD_PARTY_NOTICES 已登记）
+    implementation(libs.markwon.core)
+    // 1.2.0 M3：Markdown 表格（GFM 扩展，ext-tables；Apache-2.0 同 markwon）
+    implementation(libs.markwon.ext.tables)
+    // 1.2.0 M3：XmlPullParser 仅测试期依赖（kxml2 供 JVM 单测；真机用平台自带实现——
+    // 若随 APK 打包会与平台库类冲突致 R8 失败，且徒增体积）
+    testImplementation(libs.kxml2)
+    // 1.2.0 M3：tar.zst 条目枚举（zstd-jni classes；arm64 .so 已在 jniLibs，零下载）
+    implementation(files("$rootDir/libs/zstd-jni-1.5.7-15-classes.jar"))
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)

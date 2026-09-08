@@ -6,6 +6,22 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- 1.2.0 §6.11：targetSdk 30+ 包可见性——外部打开/编辑/分享的目标应用查询签名 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.EDIT" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+
     <application
         android:name=".DshApp"
         android:extractNativeLibs="true"
@@ -47,5 +63,17 @@
                 <action android:name="com.dshbox.app.dev.action.INSTALL_RUNTIME" />
             </intent-filter>
         </receiver>
+
+        <!-- 1.2.0 §6.11：外部应用调用（VIEW/EDIT/SEND）的 content URI 支持，
+             四根精确 files-path 见 res/xml/file_paths.xml -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.dshbox.app.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

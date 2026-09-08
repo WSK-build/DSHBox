@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,6 +38,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
@@ -60,6 +60,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -80,23 +81,33 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import com.dshbox.app.DshApp
 import com.dshbox.app.R
+import com.dshbox.app.sandbox.SandboxState
 import com.dshbox.app.util.ArchiveExtractor
 import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.util.ConflictMode
 import com.dshbox.app.util.FileEntry
 import com.dshbox.app.util.FileOps
+import com.dshbox.app.util.ImportBatchState
+import com.dshbox.app.util.MoveEngine
 import com.dshbox.app.util.GlobalSearch
+import com.dshbox.app.util.Layer
+import com.dshbox.app.util.LayerRoots
+import com.dshbox.app.util.MoveTask
 import com.dshbox.app.util.PathMapper
 import com.dshbox.app.util.ProgressListener
 import com.dshbox.app.util.RiskLevel
 import com.dshbox.app.util.SearchResult
 import com.dshbox.app.util.entrySubtitle
 import com.dshbox.app.util.formatFileSize
+import com.dshbox.app.util.layerOf
 import com.dshbox.app.util.queryDisplayName
 import com.dshbox.app.util.resolveConflictName
 import com.dshbox.app.util.sanitizeFileName
 import com.dshbox.app.util.scanDirectory
+import com.dshbox.app.ui.files.viewer.FileViewerScreen
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -107,39 +118,27 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// --- Design tokens (spec) ---
-private val PrimaryGreen = Color(0xFF10A37F)
-private val PageBg = Color(0xFFFFFFFF)
-private val CardBg = Color(0xFFF8FAF9)
-private val LightGreenCard = Color(0xFFF2F9F6)
-private val SelectedRowBg = Color(0xFFEAF8F4)
-private val TextPrimary = Color(0xFF1F2937)
-private val TextSecondary = Color(0xFF6B7280)
-private val TextHint = Color(0xFF9CA3AF)
-private val DividerColor = Color(0xFFF3F4F6)
-private val ControlBg = Color(0xFFF3F4F6)
-private val CardShadow = Color(0x0A000000)
+// --- Design tokens 已迁至 FilesCommon.kt（1.2.0 §4.3），同包直接使用 ---
 
 private enum class SortMode { NAME, TIME, SIZE }
 
 private enum class ViewMode { LIST, GRID }
-
-/** rootfs 顶层系统绑定目录（guest 内由 PRoot --bind 提供）。 */
-private val SYSTEM_DIR_NAMES = listOf("proc", "sys", "dev", "system", "apex", "tmp")
-
-/** 进度对话框状态。 */
-private data class ProgressUi(
-    val active: Boolean = false,
-    val stage: String = "",
-    val done: Long = 0L,
-    val total: Long = -1L,
-)
 
 /** 待导入的单个文件。 */
 private data class PendingImport(val uri: Uri, val targetDir: File, val baseName: String)
 
 /** 待合并的解压结果（已解压到临时目录，冲突确认后并入目标目录）。 */
 private data class PendingMerge(val extractedDir: File, val targetDir: File)
+
+/**
+ * Layer → RiskLevel 映射（1.2.0 §4.1/§4.2）：NODE/DSH 运行环境层按系统目录级强确认；
+ * DSH_DATA 走 DSH 数据文案；WORKSPACE/BASE 直接放行。
+ */
+internal fun riskLevelOfLayer(layer: Layer): RiskLevel? = when (layer) {
+    Layer.SYSTEM_DIR, Layer.NODE, Layer.DSH -> RiskLevel.SYSTEM_DIR
+    Layer.DSH_DATA -> RiskLevel.DSH_DATA
+    Layer.WORKSPACE, Layer.BASE -> null
+}
 
 @Composable
 fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
@@ -160,6 +159,12 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     val nodeLayer = remember { File(context.filesDir, "runtime/runtime-current/node").takeIf { it.isDirectory } }
     val dshLayer = remember { File(context.filesDir, "runtime/runtime-current/dsh").takeIf { it.isDirectory } }
     val mapper = remember { PathMapper(sandboxRoot, workspaceRoot, nodeLayer, dshLayer) }
+    /** 统一层判定的物理根（1.2.0 §4.1）。 */
+    val layerRoots = remember { LayerRoots(mapper) }
+    // 沙盒运行中标记：NODE/DSH 层移动文案追加停机建议（§4.2/§5.4）
+    val app = LocalContext.current.applicationContext as DshApp
+    val sandboxState by app.container.sandboxManager.sandboxState.collectAsState()
+    val sandboxRunning = sandboxState == SandboxState.RUNNING
 
     var rootMode by remember { mutableIntStateOf(0) }
     val root = if (rootMode == 0) sandboxRoot else workspaceRoot
@@ -178,6 +183,9 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
     /** 切换 rootMode 时携带的目标目录（搜索结果跨根跳转等场景），避免被根重置覆盖。 */
     var pendingNavigateDir by remember { mutableStateOf<File?>(null) }
+
+    // 通用文件查看器（1.2.0 §6.1：只持 logicalPath 字符串，Tab 切回不影响查看器状态）
+    var viewerLogicalPath by remember { mutableStateOf<String?>(null) }
 
     // 全局搜索
     var searchQuery by remember { mutableStateOf("") }
@@ -202,9 +210,6 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     var showRiskDialog by remember { mutableStateOf(false) }
     var pendingRiskEntry by remember { mutableStateOf<FileEntry?>(null) }
     var riskAction by remember { mutableStateOf("") }
-    var showPreviewDialog by remember { mutableStateOf(false) }
-    var previewName by remember { mutableStateOf("") }
-    var previewText by remember { mutableStateOf("") }
     var showErrorDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(ProgressUi()) }
@@ -212,6 +217,16 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 
     // 导入参数（launcher 回调前暂存）
     var importMode by remember { mutableStateOf("file") } // file | extract
+    // 1.2.0 M3 收尾（用户需求）：「从安卓导入」多选——OpenMultipleDocuments 批处理。
+    // 队列逐件串行导入（冲突弹窗逐件决策），全部完成或取消后清理；取消=中止整个批。
+    var importQueue by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var importQueueTarget by remember { mutableStateOf<File?>(null) }
+    var importQueueMode by remember { mutableStateOf("file") }
+    // 2026-09-08 审查：计数/取消/汇总判定收敛为纯状态机（util/ImportBatchState，含单测）
+    var importBatchState by remember { mutableStateOf(ImportBatchState(total = 0)) }
+    /** 批驱动器触发（launcher 回调 +1）；导出出口经 [importBatchDone] 回传单件完成信号。 */
+    var importTrigger by remember { mutableIntStateOf(0) }
+    var importBatchDone by remember { mutableStateOf<kotlinx.coroutines.CompletableDeferred<Boolean>?>(null) }
     var importTargetDir by remember { mutableStateOf<File?>(null) }
 
     // ---------------- 基础操作 ----------------
@@ -273,28 +288,59 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 
     fun isRiskEntry(entry: FileEntry): Boolean = entry.risk != RiskLevel.NORMAL
 
-    /** 当前目录的风险级别（系统目录 / 运行环境层 / DSH 内部数据目录），无风险返回 null。基于物理路径判断（M4）。 */
-    fun protectedRiskLevel(dir: File): RiskLevel? {
-        val physical = mapper.resolvePhysical(dir)
-        val pp = physical.absolutePath
-        if (!isWorkspaceView) {
-            // 运行环境层（L1 node -> /usr/local、L2 dsh -> /opt/dshapp/runtime）属于
-            // 内部产物：改动/删除会破坏运行环境，故视为高风险（SYSTEM_DIR）。
-            if (nodeLayer != null && (pp == nodeLayer.absolutePath || pp.startsWith("${nodeLayer.absolutePath}${File.separator}"))) return RiskLevel.SYSTEM_DIR
-            if (dshLayer != null && (pp == dshLayer.absolutePath || pp.startsWith("${dshLayer.absolutePath}${File.separator}"))) return RiskLevel.SYSTEM_DIR
-            val rel = pp.removePrefix(sandboxRoot.absolutePath).trimStart('/')
-            if (rel.isEmpty()) return null
-            val first = rel.substringBefore('/')
-            if (first in SYSTEM_DIR_NAMES) return RiskLevel.SYSTEM_DIR
-        }
-        val relW = pp.removePrefix(workspaceRoot.absolutePath).trimStart('/')
-        return if (relW == ".dsh" || relW.startsWith(".dsh/")) RiskLevel.DSH_DATA else null
-    }
+    /**
+     * 逻辑路径 → 物理层判定的唯一入口（复查修正：筛选、弹窗、风险级别曾各自实现，
+     * 两套判定分叉导致过文案错配——现收敛到此，全部共用）。
+     */
+    fun pathLayer(logical: File): Layer = layerOf(mapper.resolvePhysical(logical).absolutePath, layerRoots)
+
+    fun entryLayer(entry: FileEntry): Layer = pathLayer(File(entry.logicalPath))
+
+    /**
+     * 条目级「删除/重命名」的操作门禁（复查第七轮修正）：按 [entryLayer] 物理层判定——
+     * node/dsh 层内条目、嵌套 `.dsh` 内部文件均命中（与 §4.2 全域语义对齐）；
+     * 不再用 [isRiskEntry] 的名称口径（层内文件返回 NORMAL 会完全静默）。
+     * 「打开」仍用名称口径：层内逐目录弹窗会使导航不可用（见 MODIFICATION_LOG R27）。
+     */
+    fun isGatedEntry(entry: FileEntry): Boolean = riskLevelOfLayer(entryLayer(entry)) != null
+
+    /**
+     * 当前目录的风险级别（系统目录 / 运行环境层 / DSH 内部数据目录），无风险返回 null。
+     * 1.2.0 §4.1：统一收敛到 [layerOf]（段匹配优先 + 前缀归属），删除原视图分支——
+     * 行为变化（有意收紧）：工作区下嵌套 `.dsh`（如 foo/.dsh）现在也会命中 DSH_DATA。
+     */
+    fun protectedRiskLevel(dir: File): RiskLevel? = riskLevelOfLayer(pathLayer(dir))
 
     fun showRisk(entry: FileEntry, action: String) {
         pendingRiskEntry = entry
         riskAction = action
         showRiskDialog = true
+    }
+
+    // 移动流程编排（1.2.0 §7.3：状态与编排函数迁出至 MoveFlow.kt，行为零变化）
+    val moveFlow = remember {
+        MoveFlow(
+            context = context,
+            scope = scope,
+            mapper = mapper,
+            layerRoots = layerRoots,
+            sandboxRunning = { sandboxRunning },
+            currentDir = { currentDir },
+            exitSelection = { exitSelection() },
+            clearSearch = {
+                searchQuery = ""
+                searchResults = emptyList()
+            },
+            refreshEntries = { refreshEntries() },
+            showError = { showError(it) },
+            showToastRes = { showToastRes(it) },
+            showRisk = { entry, action -> showRisk(entry, action) },
+            cancelProgressJob = { cancelProgressJob() },
+            registerProgressJob = { progressJob = it },
+            currentProgressJob = { progressJob },
+            showProgressUi = { progress = it },
+            clearProgress = { progress = ProgressUi() },
+        )
     }
 
     fun confirmRisk() {
@@ -309,6 +355,8 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             "rename" -> if (renameTarget != null) showRenameDialog = true
             "write" -> showNewFolderDialog = true
             "import" -> showImportMenu = true
+            // 1.2.0 §5.1：源侧风险强确认通过后进入目标选择器
+            "move" -> moveFlow.onMoveRiskConfirmed()
         }
         pendingRiskEntry = null
         riskAction = ""
@@ -342,33 +390,6 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         searchQuery = ""
         searchResults = emptyList()
         refreshEntries()
-    }
-
-    // ---------------- 文件预览 ----------------
-
-    fun openFilePreview(entry: FileEntry) {
-        val physical = mapper.resolvePhysical(File(entry.logicalPath))
-        if (entry.isDirectory || !isTextFile(entry.name)) {
-            showToastRes(R.string.files_preview_not_supported)
-            return
-        }
-        // L1: 读文件移到 IO 线程，避免主线程卡顿
-        previewName = entry.name
-        previewText = context.getString(R.string.files_preview_loading)
-        showPreviewDialog = true
-        scope.launch {
-            val text = withContext(Dispatchers.IO) {
-                runCatching {
-                    physical.inputStream().buffered().use { ins ->
-                        val len = minOf(64 * 1024, physical.length()).toInt().coerceAtLeast(1)
-                        val bytes = ByteArray(len)
-                        val read = ins.read(bytes)
-                        String(bytes, 0, read.coerceAtLeast(0), Charsets.UTF_8)
-                    }
-                }.getOrElse { context.getString(R.string.files_preview_read_failed, it.message ?: "unknown") }
-            }
-            if (previewName == entry.name) previewText = text
-        }
     }
 
     // ---------------- 新建 / 重命名 / 删除 ----------------
@@ -409,7 +430,15 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             return
         }
         val src = mapper.resolvePhysical(File(entry.logicalPath))
-        val dest = File(src.parentFile, safeNewName)
+        val parent = src.parentFile
+        if (parent == null) {
+            showError(context.getString(R.string.files_rename_failed, "路径异常"))
+            renameTarget = null
+            renameName = ""
+            showRenameDialog = false
+            return
+        }
+        val dest = File(parent, safeNewName)
         if (dest.exists()) {
             showToastRes(R.string.files_rename_conflict)
             renameTarget = null
@@ -417,17 +446,39 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             showRenameDialog = false
             return
         }
-        val ok = runCatching { src.renameTo(dest) }.getOrDefault(false)
-        if (!ok) {
-            showError(context.getString(R.string.files_rename_failed, safeNewName))
-        } else {
-            showToast(context.getString(R.string.files_rename_done, entry.name, safeNewName))
+        // 1.2.0 §5.7：重命名收敛为「同目录移动」统一走 moveWithin，
+        // renameTo 失败自动走复制兜底（含 rwx/时间戳同步），修复 1.1.1 失败无兜底问题
+        cancelProgressJob()
+        progressJob = scope.launch {
+            val self = currentCoroutineContext()[Job]
+            showProgress(context.getString(R.string.files_progress_moving, entry.name))
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    MoveEngine.moveWithin(listOf(MoveTask(src, dest)), listener = null)
+                }
+                clearProgress()
+                val failure = result.failed.firstOrNull()
+                // 复查修正：moveWithin 取消时返回 cancelled=true 且 failed 为空，
+                // 必须先判取消，否则取消会被误报为「重命名成功」
+                when {
+                    result.cancelled -> showToastRes(R.string.files_progress_cancelled)
+                    failure != null -> showError(context.getString(R.string.files_rename_failed, failure.message))
+                    else -> showToast(context.getString(R.string.files_rename_done, entry.name, safeNewName))
+                }
+            } catch (e: CancellationException) {
+                clearProgress()
+                if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
+            } catch (e: Exception) {
+                clearProgress()
+                showError(context.getString(R.string.files_rename_failed, e.message ?: "未知错误"))
+            } finally {
+                renameTarget = null
+                renameName = ""
+                showRenameDialog = false
+                exitSelection()
+                refreshEntries()
+            }
         }
-        renameTarget = null
-        renameName = ""
-        showRenameDialog = false
-        exitSelection()
-        refreshEntries()
     }
 
     fun doDelete() {
@@ -477,6 +528,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 if (finalName == null) {
                     clearProgress()
                     showToastRes(R.string.files_conflict_skipped)
+                    importBatchDone?.complete(true)
                     return@launch
                 }
                 withContext(Dispatchers.IO) {
@@ -490,15 +542,18 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 clearProgress()
                 refreshEntries()
                 showToast(context.getString(R.string.files_import_done_name, finalName))
+                importBatchDone?.complete(true)
             } catch (e: CancellationException) {
-                // S1: 取消时清理半成品文件
+                // S1: 取消时清理半成品文件；取消=中止整个批
                 FileOps.deleteQuietly(File(physicalTarget, finalName ?: baseName))
                 clearProgress()
+                importQueue = emptyList(); importBatchState = importBatchState.cancel(); importBatchDone?.complete(false)
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 FileOps.deleteQuietly(File(physicalTarget, finalName ?: baseName))
                 clearProgress()
                 showError(context.getString(R.string.files_import_failed, e.message ?: "未知错误"))
+                importBatchDone?.complete(false)
             }
         }
     }
@@ -525,20 +580,24 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 val physicalTarget = mapper.resolvePhysical(targetDir)
                 withContext(Dispatchers.IO) {
                     // S4: 递归逐文件统一冲突策略，避免覆盖同名目录时静默丢弃其子文件
-                    mergeTree(extractedDir, physicalTarget, mode)
+                    // 1.2.0 §5.3.4：mergeTree 下沉到 FileOps（叶子节点统一走移动引擎单项逻辑）
+                    MoveEngine.mergeTree(extractedDir, physicalTarget, mode)
                     extractedDir.deleteRecursively()
                 }
                 clearProgress()
                 refreshEntries()
                 showToastRes(R.string.files_extract_done)
+                importBatchDone?.complete(true)
             } catch (e: CancellationException) {
                 FileOps.deleteQuietly(extractedDir)
                 clearProgress()
+                importQueue = emptyList(); importBatchState = importBatchState.cancel(); importBatchDone?.complete(false)
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 FileOps.deleteQuietly(extractedDir)
                 clearProgress()
                 showError(context.getString(R.string.files_merge_failed, e.message ?: "未知错误"))
+                importBatchDone?.complete(false)
             } finally {
                 BackgroundOps.end()
             }
@@ -586,6 +645,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     tmpArchive = null
                     refreshEntries()
                     showToast(context.getString(R.string.files_import_done_name, safeName))
+                    importBatchDone?.complete(true)
                     return@launch
                 }
                 tmpExtract = File(context.cacheDir, "extract_${System.currentTimeMillis()}")
@@ -599,6 +659,31 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 }
                 withContext(Dispatchers.IO) { tmpArchive!!.delete() }
                 tmpArchive = null
+                // 用户反馈（2026-09-08）：导入文件夹压缩包后内容「全部散开」——包内无顶层
+                // 唯一目录时（系统压缩软件常如此）顶层多个条目直接平铺进目标目录。
+                // 与 7-Zip「解压到文件夹」同口径：顶层不唯一 → 在解压缓存内包一层
+                // 以包名命名的目录；后续冲突/合并流程原样复用（tmpExtract 顶层现在唯一）。
+                withContext(Dispatchers.IO) {
+                    val topLevel = tmpExtract!!.listFiles() ?: emptyArray()
+                    if (topLevel.size != 1) {
+                        val packageName = queryDisplayName(context, uri)
+                            ?.substringBeforeLast('.', "")
+                            ?.let { sanitizeFileName(it) }
+                            ?: "extracted"
+                        val wrapper = File(tmpExtract!!, packageName)
+                        wrapper.mkdirs()
+                        topLevel.forEach { child ->
+                            val dest = File(wrapper, child.name)
+                            if (!child.renameTo(dest)) {
+                                runCatching {
+                                    if (child.isDirectory) child.copyRecursively(dest, overwrite = true)
+                                    else child.copyTo(dest, overwrite = true)
+                                    child.deleteRecursively()
+                                }
+                            }
+                        }
+                    }
+                }
                 val conflicts = withContext(Dispatchers.IO) {
                     tmpExtract!!.listFiles()?.mapNotNull { child ->
                         if (File(physicalTarget, child.name).exists()) child.name else null
@@ -611,16 +696,18 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     mergeExtracted(tmpExtract!!, targetDir, ConflictMode.OVERWRITE)
                 }
             } catch (e: CancellationException) {
-                // S1/M6: 取消时清理缓存临时文件与目录
+                // S1/M6: 取消时清理缓存临时文件与目录；取消=中止整个批
                 FileOps.deleteQuietly(tmpArchive)
                 FileOps.deleteQuietly(tmpExtract)
                 clearProgress()
+                importQueue = emptyList(); importBatchState = importBatchState.cancel(); importBatchDone?.complete(false)
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 FileOps.deleteQuietly(tmpArchive)
                 FileOps.deleteQuietly(tmpExtract)
                 clearProgress()
                 showError(context.getString(R.string.files_extract_failed, e.message ?: "未知错误"))
+                importBatchDone?.complete(false)
             } finally {
                 BackgroundOps.end()
             }
@@ -695,21 +782,60 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         }
     }
 
+
     // ---------------- Launchers ----------------
 
     val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
         val targetDir = importTargetDir
         importTargetDir = null
-        if (uri != null && targetDir != null) {
-            if (importMode == "extract") {
-                startExtractImport(uri, targetDir)
-            } else {
-                val displayName = queryDisplayName(context, uri) ?: "imported-file"
-                val safeName = sanitizeFileName(displayName) ?: "imported-file"
-                startFileImport(uri, targetDir, safeName)
+        if (uris.isNotEmpty() && targetDir != null) {
+            importQueue = uris
+            importQueueTarget = targetDir
+            importQueueMode = importMode
+            importBatchState = ImportBatchState(total = uris.size)
+            importTrigger++
+        }
+    }
+
+    // 批导入驱动器：逐件串行（出口经 importBatchDone 回传），完成后汇总 toast。
+    // 用协程等待而非函数引用链——避免局部函数环（runImport→finish→advance→startFileImport）。
+    LaunchedEffect(importTrigger) {
+        if (importTrigger == 0 || importQueue.isEmpty()) return@LaunchedEffect
+        while (importQueue.isNotEmpty() && !importBatchState.cancelled) {
+            val uri = importQueue.first()
+            importQueue = importQueue.drop(1)
+            val mode = importQueueMode
+            val target = importQueueTarget
+            if (target == null) {
+                importBatchState = importBatchState.cancel()
+                break
             }
+            val done = kotlinx.coroutines.CompletableDeferred<Boolean>()
+            importBatchDone = done
+            when (mode) {
+                "extract" -> startExtractImport(uri, target)
+                else -> {
+                    val displayName = queryDisplayName(context, uri) ?: "imported-file"
+                    val safeName = sanitizeFileName(displayName) ?: "imported-file"
+                    startFileImport(uri, target, safeName)
+                }
+            }
+            val success = done.await()
+            if (importBatchState.cancelled) break
+            importBatchState = importBatchState.itemDone(success)
+        }
+        importBatchDone = null
+        if (importBatchState.wantsSummary()) {
+            val (ok, failed) = importBatchState.summaryArgs()
+            showToast(
+                context.getString(
+                    if (failed == 0) R.string.files_import_batch_done
+                    else R.string.files_import_batch_done_fail,
+                    ok, failed,
+                ),
+            )
         }
     }
 
@@ -802,18 +928,22 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     count = selectedPaths.size,
                     canRename = selectedPaths.size == 1,
                     canExport = selectedPaths.isNotEmpty(),
+                    // 1.2.0 M1：多选栏移动入口（§5.1）
+                    onMove = {
+                        moveFlow.startMove(entries.filter { it.logicalPath in selectedPaths })
+                    },
                     onRename = {
                         selectedPaths.firstOrNull()?.let { path ->
                             entries.firstOrNull { it.logicalPath == path }?.let { entry ->
                                 renameTarget = entry
                                 renameName = entry.name
-                                if (isRiskEntry(entry)) showRisk(entry, "rename") else showRenameDialog = true
+                                if (isGatedEntry(entry)) showRisk(entry, "rename") else showRenameDialog = true
                             }
                         }
                     },
                     onDelete = {
                         pendingDeleteTarget = null
-                        val risky = entries.firstOrNull { it.logicalPath in selectedPaths && isRiskEntry(it) }
+                        val risky = entries.firstOrNull { it.logicalPath in selectedPaths && isGatedEntry(it) }
                         if (risky != null) showRisk(risky, "delete") else showDeleteConfirm = true
                     },
                     onExportDir = { treeExportLauncher.launch(null) },
@@ -966,7 +1096,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                                 } else if (entry.isDirectory) {
                                     if (isRiskEntry(entry)) showRisk(entry, "open") else currentDir = File(entry.logicalPath)
                                 } else {
-                                    openFilePreview(entry)
+                                    viewerLogicalPath = entry.logicalPath
                                 }
                             },
                             onLongClick = {
@@ -977,14 +1107,15 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                                 if (!selectionMode) selectionMode = true
                                 toggleSelect(entry)
                             },
+                            onMove = { moveFlow.startMove(listOf(entry)) },
                             onRename = {
                                 renameTarget = entry
                                 renameName = entry.name
-                                if (isRiskEntry(entry)) showRisk(entry, "rename") else showRenameDialog = true
+                                if (isGatedEntry(entry)) showRisk(entry, "rename") else showRenameDialog = true
                             },
                             onDelete = {
                                 pendingDeleteTarget = entry
-                                if (isRiskEntry(entry)) showRisk(entry, "delete") else showDeleteConfirm = true
+                                if (isGatedEntry(entry)) showRisk(entry, "delete") else showDeleteConfirm = true
                             },
                             onExport = {
                                 selectedPaths = setOf(entry.logicalPath)
@@ -1012,7 +1143,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                                 } else if (entry.isDirectory) {
                                     if (isRiskEntry(entry)) showRisk(entry, "open") else currentDir = File(entry.logicalPath)
                                 } else {
-                                    openFilePreview(entry)
+                                    viewerLogicalPath = entry.logicalPath
                                 }
                             },
                             onLongClick = {
@@ -1169,6 +1300,15 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 showConflictDialog = false
                 pendingImport = null
                 pendingMerge = null
+                // 审查阻断修复：弹窗被点外部/返回键关闭后没有任何出口会 complete——
+                // 批处理驱动器会在 done.await() 永久挂起（剩余文件静默不再导入）。
+                // 口径与「取消=中止整个批」一致：放弃剩余并给提示。
+                if (importBatchState.total > 0) {
+                    importQueue = emptyList()
+                    importBatchState = importBatchState.cancel()
+                    importBatchDone?.complete(false)
+                    showToastRes(R.string.files_progress_cancelled)
+                }
             },
             title = { Text(stringResource(R.string.files_conflict_title)) },
             text = {
@@ -1224,6 +1364,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         mergeExtracted(pm.extractedDir, pm.targetDir, ConflictMode.SKIP)
                     } else {
                         showToastRes(R.string.files_conflict_skipped)
+                        importBatchDone?.complete(true) // 单文件导入跳过 = 已处理，继续批
                     }
                 }) {
                     Text(stringResource(R.string.files_conflict_skip))
@@ -1234,19 +1375,31 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 
     if (showRiskDialog) {
         val entry = pendingRiskEntry
-        val isSystem = entry?.risk == RiskLevel.SYSTEM_DIR
+        val isMoveAction = riskAction == "move"
         AlertDialog(
             onDismissRequest = { cancelRisk() },
             title = { Text(stringResource(R.string.files_risk_title)) },
             text = {
-                Text(
-                    text = entry?.let {
-                        if (isSystem) stringResource(R.string.files_risk_system, it.name)
-                        else stringResource(R.string.files_risk_dsh, it.name)
-                    } ?: stringResource(R.string.files_risk_generic),
-                    fontSize = 14.sp,
-                    color = TextSecondary,
-                )
+                Column {
+                    // 复查修正：文案判定与入口筛选同源（entryLayer → layerOf 物理层判定），
+                    // 不再用 entry.risk（名称口径，层内文件返回 NORMAL 会落到错误兜底）
+                    val layer = entry?.let { entryLayer(it) } ?: Layer.BASE
+                    Text(
+                        text = entry?.let {
+                            stringResource(riskDialogTextRes(layer, isMoveAction, sandboxRunning), it.name)
+                        } ?: stringResource(R.string.files_risk_generic),
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                    )
+                    if (isMoveAction && moveFlow.state.moveRiskCount > 1 && entry != null) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.files_risk_move_multi, selectedPaths.size, moveFlow.state.moveRiskCount),
+                            fontSize = 12.sp,
+                            color = TextHint,
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -1334,35 +1487,6 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         )
     }
 
-    if (showPreviewDialog) {
-        AlertDialog(
-            onDismissRequest = { showPreviewDialog = false },
-            title = {
-                Text(
-                    text = previewName,
-                    fontSize = 16.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            text = {
-                Text(
-                    text = previewText,
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = TextPrimary,
-                    maxLines = 18,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showPreviewDialog = false }) {
-                    Text(stringResource(R.string.files_close))
-                }
-            },
-        )
-    }
-
     if (showErrorDialog) {
         AlertDialog(
             onDismissRequest = { showErrorDialog = false },
@@ -1379,6 +1503,81 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     Text(stringResource(R.string.files_close))
                 }
             },
+        )
+    }
+
+    // ---------- 通用文件查看器（覆盖式二级页，1.2.0 §6.1） ----------
+    // zIndex(2f)：本函数的覆盖页发射在根 Box 之外（与 MainScreen 各 tab 同层），
+    // 而根 Box 由 MainScreen 设了 zIndex(1f) 且背景不透明——覆盖页必须显式压过它，
+    // 否则被遮挡（真机实证：选择器已组合但不可见，表现为「移动到无反应」）。
+    viewerLogicalPath?.let { path ->
+        FileViewerScreen(
+            logicalPath = path,
+            mapper = mapper,
+            layerRoots = layerRoots,
+            sandboxRunning = sandboxRunning,
+            onDismiss = { viewerLogicalPath = null },
+            onRequestRefresh = { refreshEntries() },
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(2f)
+                // 2026-09-07 返工批次：覆盖页必须随 tab 活跃性走 keepAliveHidden——
+                // 否则切换 tab 后它仍全屏绘制在其它 tab 之上（底部导航「点了没反应」），
+                // 且切回时组合原样恢复（编辑草稿保留，D-12 语义不变）。
+                .then(if (isActiveTab) Modifier else Modifier.keepAliveHidden()),
+        )
+    }
+
+    // ---------- 移动目标选择器（覆盖式二级页，1.2.0 §5.1） ----------
+    if (moveFlow.state.showFolderPicker) {
+        FolderPickerScreen(
+            mapper = mapper,
+            sandboxRoot = sandboxRoot,
+            workspaceRoot = workspaceRoot,
+            layerRoots = layerRoots,
+            moveCount = moveFlow.state.moveSources.size,
+            sourceDirs = moveFlow.state.moveSources.filter { it.isDirectory },
+            sandboxRunning = sandboxRunning,
+            onDismiss = { moveFlow.dismissPicker() },
+            onConfirm = { moveFlow.onMoveTargetPicked(it) },
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(2f)
+                // 2026-09-07 返工批次：同 FileViewerScreen——覆盖页随 tab 活跃性隐藏，
+                // 否则切 tab 后移动选择器仍全屏压住其它 tab（底部导航「点了没反应」）。
+                .then(if (isActiveTab) Modifier else Modifier.keepAliveHidden()),
+        )
+    }
+
+    // ---------- 移动冲突对话框（覆盖 / 跳过 / 自动改名 + 应用到其余全部，§5.1） ----------
+    moveFlow.state.pendingMove?.let { moveState ->
+        if (moveState.conflicts.isNotEmpty()) {
+            MoveConflictDialog(
+                pending = moveState,
+                applyToAll = moveFlow.state.applyConflictsToAll,
+                onApplyToAllChange = { moveFlow.setApplyConflictsToAll(it) },
+                onDecide = { moveFlow.resolveMoveConflict(it) },
+                onCancel = { moveFlow.cancelMoveConflicts() },
+            )
+        }
+    }
+
+    // ---------- §5.4 阶段二：跨层移动强确认（消费 layerRisks） ----------
+    moveFlow.state.pendingMatrixConfirm?.let { confirm ->
+        MoveMatrixConfirmDialog(
+            message = confirm.message,
+            onConfirm = { moveFlow.confirmMatrix() },
+            onDismiss = { moveFlow.dismissMatrix() },
+        )
+    }
+
+    // ---------- 移动结果对话框（§5.3.7 / §5.6） ----------
+    if (moveFlow.state.showMoveResultDialog) {
+        MoveResultDialog(
+            result = moveFlow.state.lastMoveResult,
+            skippedByDecision = moveFlow.state.lastMoveSkippedByDecision,
+            crossViewHint = moveFlow.state.moveCrossViewHint,
+            onDismiss = { moveFlow.dismissResult() },
         )
     }
 
@@ -1422,81 +1621,6 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 }
 
 private fun Long.formatSize(): String = formatFileSize(this)
-
-/**
- * 递归合并解压结果到目标目录（S4）：
- * - 目标不存在：直接移动（renameTo 失败则 copy+delete）；
- * - 目标同名目录 + 源目录：按 [mode] 递归合并（不整体删除目标目录，避免静默丢弃其子文件）；
- * - 目标同名文件：OVERWRITE 覆盖 / RENAME 改名 / SKIP 跳过。
- * 支持协程取消检查。
- */
-private suspend fun mergeTree(src: File, destParent: File, mode: ConflictMode) {
-    currentCoroutineContext().ensureActive()
-    src.listFiles()?.forEach { child ->
-        currentCoroutineContext().ensureActive()
-        val dest = File(destParent, child.name)
-        if (!dest.exists()) {
-            moveNode(child, dest)
-        } else {
-            when (mode) {
-                ConflictMode.SKIP -> Unit
-                ConflictMode.OVERWRITE -> {
-                    if (child.isDirectory && dest.isDirectory) {
-                        mergeTree(child, dest, mode)
-                        child.deleteRecursively()
-                    } else {
-                        dest.deleteRecursively()
-                        moveNode(child, dest)
-                    }
-                }
-                ConflictMode.RENAME -> {
-                    val newName = resolveConflictName(destParent, child.name, ConflictMode.RENAME)
-                        ?: return@forEach
-                    moveNode(child, File(destParent, newName))
-                }
-            }
-        }
-    }
-}
-
-/** 移动文件/目录到 [dest]（renameTo 失败时 copy+delete 兜底）。 */
-private fun moveNode(src: File, dest: File) {
-    if (src.isDirectory) {
-        if (!src.renameTo(dest)) {
-            dest.mkdirs()
-            src.walkTopDown().forEach { f ->
-                val rel = f.relativeTo(src).path
-                if (f.isDirectory) {
-                    File(dest, rel).mkdirs()
-                } else {
-                    File(dest, rel).parentFile?.mkdirs()
-                    f.copyTo(File(dest, rel), overwrite = true)
-                }
-            }
-            src.deleteRecursively()
-        }
-    } else {
-        if (!src.renameTo(dest)) {
-            src.copyTo(dest, overwrite = true)
-            src.delete()
-        }
-    }
-}
-
-/** 判断文件是否为可预览的文本文件（供文件预览与全局搜索内容命中使用）。 */
-private fun isTextFile(name: String): Boolean {
-    val lower = name.lowercase()
-    val dot = lower.lastIndexOf('.')
-    val ext = if (dot > 0) lower.substring(dot + 1) else lower
-    return ext in TEXT_FILE_EXTENSIONS || name == ".env" || name == "Dockerfile"
-}
-
-private val TEXT_FILE_EXTENSIONS = setOf(
-    "txt", "md", "markdown", "json", "yaml", "yml", "xml", "html", "htm",
-    "css", "js", "ts", "py", "sh", "bash", "log", "csv", "conf", "ini",
-    "properties", "toml", "cfg", "env", "gitignore", "dockerfile", "gradle",
-    "kts", "java", "kt", "c", "h", "cpp", "hpp", "go", "rs", "sql", "rb", "php",
-)
 
 // ---------- 菜单项规格 ----------
 
@@ -1554,43 +1678,6 @@ private fun MenuListDialog(
     )
 }
 
-// ---------- 顶部：胶囊分段切换 ----------
-
-@Composable
-private fun SegmentedSwitch(
-    selected: Int,
-    options: List<String>,
-    onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(ControlBg)
-            .padding(2.dp),
-    ) {
-        options.forEachIndexed { index, label ->
-            val isSelected = index == selected
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isSelected) PrimaryGreen else Color.Transparent)
-                    .clickable { onSelect(index) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label,
-                    fontSize = 14.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) Color.White else TextSecondary,
-                )
-            }
-        }
-    }
-}
-
 // ---------- 选择操作栏 ----------
 
 @Composable
@@ -1598,6 +1685,7 @@ private fun SelectionActionBar(
     count: Int,
     canRename: Boolean,
     canExport: Boolean,
+    onMove: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onExportDir: () -> Unit,
@@ -1618,6 +1706,7 @@ private fun SelectionActionBar(
             color = TextPrimary,
             modifier = Modifier.weight(1f),
         )
+        SelectionChip(Icons.Outlined.DriveFileMove, stringResource(R.string.files_move), enabled = canExport, onClick = onMove)
         SelectionChip(Icons.Outlined.Download, stringResource(R.string.files_export_to_dir), enabled = canExport, onClick = onExportDir)
         SelectionChip(Icons.Outlined.FolderZip, stringResource(R.string.files_export_zip_short), enabled = canExport, onClick = onExportZip)
         SelectionChip(Icons.Outlined.InsertDriveFile, stringResource(R.string.files_rename), enabled = canRename, onClick = onRename)
@@ -1644,51 +1733,6 @@ private fun SelectionChip(
             tint = if (enabled) PrimaryGreen else TextHint,
             modifier = Modifier.size(18.dp),
         )
-    }
-}
-
-// ---------- 面包屑 ----------
-
-@Composable
-private fun Breadcrumb(
-    root: File,
-    rootLabel: String,
-    currentDir: File,
-    onNavigate: (File) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        var cursor: File? = currentDir
-        val crumbs = mutableListOf<Pair<String, File>>()
-        while (cursor != null && cursor.absolutePath.startsWith(root.absolutePath)) {
-            if (cursor == root) break
-            crumbs.add(0, cursor.name to cursor)
-            cursor = cursor.parentFile
-        }
-        val segments = buildList {
-            add(rootLabel to root)
-            addAll(crumbs)
-        }
-        segments.forEachIndexed { index, (label, target) ->
-            if (index > 0) {
-                Text(text = " / ", fontSize = 13.sp, color = TextHint)
-            }
-            Text(
-                text = label,
-                fontSize = 13.sp,
-                color = if (index == segments.lastIndex) TextSecondary else TextHint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = if (index == segments.lastIndex) {
-                    Modifier.weight(1f).clickable { onNavigate(target) }
-                } else {
-                    Modifier.clickable { onNavigate(target) }
-                },
-            )
-        }
     }
 }
 
@@ -1843,6 +1887,7 @@ private fun FileListRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onToggleSelect: () -> Unit,
+    onMove: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onExport: () -> Unit,
@@ -1899,6 +1944,13 @@ private fun FileListRow(
                     .padding(4.dp),
             )
             androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(stringResource(R.string.files_move)) },
+                    onClick = {
+                        menuOpen = false
+                        onMove()
+                    },
+                )
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text(stringResource(R.string.files_rename)) },
                     onClick = {

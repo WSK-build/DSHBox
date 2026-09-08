@@ -7,8 +7,9 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
+import org.apache.commons.compress.archivers.zip.ZipFile
+import java.nio.charset.Charset
+import com.dshbox.app.util.viewer.ArchiveBrowser
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -79,27 +80,37 @@ object ArchiveExtractor {
     }
 
     private suspend fun extractZip(archive: File, destRoot: File, listener: ProgressListener?): Int {
+        // 2026-09-08 修复：条目名编码与浏览侧（ArchiveBrowser）同口径——java.util.zip
+        // 固定 UTF-8，GBK 中文包（Windows 压缩软件）解压文件名必乱码。改用 commons
+        // ZipFile（charset 按字节级 CEN 判定：bit11 置位→UTF-8，未置位严格校验非法→GBK）。
         val total = archive.length()
         var done = 0L
         var count = 0
-        ZipInputStream(BufferedInputStream(FileInputStream(archive))).use { zip ->
-            while (true) {
+        val charset = if (ArchiveBrowser.detectZipCharset(archive) == "GBK") Charset.forName("GBK") else Charsets.UTF_8
+        ArchiveBrowser.ccZipFile(archive, charset).use { zip ->
+            val it = zip.entries
+            while (it.hasMoreElements()) {
                 currentCoroutineContext().ensureActive()
-                val entry = zip.nextEntry ?: break
+                val entry = it.nextElement()
+                if (entry.generalPurposeBit.usesEncryption()) {
+                    // 加密压缩包不支持内建解压（计划 D5：加密压缩包解密不做）
+                    throw FileOpException("压缩包包含加密条目，不支持内建解压")
+                }
                 if (entry.isDirectory) {
                     val dir = safeResolve(destRoot, entry.name)
                     dir.mkdirs()
                 } else {
                     val target = safeResolve(destRoot, entry.name)
                     target.parentFile?.mkdirs()
-                    FileOutputStream(target).use { out ->
-                        FileOps.copyStream(zip, out, offset = done, total = total, stage = "解压中", listener = listener)
+                    zip.getInputStream(entry).use { ins ->
+                        FileOutputStream(target).use { out ->
+                            FileOps.copyStream(ins, out, offset = done, total = total, stage = "解压中", listener = listener)
+                        }
                     }
                     count++
                 }
                 done += entry.compressedSize
                 listener?.onProgress(done, total, "解压中")
-                zip.closeEntry()
             }
         }
         listener?.onProgress(total, total, "解压完成")
@@ -112,7 +123,7 @@ object ArchiveExtractor {
         var lastBytes = 0L
         var count = 0
         GzipCompressorInputStream(BufferedInputStream(FileInputStream(archive))).use { gzip ->
-            TarArchiveInputStream(gzip).use { tar ->
+            TarArchiveInputStream(gzip, "UTF-8").use { tar ->
                 var entry = tar.nextEntry
                 while (entry != null) {
                     currentCoroutineContext().ensureActive()

@@ -1,5 +1,6 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.util.viewer.FileTypeClassifier
 import java.io.File
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -27,14 +28,6 @@ data class SearchResult(
  * - 异步执行，支持取消（输入变化时取消上一轮）；结果上限 500 条防 UI 卡顿。
  */
 object GlobalSearch {
-
-    private val TEXT_EXTENSIONS = setOf(
-        "txt", "md", "markdown", "json", "yaml", "yml", "xml", "html", "htm",
-        "css", "js", "ts", "py", "sh", "bash", "zsh", "log", "csv", "conf",
-        "ini", "properties", "toml", "cfg", "env", "gitignore", "dockerfile",
-        "gradle", "kts", "java", "kt", "kts", "c", "h", "cpp", "hpp", "go",
-        "rs", "sql", "rb", "php", "yml", "lock",
-    )
 
     private const val MAX_CONTENT_SIZE = 1L shl 20 // 1MB
     private const val CONTENT_PROBE_BYTES = 64 * 1024 // 读前 64KB
@@ -103,13 +96,19 @@ object GlobalSearch {
                 var contentHit = false
                 var snippet: String? = null
 
-                if (f.isFile && !nameHit && isTextCandidate(name) && f.length() <= MAX_CONTENT_SIZE) {
+                // 1.2.0 §6.1.5：文本候选判定统一改用 FileTypeClassifier（魔数/嗅探/扩展名
+                // 三级），消除旧私有清单与预览白名单不一致的分叉（Makefile 搜索可命中、
+                // 预览打不开）。已知二进制扩展名免读盘直接跳过。
+                val head = if (f.isFile && !nameHit && f.length() in 1..MAX_CONTENT_SIZE &&
+                    !FileTypeClassifier.isKnownBinaryByExtension(name)
+                ) {
+                    FileTypeClassifier.readHead(f, CONTENT_PROBE_BYTES)
+                } else {
+                    ByteArray(0)
+                }
+                if (head.isNotEmpty() && FileTypeClassifier.isTextCandidate(name, head)) {
                     runCatching {
-                        val probe = f.inputStream().buffered().use { ins ->
-                            val bytes = ByteArray(minOf(CONTENT_PROBE_BYTES.toInt(), f.length().toInt().coerceAtLeast(1)))
-                            val read = ins.read(bytes)
-                            String(bytes, 0, read.coerceAtLeast(0), Charsets.UTF_8)
-                        }
+                        val probe = String(head, 0, head.size, Charsets.UTF_8)
                         val idx = probe.lowercase().indexOf(ql)
                         if (idx >= 0) {
                             contentHit = true
@@ -140,13 +139,5 @@ object GlobalSearch {
         }
         listener?.onProgress(scanned, scanned, "搜索完成")
         return results
-    }
-
-    private fun isTextCandidate(name: String): Boolean {
-        val lower = name.lowercase()
-        // 无扩展名也尝试（如 Dockerfile、.env）
-        val dot = lower.lastIndexOf('.')
-        val ext = if (dot > 0) lower.substring(dot + 1) else lower
-        return ext in TEXT_EXTENSIONS || name == ".env" || name == "Dockerfile" || name == "Makefile"
     }
 }
