@@ -6,7 +6,7 @@
 |---|---|---|---|
 | DeepSeek Harness（`@deepseek-ai/dsh` 及子包） | Agent Runtime | MIT | 以 npm 包形式随运行环境分发 |
 | Cordis（`@deepseek-ai/cordis`） | 插件框架 | MIT | npm 包 |
-| Node.js 22.x | JavaScript Runtime | MIT（详见 Node 发行版 LICENSE） | 运行环境内置 |
+| Node.js 24.19.0 | JavaScript Runtime | MIT（详见 Node 发行版 LICENSE） | 运行环境内置 |
 | npm / pnpm | 包管理器 | Artistic-2.0（npm）/ MIT（pnpm） | 随 Node 分发 |
 | Debian GNU/Linux rootfs | Linux 用户空间 | 各包按 Debian 版权文件分别授权 | debootstrap 构建；各包许可证见 rootfs 内 `/usr/share/doc/*/copyright` |
 | PRoot（`libproot.so` / `libproot-loader.so` / `libandroid-shmem.so`） | 用户态沙箱（chroot 替代） | GPL-2+（以源码 COPYING 为准） | 二进制来自 termux-packages 构建；源码见下方链接 |
@@ -21,6 +21,9 @@
 | Sora Editor（`io.github.Rosemoe.sora-editor:editor` 0.23.5） | 代码编辑核心（撤销/重做、搜索、行号、括号匹配） | LGPL-2.1-or-later | Gradle 依赖（1.2.0 起）；以未修改 aar 形式使用，上游源码见下方合规说明 |
 | Markwon（`io.noties.markwon:core` 4.6.2 + `ext-tables` 4.6.2） | Markdown 预览（CommonMark 规范，原生 Spannable 渲染；表格为 GFM 扩展） | Apache-2.0 | Gradle 依赖（1.2.0 M3 起）；传递依赖 `com.atlassian.commonmark:commonmark` 0.13.0（BSD-2-Clause，随之上列）；ext-tables 与 core 同仓库 https://github.com/noties/Markwon |
 | commonmark-java（`com.atlassian.commonmark:commonmark` 0.13.0） | Markdown 解析（Markwon 传递依赖） | BSD-2-Clause | Gradle 传递依赖（1.2.0 M3 起）；源码 https://github.com/atlassian/commonmark-java |
+| JUnit（`junit:junit` 4.13.2） | JVM 单测框架（**仅测试期**，不随 APK 分发） | EPL-2.0 | Gradle 测试依赖 |
+| AndroidX Test Espresso（`androidx.test.espresso:espresso-core`） | UI 测试（**仅测试期**，不随 APK 分发） | Apache-2.0 | Gradle 测试依赖 |
+| Compose UI Test（`androidx.compose.ui:ui-test-junit4`） | Compose UI 测试（**仅测试期**，不随 APK 分发） | Apache-2.0 | Gradle 测试依赖 |
 | kxml2（`net.sf.kxml:kxml2` 2.3.0） | XmlPullParser 实现（docx/xlsx 文本抽取，**仅 JVM 单测期**，不随 APK 分发） | BSD style（kXML2 类）；XmlPull API（org.xmlpull.v1）属 Public Domain | Gradle 测试依赖（1.2.0 M3 起）；真机运行时使用 Android 平台自带 XmlPullParser 实现；上游 http://kxml.sourceforge.net / http://www.xmlpull.org |
 
 ## 再分发合规说明

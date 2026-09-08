@@ -3,7 +3,7 @@
 <img width="1772" height="884" alt="DSHBox running DeepSeek Harness locally on Android phones and tablets" src="https://github.com/user-attachments/assets/a9622b15-a348-4c81-a708-3684a208e59e" />
 
 [![Latest Release](https://img.shields.io/github/v/release/WSK-build/DSHBox?display_name=tag&sort=semver)](https://github.com/WSK-build/DSHBox/releases/latest)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/WSK-build/DSHBox/releases/latest)
+[![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](https://github.com/WSK-build/DSHBox/releases/latest)
 [![Architecture](https://img.shields.io/badge/Architecture-ARM64-0091BD?logo=arm&logoColor=white)](https://github.com/WSK-build/DSHBox)
 [![License](https://img.shields.io/github/license/WSK-build/DSHBox)](https://github.com/WSK-build/DSHBox/blob/main/LICENSE)
 [![Build Status](https://github.com/WSK-build/DSHBox/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/WSK-build/DSHBox/actions/workflows/android.yml)
@@ -15,101 +15,154 @@
 **DSHBox** 是一个可在安卓手机和平板上本机运行完整 **DeepSeek Harness（DSH）** 的开源应用。它将 Debian、Node.js、DSH、PRoot 和 WebView 集成在一个 APK 中，无需 Root，也无需单独安装 Termux。
 
 ---
+
 ## 快速安装
 
-- 支持：Android 8.0+ / ARM64
-- 无需 Root
-- 无需 Termux
-- 内置 Debian、Node.js、DSH 和 WebView
+| 项目 | 说明 |
+|---|---|
+| 系统要求 | Android 10+ · ARM64 |
+| 权限 | 无需 Root · 无需 Termux |
+| 内置 | Debian · Node.js · DSH · WebView |
 
-[下载最新 APK](https://github.com/WSK-build/DSHBox/releases/latest)
-
-安装 APK → 启动应用 → 等待运行环境初始化 → 打开 DSH。
-
+**[下载最新 APK](https://github.com/WSK-build/DSHBox/releases/latest)** → 安装 → 启动应用 → 等待运行环境初始化 → 打开 DSH。
 
 ---
 
-## v1.1.1 更新亮点（相对 v1.1.0）
+## 更新记录
 
-- **在线更新 DSH 全链路可用**（1.1.0 多处阻断，本次逐点打通）：
-  - 点「安装」闪退（布局嵌套滚动崩溃）修复；
-  - 「取消安装」即时生效（进程树 SIGKILL + 可中断等待，1 秒内收敛）；
-  - 换层前确定性停止旧 DSH、健康检查兼容新版 DSH 认证（401），不再端口争用/误判未就绪；
-  - 首次安装显示「已用时/预计」提示，全程后台运行，可离开页面继续使用其他功能。
-- **兼容 DSH 0.1.2-rc.1（网页会话认证）**：自动从 DSH 启动输出解析 launchToken、完成
-  签名 Cookie 交换并自动续期——WebView 打开即用，无需手动认证。
-- **存储与日志治理**：npm 下载缓存迁出运行环境红线区（归「应用缓存」一键可清，重装同版本秒级）；
-  进程日志 2MB 自动轮转（保留最近两代），诊断页升级为 DSH / 沙箱 / 访客命令全条目展示（可滚动、可导出）。
-- **装配移动端适配包一键开关**：设置页开关即装即卸、可反复切换，仅执行脚本不干预 DSH 生命周期。
+当前版本 **v1.2.0**：文件管理增强——移动到指定文件夹、通用文件查看器/编辑器（文本编辑 / 图片 / PDF / 压缩包 / 十六进制 / Office 抽文本）、外部应用打开/编辑/分享、导入多选。
+
+各版本完整变更见 **[CHANGES.md](CHANGES.md)**。
 
 ---
-
-## v1.1.0 更新亮点（相对 v1.0.0）
-
-- **更新 DSH（在线）重构**：新界面并行探测各 npm 源（官方 / 阿里 npmmirror / 腾讯云 / 华为云）的版本号与网络延迟 → 选源选版本（降级二次确认）→ 沙箱内用 npm 从所选源拉取 `@deepseek-ai/dsh` 及完整依赖树 → 自动重启生效；实时日志流、可取消、退出界面不中断安装。
-- **离线导入修复**：运行环境包官方 zip 导入失败、DSH 层包版本变 unknown 且重启被内置层覆盖、损坏/截断/加密 zip 闪退——均已修复；导入全链路异常转为可读提示。
-- **存储占用与清理**：占用按系统同口径统计（分配块、含应用缓存、进设置页自动刷新、可手动刷新）；新增「清理缓存与垃圾文件」（应用缓存 / 访客临时文件 / 运行日志 / apt 缓存，逐项勾选；回滚备份可选），与后台安装/导入互斥，绝不触碰 user-data/.dsh 与运行环境本体。
-- **导入格式全覆盖**：层归档支持 `.tar.zst / .tar.gz / .tar / .tgz / .bz2 / .xz`（按魔数识别）；支持裸 `base.tar` 层归档与「外层 tar 装层归档」布局。
 
 ## 核心特性
 
-- **DeepSeek Harness 全内嵌**：DSH（Agent Runtime）随 APK 内置，`DSH` 标签页通过内嵌 WebView
-  打开 `http://127.0.0.1:3080`（移动模式 WebView，原生键盘自适应）；首页也可一键用**系统浏览器**打开。
-- **完整分层运行环境**：Debian（base）+ Node.js（node）+ PRoot（android-side）+ DSH 层，
-  PRoot 用户态沙箱，与 Android 宿主隔离，无需 root；运行环境与用户数据相互独立。
-- **更新/导入管理**：设置页可**离线导入运行环境包**、**离线/在线更新 DSH**（内置多镜像源）、
-  装配 DSH 移动端适配插件（cordis `@local/dsh-mobile-adapt`），并带实时进度与失败回滚。
-- **在线更新新界面**（v1.1.0）：并行探测各 npm 源（官方 / 阿里 npmmirror / 腾讯云 / 华为云）的版本与延迟，选源选版本（降级二次确认），沙箱内用 npm 拉取完整依赖树并自动重启；实时日志、可取消。
-- **存储占用与清理**（v1.1.0）：系统同口径统计（分配块、含缓存、自动刷新）；设置页「清理缓存与垃圾文件」按项勾选清理临时文件/日志/apt 缓存（回滚备份可选），与后台安装互斥，不触碰工作区与对话数据。
-- **文件管理**：沙盒/工作区双视图（`/root/projects` 工作区 + 沙盒根），导入/导出引导，目录 ZIP，
-  搜索、排序、网格/列表切换。
-- **持久终端**：App 内常驻 shell 会话（`terminal-session` 模块）。
-- **前台服务保活** + 常驻通知（Android 13+ 已支持 `POST_NOTIFICATIONS` 运行时权限）。
-- **运行环境独立性**：`src/main/assets` 不含运行环境大层；运行时从分层包/导入包装配到
-  `runtime-current/{base,node,android-side,dsh}`，互不写入用户数据。
+### DeepSeek Harness 全内嵌
+
+- DSH 随 APK 内置，首启按**版本仲裁**装配到 `runtime-current/dsh`：已装较新则保留，换层时旧层备份到 `previous/dsh`（单份），不触碰用户数据
+- `DSH` 标签页内嵌 WebView 打开 `http://127.0.0.1:3080`：自动解析 launchToken 完成会话认证（兼容 DSH 0.1.2-rc.1）、移动 UA、键盘自适应、双指缩放、悬浮刷新
+- 首页可复制地址 / 一键用系统浏览器打开；前台服务通知带「打开 / 启动 / 重启 / 停止」快捷操作
+
+### PRoot 分层运行环境（无需 Root）
+
+四层独立装配，PRoot 用户态沙箱与 Android 宿主隔离，运行环境与用户数据（`user-data/` → guest `/root/projects`）互不写入：
+
+| 层 | 内容 | guest 挂载点 |
+|---|---|---|
+| base | Debian 13 (trixie) rootfs | `/`（rootfs） |
+| node | Node.js 24（npm / npx / corepack） | `/usr/local` |
+| dsh | DeepSeek Harness（npm 包） | `/opt/dshapp/runtime` |
+| android-side | PRoot / loader / shmem（宿主侧） | — |
+
+- 沙箱 keepalive 与 DSH 为两个独立 PRoot 进程；停机按 `/proc` 枚举整棵进程树、子进程优先 SIGKILL，不留孤儿、不占端口
+- 每层带 SHA-256 哨兵，启动时逐层校验完整性，损坏可识别、可重装
+
+### 文件管理（v1.2.0 重点增强）
+
+- **双视图**：工作区 `/root/projects` + 沙盒根（叠加 node、DSH 层），面包屑导航、列表 / 网格、按名称 / 时间 / 大小排序、新建文件夹、多选批量操作
+- **移动到指定文件夹**：全屏目标选择器（沙盒 / 工作区切换、可新建文件夹、源自身及子孙目录置灰防环、跨挂载点落点提示）；冲突三策略（覆盖 / 跳过 / 自动改名 + 应用到其余全部）；同卷 `renameTo` 优先、失败复制兜底（保留权限位 / 时间戳）；「重命名」走同一引擎
+- **导入**：文件多选批量导入、压缩包解压导入，逐件冲突决策、可取消、完成汇总；ZIP 中文名编码修复，加密 zip 明确拒绝
+- **导出**：多选导出到目录（SAF），或打包为 ZIP
+- **全局搜索**：跨沙盒 + 工作区，同时搜文件名与内容，结果带匹配片段
+- **风险保护**：系统目录 / node / DSH 层 / `.dsh` 分级标注，写操作前强确认
+
+- **通用文件查看器 / 编辑器** —— 魔数 + 内容嗅探 + 扩展名三级分类，任何文件必有界面：
+
+| 类型 | 能力 |
+|---|---|
+| 文本 / 代码 | Sora Editor 编辑（行号 / 撤销重做 / 搜索 / 自动换行），json / yaml / shell / python / js / java+kotlin 高亮；编码自动探测 + 手动切换，有损解码强制只读；大文件分级（≤2MB 可编辑 · 2–10MB 确认后编辑 · >10MB 只读尾窗）；原子保存 + 外部变更检测 + 未保存拦截 |
+| 图片 | 双指缩放 / 双击放大，超长图条带加载，GIF / 动态 WebP 动图，AVIF（Android 12+） |
+| PDF | 原生分页渲染；加密 PDF Android 15+ 可输密码，低版本引导外部打开 |
+| 压缩包 | zip / jar / apk / epub 与 tar 系只读浏览（目录折叠、加密条目标记）、包内文本预览、单条目 / 全部导出；ZIP 中文名不乱码；7z / RAR 信息卡 + 外部打开 |
+| 十六进制 | 偏移 / Hex / ASCII 三栏，64KB 块随机读，熵估计 |
+| Office | docx / xlsx 抽纯文本只读；doc / xls / ppt 信息卡 + 外部打开 |
+| Markdown / HTML / SVG | md 源文编辑 + Markwon 预览（含表格）；html / svg 离线 WebView 渲染（禁 JS、禁网络、退出即销毁） |
+| 未知 / 二进制 | 十六进制查看 + 文件信息卡；外部打开 / 编辑 / 分享 / 导出兜底 |
+
+### 更新与导入管理（设置页）
+
+| 功能 | 说明 |
+|---|---|
+| 更新 DSH（在线） | 并行探测 npm 官方 / 阿里 / 腾讯云 / 华为云镜像的版本与延迟 → 选源选版本（降级二次确认）→ 沙箱内 npm 拉取完整依赖树 → 换层自动重启；后台运行、实时日志、可取消（进程树 SIGKILL） |
+| 更新 DSH（离线导入） | 单文件层包 `.tar.zst / .tar.gz / .tar / .tgz`（或 zip 内含层包），暂存解压 → 形态校验 → 原子换层，失败不留半成品 |
+| 离线导入运行环境包 | 整包替换 base / node / android-side，逐层 SHA-256 校验，`previous/` 单份可回滚（详见下文） |
+| 装配移动端适配包 | cordis 插件 `@local/dsh-mobile-adapt`，开关即装即卸、可反复切换，不干预 DSH 生命周期 |
+| 诊断 | DSH / 沙箱 / 访客命令日志各 150 行，可滚动、可导出合并 |
+
+### 存储占用与清理
+
+- 占用按系统同口径统计（分配块、硬链接去重、含应用缓存），进设置页自动刷新、可手动刷新
+- 清理项独立勾选：应用缓存 / 访客临时文件（运行中仅清 24h 前条目）/ 运行日志（截断）/ apt 下载缓存；回滚备份可选并明确警告
+- 清理与后台安装 / 导入互斥，绝不触碰 `user-data/.dsh` 与运行环境本体
+
+### 终端
+
+- 多窗口：沙盒终端（PRoot Debian 完整环境，bash / vim / htop / node / npm / apt / git / python3 / ssh 开箱可用）/ 受限 shell 兜底，浮动控制面板新建 / 切换 / 关闭
+- 两行辅助按键栏（ESC / TAB / HOME / END / CTRL 粘滞 / 粘贴 / 方向键 / 翻页 / 退格 / 删除，DECCKM 感知），双指缩放字号 8–40sp
+- 基于 Termux terminal-emulator / terminal-view（v0.118.0，未修改）+ 自研 `terminal-session` 会话层
 
 ## 界面（底部 5 个标签）
 
 | 标签 | 功能 |
 |---|---|
-| 首页 | 沙箱/DSH 状态，启动/停止/重启，复制地址，在系统浏览器中打开 DSH |
-| 文件 | 沙盒 + 工作区双视图浏览、导入/导出、目录 ZIP、搜索/排序 |
-| DSH | 内嵌 WebView 加载 `http://127.0.0.1:3080` 的 DSH WebUI |
-| 终端 | App 内持久 shell 会话 |
-| 设置 | 运行环境包导入、DSH 离线/在线更新、移动端适配装配、诊断、版本信息 |
+| 首页 | 沙箱 / DSH 状态卡片、启动 / 停止 / 重启、运行时长、复制地址、系统浏览器打开 DSH |
+| 文件 | 双视图浏览、移动 / 重命名 / 删除、多选批量、导入 / 导出、查看器 / 编辑器、搜索 / 排序 |
+| DSH | 内嵌 WebView 加载 `http://127.0.0.1:3080`（自动认证、键盘自适应、悬浮刷新） |
+| 终端 | 多窗口终端、辅助按键栏、控制面板 |
+| 设置 | 存储与清理、DSH 更新（在线 / 离线）、运行环境包导入、移动端适配装配、诊断、关于 |
 
 ## 从源码构建
 
-环境要求：JDK 21、Android SDK（compileSdk/targetSdk 36、build-tools 36.0.0）、Gradle wrapper 8.11.1（离线缓存）。
-运行环境大层**不在本仓库**（见下节），构建前请先获取 `../runtime/`。
+| 环境 | 版本 |
+|---|---|
+| JDK | 21（官方 CI 使用 Temurin 21） |
+| Android SDK | compileSdk / targetSdk 36 · build-tools 36.0.0 |
+| Gradle | wrapper 8.11.1（AGP 8.9.2 · Kotlin 2.0.21） |
+
+> 运行环境大层**不在本仓库**（见下节），构建前请先获取 `../runtime/`。
 
 ```bash
-./gradlew :terminal-session:testDebugUnitTest :app:assembleRelease
-# 产物：app/build/outputs/apk/release/app-release.apk
+./gradlew testDebugUnitTest     # 全量 JVM 单测（v1.2.0 共 172 例）
+./gradlew :app:assembleRelease  # 产物：app/build/outputs/apk/release/app-release.apk
 ```
 
-运行环境层的构建脚本与说明见 `runtime-bundle/`（base/node/android-side 各层 `tar.zst` 由
-`build_base.sh` / `build_node.sh` / `build_android_side.sh` 在 Linux/root 环境构建，再纳入 `runtime/android-assets`）。
+| 模块 | 职责 |
+|---|---|
+| `app` | 全部 UI（5 个标签页、查看器、设置 / 诊断 / 更新页）、前台服务、在线更新编排 |
+| `sandbox-manager` | 分层运行时装配、PRoot 进程管理、DSH 层仲裁与更新、导入 / 校验 / 清理 |
+| `common` | 常量、npm 镜像源、版本比较、日志脱敏 |
+| `bridge` | WebView JS Bridge 安全框架（预留 stub） |
+| `terminal-session` | 终端会话层（多窗口、PRoot 终端命令构建） |
+| `terminal-view` / `terminal-emulator` | Termux 终端库（v0.118.0，未修改） |
 
-## 运行环境大文件（不在本仓库，做好引用）
+运行环境层构建脚本见 `runtime-bundle/`（各层 `tar.zst` 由 `build_base.sh` / `build_node.sh` / `build_android_side.sh` 在 Linux/WSL2 构建）；构建手册见 `docs/BUILD_RUNBOOK.md`，预检脚本 `tools/pipeline_dryrun.sh`。
 
-本仓库（`source/`）**不包含**运行环境大层：`base` / `node` / `android-side` 的 `.tar.zst`、DSH 层 `0.1.1-rc.2-patched.tar.zst`；
-也**不包含**签名密钥（`keystore.properties`、`local.properties`）。
+## 运行环境大文件（不在本仓库）
 
-- **大层位置与获取**：这些大文件随发布包放在发布目录 `../runtime/`（整包 `dshapp-runtime-debian-arm64-0.1.0.zip` +
-  `android-assets/{runtime,dsh}/` 分层 + DSH 层），或从对应发布/下载源获取。
-- **引用方式**：`app/build.gradle.kts` 通过 `assets.srcDirs("../../runtime/android-assets")` **引用**发布目录的 `runtime/`，
-  构建完整版 APK 时把它们内嵌进 `assets/runtime/*` 与 `assets/dsh/*`。
-- **构建前置条件**：`assembleRelease` 前需先获取 `runtime/`（若目录缺失则无法内嵌完整运行环境）。
-- **签名密钥**：`keystore.properties`、`local.properties` 未包含；请用 `tools/create_keystore.sh` 自建开发签名后构建 release APK。
+| 发布包内路径 | 内容 |
+|---|---|
+| `runtime/android-assets/runtime/{base,node,android-side}.tar.zst` | 三层运行环境，各带 `.sha256` 侧车与 `runtime-profile.json` |
+| `runtime/android-assets/dsh/0.1.1-rc.2-patched.tar.zst` | DSH 层 + `.sha256` |
+| `runtime/dshapp-runtime-debian-arm64-0.1.0.zip` | 对外交付的运行环境整包（离线导入用） |
+
+- 引用方式：`app/build.gradle.kts` 通过 `assets.srcDirs("../../runtime/android-assets")` 引用发布目录，构建时内嵌进 `assets/runtime/*` 与 `assets/dsh/*`
+- 构建前置：`assembleRelease` 前需先获取 `runtime/`，目录缺失则无法内嵌完整运行环境
+- 签名密钥（`keystore.properties`、`local.properties`）不在仓库内：用 `tools/create_keystore.sh` 自建开发签名，未配置时 release 构建回退 debug 签名
 
 ## 离线导入运行环境包
 
-运行环境主体（base + node + android-side）对外以**一个文件** `dshapp-runtime-debian-arm64-0.1.0.zip`
-交付，在设置页「离线导入运行环境包」选择即可；DSH 更新走「更新 DSH（离线）」单文件 `0.1.1-rc.2-patched.tar.zst`。
+- 交付形式：单文件 `dshapp-runtime-debian-arm64-0.1.0.zip`，设置页「离线导入运行环境包」选择即可
+- 布局与格式：外层 zip / tar；层归档 `.tar.zst / .tar.gz / .tar / .tgz / .bz2 / .xz`（按魔数识别），兼容一层目录前缀与外层 tar 装层归档
+- 校验：逐层 SHA-256（侧车与 `runtime-profile.json` 交叉核对）+ Zip-Slip 防护；损坏 / 截断 / 加密包返回可读错误
+- 替换：旧本体移入 `previous/`（单份可回滚），绝不触碰 DSH 层与 `user-data/.dsh`
+- DSH 离线更新走「更新 DSH（离线导入）」单文件层包（如 `0.1.1-rc.2-patched.tar.zst`）
 
 ## 许可证
 
-本项目采用 **GPL v3** 许可（见 [LICENSE](LICENSE)）。第三方组件许可见 `THIRD_PARTY_NOTICES.md`：
-PRoot（GPL-2+）、talloc（LGPL-3+）、Debian rootfs（各包按 Debian 版权文件）、DeepSeek Harness / Cordis（MIT）、
-Termux terminal-emulator / terminal-view（Apache-2.0，未修改）等，均按其各自原许可继续适用。
+本项目采用 **GPL v3**（见 [LICENSE](LICENSE)）。第三方组件按其各自原许可继续适用，详见 `THIRD_PARTY_NOTICES.md`：
+
+- PRoot（GPL-2+）· talloc（LGPL-3+）· Debian rootfs（按各包 Debian 版权文件）
+- DeepSeek Harness / Cordis（MIT）· Node.js（MIT）
+- Termux terminal-emulator / terminal-view（Apache-2.0，v0.118.0 未修改）
+- sora-editor（LGPL-2.1-or-later，aar 未修改）· Markwon（Apache-2.0）· commons-compress（Apache-2.0）· zstd-jni（BSD-3-Clause）
