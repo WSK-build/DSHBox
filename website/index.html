@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DSHBox — Run DeepSeek Harness (DSH) Locally on Android Phones &amp; Tablets</title>
+  <meta name="description" content="DSHBox is the Android mobile client for DeepSeek Harness (DSH). Run the full harness completely on-device on Android phones and tablets — Debian, Node.js, DSH, PRoot and WebView in one APK. No root, no Termux, no other software. 中文：DSHBox 是 DeepSeek Harness（DSH）的安卓移动端，一个 APK 在手机与平板上本地完整运行 DSH，免 Root、免 Termux、不依赖其他软件。">
+  <meta name="keywords" content="DeepSeek Harness, DSH, dsh-android, dsh-mobile, dshbox, dsh android, dsh for android, deepseek harness android, deepseek harness mobile, DeepSeek 手机端, DSH 手机端, Android, 安卓, 手机, 平板, 本地运行, 手机本地运行 DeepSeek, 免Root, no root, no Termux, Termux, Debian, Node.js, PRoot, WebView, LLM, 大模型, AI assistant, APK">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://wsk-build.github.io/DSHBox/">
+  <meta name="theme-color" content="#10A37F">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="DSHBox — DeepSeek Harness for Android">
+  <meta property="og:description" content="Run the full DeepSeek Harness (DSH) locally on Android phones and tablets. One APK, no root and no Termux required.">
+  <meta property="og:url" content="https://wsk-build.github.io/DSHBox/">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:image" content="https://wsk-build.github.io/DSHBox/assets/images/hero-product-crop.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="DSHBox — DeepSeek Harness for Android">
+  <meta name="twitter:description" content="Run the full DeepSeek Harness locally on Android phones and tablets.">
+  <meta name="twitter:image" content="https://wsk-build.github.io/DSHBox/assets/images/hero-product-crop.jpg">
+
+  <link rel="icon" type="image/png" href="./assets/images/app-icon.png">
+  <link rel="apple-touch-icon" href="./assets/images/app-icon.png">
+  <link rel="manifest" href="./site.webmanifest">
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://wsk-build.github.io/DSHBox/#website",
+        "url": "https://wsk-build.github.io/DSHBox/",
+        "name": "DSHBox",
+        "inLanguage": ["en", "zh-CN"]
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "DSHBox",
+        "alternateName": ["DeepSeek Harness for Android", "DeepSeek Harness 安卓移动端", "dsh-android", "dsh-mobile"],
+        "keywords": ["dsh-android", "dsh-mobile", "dsh android", "dsh for android", "deepseek harness android", "deepseek harness mobile", "DeepSeek 手机端", "DSH 手机端", "手机本地运行 DeepSeek", "Android 本地 AI"],
+        "url": "https://wsk-build.github.io/DSHBox/",
+        "sameAs": ["https://github.com/WSK-build/DSHBox", "https://github.com/WSK-build/DSHBox/releases/latest"],
+        "applicationCategory": "MobileApplication",
+        "applicationSubCategory": "Local AI / LLM assistant",
+        "operatingSystem": "Android (ARM64, Android 10+)",
+        "softwareVersion": "1.3.0",
+        "inLanguage": ["en", "zh-CN"],
+        "description": "DSHBox is the Android mobile client for DeepSeek Harness (DSH). It runs the full DeepSeek Harness entirely on-device on Android phones and tablets, bundling Debian, Node.js, the DSH layer, PRoot and an embedded WebView into a single APK. No root access, no separate Termux installation and no other software are required. 中文：DSHBox 是 DeepSeek Harness（DSH）的安卓移动端，在安卓手机与平板上用一个 APK 本地完整运行 DeepSeek Harness——内置 Debian、Node.js、DSH 层、PRoot 与 WebView，无需 Root、无需单独安装 Termux、不依赖任何其他软件。",
+        "featureList": [
+          "Runs the full DeepSeek Harness (DSH) locally on Android",
+          "Supports Android phones and tablets (ARM64)",
+          "No root required",
+          "No Termux or other external software required",
+          "Single APK with Debian, Node.js, DSH, PRoot and WebView",
+          "UI localized in English, Chinese, Arabic, Spanish, French and Russian"
+        ],
+        "offers": {
+          "@type": "Offer",
+          "url": "https://github.com/WSK-build/DSHBox/releases/latest",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    ]
+  }
+  </script>
+  <script>
+    /* Set language before first paint to avoid mixed-language flash */
+    document.documentElement.lang =
+      localStorage.getItem("dshbox-lang") ||
+      ((navigator.language || "en").toLowerCase().indexOf("zh") === 0 ? "zh" : "en");
+  </script>
+</head>
+<body>
+
+  <a class="skip-link" href="#main"><span class="lang-en">Skip to content</span><span class="lang-zh">跳到正文</span></a>
+
+  <header class="site-header" id="top">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="DSHBox home">
+        <img class="brand-mark" src="./assets/images/app-icon.png" width="192" height="192" alt="" aria-hidden="true">
+        <span class="brand-name">DSHBox</span>
+      </a>
+
+      <nav class="site-nav" id="site-nav" aria-label="Main navigation">
+        <ul>
+          <li><a href="#features"><span class="lang-en">Features</span><span class="lang-zh">功能</span></a></li>
+          <li><a href="#screenshots"><span class="lang-en">Screenshots</span><span class="lang-zh">截图</span></a></li>
+          <li><a href="#how-it-works"><span class="lang-en">How It Works</span><span class="lang-zh">工作原理</span></a></li>
+          <li><a href="#download"><span class="lang-en">Download</span><span class="lang-zh">下载</span></a></li>
+          <li><a href="#faq"><span class="lang-en">FAQ</span><span class="lang-zh">常见问题</span></a></li>
+          <li><a class="nav-github" href="https://github.com/WSK-build/DSHBox" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-tools">
+        <div class="lang-toggle" role="group" aria-label="Language / 语言">
+          <button type="button" class="lang-btn" data-lang-btn="en" aria-pressed="true">EN</button>
+          <button type="button" class="lang-btn" data-lang-btn="zh" aria-pressed="false">中文</button>
+        </div>
+
+        <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="site-nav">
+          <span class="nav-toggle-bar" aria-hidden="true"></span>
+          <span class="visually-hidden">Toggle navigation</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="hero" data-snap>
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <p class="hero-badge reveal">
+            <img src="./assets/images/app-icon.png" width="192" height="192" alt="" aria-hidden="true">
+            <span class="lang-en">Open source · GPL-3.0 · Community project</span>
+            <span class="lang-zh">开源 · GPL-3.0 · 社区项目</span>
+          </p>
+          <h1 class="reveal hero-title">DSHBox</h1>
+          <p class="hero-subtitle reveal">
+            <span class="lang-en">The Android mobile client for DeepSeek Harness (DSH) — run the full harness completely on-device, on phones and tablets.</span>
+            <span class="lang-zh" lang="zh-CN">DeepSeek Harness（DSH）的安卓移动端——在手机与平板上完全本地化、完整运行 DSH。</span>
+          </p>
+          <p class="hero-note reveal">
+            <span class="lang-en">One APK with Debian, Node.js, DSH, PRoot, and WebView. No root or separate Termux installation required.</span>
+            <span class="lang-zh" lang="zh-CN">一个 APK 内置 Debian、Node.js、DSH、PRoot 与 WebView。无需 Root，无需单独安装 Termux。</span>
+          </p>
+
+          <div class="hero-actions reveal">
+            <a id="download-apk" class="button button-primary" href="https://github.com/WSK-build/DSHBox/releases/latest">
+              <span class="lang-en">Download APK</span>
+              <span class="lang-zh">下载 APK</span>
+            </a>
+            <button id="copy-download-link" class="button button-ghost" type="button">
+              <span class="lang-en">Copy download link</span>
+              <span class="lang-zh">复制下载链接</span>
+            </button>
+            <a class="button button-secondary" href="https://github.com/WSK-build/DSHBox" target="_blank" rel="noopener">
+              <span class="lang-en">View on GitHub</span>
+              <span class="lang-zh">在 GitHub 查看</span>
+            </a>
+          </div>
+
+          <p id="release-information" class="release-info reveal" aria-live="polite">
+            <span class="lang-en">Checking the latest release…</span>
+            <span class="lang-zh">正在获取最新版本…</span>
+          </p>
+
+          <ul class="hero-links reveal">
+            <li><a href="https://github.com/deepseek-ai/deepseek-harness/discussions/5801" target="_blank" rel="noopener">
+              <span class="lang-en">Community Discussion</span><span class="lang-zh">社区讨论</span>
+            </a></li>
+            <li><a href="https://github.com/WSK-build/DSHBox#readme" target="_blank" rel="noopener">
+              <span class="lang-en">Installation Guide</span><span class="lang-zh">安装指南</span>
+            </a></li>
+          </ul>
+        </div>
+
+        <figure class="hero-visual reveal">
+          <img
+            src="./assets/images/hero-product-crop.jpg"
+            width="1140" height="884"
+            alt="DSHBox running DeepSeek Harness locally on Android phones and tablets"
+            decoding="async"
+          >
+        </figure>
+      </div>
+
+      <div class="scroll-hint" aria-hidden="true">
+        <span class="scroll-hint-mouse"></span>
+        <span class="lang-en">Scroll</span><span class="lang-zh">滑动</span>
+      </div>
+    </section>
+
+    <!-- ============ STATS STRIP ============ -->
+    <section class="stats" aria-label="Current release facts">
+      <div class="container">
+        <dl class="stats-strip reveal">
+          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd>v1.3.0</dd></div>
+          <div class="stat" style="--i:1"><dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt><dd>237 MB</dd></div>
+          <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime after setup</span><span class="lang-zh">初始化后运行环境</span></dt><dd>193 MB</dd></div>
+          <div class="stat" style="--i:3"><dt><span class="lang-en">Android</span><span class="lang-zh">系统要求</span></dt><dd>10+ (ARM64)</dd></div>
+          <div class="stat" style="--i:4"><dt><span class="lang-en">Unit tests</span><span class="lang-zh">单元测试</span></dt><dd>214</dd></div>
+          <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd>0.1.1-rc.2</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ============ FEATURES ============ -->
+    <section class="section" id="features" data-snap>
+      <div class="container">
+        <header class="section-header reveal">
+          <p class="eyebrow"><span class="lang-en">Features</span><span class="lang-zh">核心功能</span></p>
+          <h2>
+            <span class="lang-en">Everything in one APK</span>
+            <span class="lang-zh">一个 APK，装下完整工具链</span>
+          </h2>
+          <p>
+            <span class="lang-en">DSHBox bundles the complete toolchain, so the whole DeepSeek Harness workflow fits in your pocket.</span>
+            <span class="lang-zh">DSHBox 打包了全部依赖，完整的 DeepSeek Harness 工作流直接装进口袋。</span>
+          </p>
+        </header>
+
+        <div class="feature-grid">
+          <article class="feature-card reveal" style="--i:0">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10l2.5 2L8 14M12.5 14.5H16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3><span class="lang-en">Full DSH Runtime</span><span class="lang-zh">完整 DSH 运行时</span></h3>
+            <p>
+              <span class="lang-en">Run the complete DeepSeek Harness natively on Android — sessions, agents and tool calls, all on-device.</span>
+              <span class="lang-zh">在 Android 本机运行完整 DeepSeek Harness——会话、Agent 与工具调用，全部在设备上完成。</span>
+            </p>
+          </article>
+
+          <article class="feature-card reveal" style="--i:1">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-3 8.2-7 9.5C8 19.2 5 15.4 5 11V6l7-3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 11.5l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3><span class="lang-en">No Root</span><span class="lang-zh">无需 Root</span></h3>
+            <p>
+              <span class="lang-en">PRoot provides a root-free Debian user-space environment. Your device stays unmodified.</span>
+              <span class="lang-zh">PRoot 提供免 Root 的 Debian 用户态环境，不改动你的系统。</span>
+            </p>
+          </article>
+
+          <article class="feature-card reveal" style="--i:2">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
+            <h3><span class="lang-en">No Separate Termux</span><span class="lang-zh">无需单独装 Termux</span></h3>
+            <p>
+              <span class="lang-en">The APK ships the environment it needs. Install one app — no Termux setup, no manual provisioning.</span>
+              <span class="lang-zh">APK 内置所需环境，装一个 App 即可，无需 Termux 配置。</span>
+            </p>
+          </article>
+
+          <article class="feature-card reveal" style="--i:3">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="8" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M14 8v10" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <h3><span class="lang-en">Phone &amp; Tablet</span><span class="lang-zh">手机与平板</span></h3>
+            <p>
+              <span class="lang-en">Tested on real Android phones and tablets, from compact screens to large landscape displays.</span>
+              <span class="lang-zh">已在真实 Android 手机与平板上测试，小屏到大屏横屏均适配。</span>
+            </p>
+          </article>
+
+          <article class="feature-card reveal" style="--i:4">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.3 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.3-3.8-8.5S9.5 5.8 12 3.5z" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <h3><span class="lang-en">Embedded WebUI</span><span class="lang-zh">内嵌 WebUI</span></h3>
+            <p>
+              <span class="lang-en">A built-in WebView talks to the local DSH web server at <code>127.0.0.1:3080</code> — and the system browser works too.</span>
+              <span class="lang-zh">内置 WebView 连接本地 DSH 服务 <code>127.0.0.1:3080</code>，也支持系统浏览器打开。</span>
+            </p>
+          </article>
+
+          <article class="feature-card reveal" style="--i:5">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 015 5h4.2l2 2.5H19a1.5 1.5 0 011.5 1.5v8A1.5 1.5 0 0119 18.5H5A1.5 1.5 0 013.5 17v-10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            </div>
+            <h3><span class="lang-en">File Manager &amp; Terminal</span><span class="lang-zh">文件管理器与终端</span></h3>
+            <p>
+              <span class="lang-en">Browse workspaces with the built-in file manager and drive everything from a persistent terminal.</span>
+              <span class="lang-zh">内置文件管理器浏览工作区，持久终端驱动一切操作。</span>
+            </p>
+          </article>
+
+          <article class="feature-card reveal" style="--i:6">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
+            <h3><span class="lang-en">Local &amp; Private</span><span class="lang-zh">本地与隐私</span></h3>
+            <p>
+              <span class="lang-en">Sessions, files and the web server all live on your device. Nothing is uploaded by DSHBox itself.</span>
+              <span class="lang-zh">会话、文件与 Web 服务都在你的设备上，DSHBox 自身不上传任何数据。</span>
+            </p>
+          </article>
+
+          <article class="feature-card reveal" style="--i:7">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3l2.4 5 5.6.7-4.1 3.8 1.1 5.5L12 15.3 7 18l1.1-5.5L4 8.7 9.6 8 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            </div>
+            <h3><span class="lang-en">Open Source</span><span class="lang-zh">开源</span></h3>
+            <p>
+              <span class="lang-en">GPL-3.0 licensed, 172 unit tests across 8 Gradle modules. Audit it, build it, fork it.</span>
+              <span class="lang-zh">GPL-3.0 协议，8 个 Gradle 模块、172 个单元测试。可审计、可构建、可复用。</span>
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCREENSHOTS ============ -->
+    <section class="section section-tinted" id="screenshots" data-snap>
+      <div class="container">
+        <header class="section-header reveal">
+          <p class="eyebrow"><span class="lang-en">Screenshots</span><span class="lang-zh">产品截图</span></p>
+          <h2>
+            <span class="lang-en">Seen on a real device</span>
+            <span class="lang-zh">来自真实运行设备</span>
+          </h2>
+          <p>
+            <span class="lang-en">Real captures from a running device — the WebUI, terminal, file manager and settings.</span>
+            <span class="lang-zh">真机实拍画面——WebUI、终端、文件管理器与设置。</span>
+          </p>
+        </header>
+
+        <div class="shot-grid">
+          <figure class="shot-card reveal" style="--i:0">
+            <img src="./assets/images/phone-02-dsh-webui.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="DSH WebUI chat session running inside DSHBox on a phone">
+            <figcaption><span class="lang-en">DSH WebUI</span><span class="lang-zh">DSH WebUI</span></figcaption>
+          </figure>
+          <figure class="shot-card reveal" style="--i:1">
+            <img src="./assets/images/phone-03-terminal.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Persistent terminal session inside DSHBox">
+            <figcaption><span class="lang-en">Terminal</span><span class="lang-zh">终端</span></figcaption>
+          </figure>
+          <figure class="shot-card reveal" style="--i:2">
+            <img src="./assets/images/phone-04-files.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Built-in file manager browsing a workspace in DSHBox">
+            <figcaption><span class="lang-en">File Manager</span><span class="lang-zh">文件管理器</span></figcaption>
+          </figure>
+          <figure class="shot-card reveal" style="--i:3">
+            <img src="./assets/images/phone-06-settings.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="DSHBox settings and update page">
+            <figcaption><span class="lang-en">Settings &amp; Updates</span><span class="lang-zh">设置与更新</span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section class="section" id="how-it-works" data-snap>
+      <div class="container">
+        <header class="section-header reveal">
+          <p class="eyebrow"><span class="lang-en">How It Works</span><span class="lang-zh">工作原理</span></p>
+          <h2>
+            <span class="lang-en">From launch to Harness session</span>
+            <span class="lang-zh">从启动到 Harness 会话</span>
+          </h2>
+          <p>
+            <span class="lang-en">Five layers, all on your device.</span>
+            <span class="lang-zh">五层结构，全部在你的设备上完成。</span>
+          </p>
+        </header>
+
+        <ol class="flow reveal">
+          <li class="flow-step" style="--i:0">
+            <span class="flow-num" aria-hidden="true">1</span>
+            <div>
+              <h3><span class="lang-en">Android App</span><span class="lang-zh">Android App</span></h3>
+              <p><span class="lang-en">DSHBox starts and manages the whole environment.</span><span class="lang-zh">DSHBox 启动并管理整个环境。</span></p>
+            </div>
+          </li>
+          <li class="flow-step" style="--i:1">
+            <span class="flow-num" aria-hidden="true">2</span>
+            <div>
+              <h3><span class="lang-en">PRoot Debian Environment</span><span class="lang-zh">PRoot Debian 环境</span></h3>
+              <p><span class="lang-en">A user-space Debian distribution, no root required.</span><span class="lang-zh">用户态 Debian 发行版，无需 Root。</span></p>
+            </div>
+          </li>
+          <li class="flow-step" style="--i:2">
+            <span class="flow-num" aria-hidden="true">3</span>
+            <div>
+              <h3><span class="lang-en">Node.js + DeepSeek Harness</span><span class="lang-zh">Node.js + DeepSeek Harness</span></h3>
+              <p><span class="lang-en">DSH runs inside the bundled Node.js runtime.</span><span class="lang-zh">DSH 运行在内置 Node.js 之上。</span></p>
+            </div>
+          </li>
+          <li class="flow-step" style="--i:3">
+            <span class="flow-num" aria-hidden="true">4</span>
+            <div>
+              <h3><span class="lang-en">Local DSH Web Server</span><span class="lang-zh">本地 DSH Web 服务</span></h3>
+              <p><span class="lang-en">The Harness serves its WebUI on <code>127.0.0.1:3080</code>.</span><span class="lang-zh">Harness 在 <code>127.0.0.1:3080</code> 提供 WebUI。</span></p>
+            </div>
+          </li>
+          <li class="flow-step" style="--i:4">
+            <span class="flow-num" aria-hidden="true">5</span>
+            <div>
+              <h3><span class="lang-en">WebView / System Browser</span><span class="lang-zh">WebView / 系统浏览器</span></h3>
+              <p><span class="lang-en">You interact through the app or any local browser.</span><span class="lang-zh">通过 App 或任意本地浏览器交互。</span></p>
+            </div>
+          </li>
+        </ol>
+
+        <aside class="note-card reveal">
+          <h3><span class="lang-en">Security note</span><span class="lang-zh">安全说明</span></h3>
+          <p>
+            <span class="lang-en">PRoot is a user-space Linux environment. It is <strong>not</strong> a kernel-level security sandbox. Treat DSHBox like any other developer tool you run locally, and only run workloads you trust.</span>
+            <span class="lang-zh">PRoot 是用户态 Linux 环境，<strong>不是</strong>内核级安全沙箱。请像对待其他本地开发工具一样对待 DSHBox，只运行你信任的工作负载。</span>
+          </p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ REQUIREMENTS ============ -->
+    <section class="section section-tinted" id="requirements" data-snap>
+      <div class="container">
+        <header class="section-header reveal">
+          <p class="eyebrow"><span class="lang-en">Requirements</span><span class="lang-zh">系统要求</span></p>
+          <h2>
+            <span class="lang-en">Will it run on my device?</span>
+            <span class="lang-zh">我的设备能跑吗？</span>
+          </h2>
+          <p>
+            <span class="lang-en">Measured on a recent release build.</span>
+            <span class="lang-zh">基于近期 Release 构建实测数据。</span>
+          </p>
+        </header>
+
+        <div class="req-grid">
+          <div class="req-card reveal" style="--i:0">
+            <h3><span class="lang-en">Device</span><span class="lang-zh">设备</span></h3>
+            <ul>
+              <li><span class="lang-en">Android 10 or newer (minSdk 29)</span><span class="lang-zh">Android 10 或更高（minSdk 29）</span></li>
+              <li><span class="lang-en">ARM64 phone or tablet (targetSdk 36)</span><span class="lang-zh">ARM64 手机或平板（targetSdk 36）</span></li>
+              <li><span class="lang-en">No root required</span><span class="lang-zh">无需 Root</span></li>
+            </ul>
+          </div>
+          <div class="req-card reveal" style="--i:1">
+            <h3><span class="lang-en">Storage &amp; Network</span><span class="lang-zh">存储与网络</span></h3>
+            <ul>
+              <li><span class="lang-en">237 MB for the APK download</span><span class="lang-zh">APK 下载占 237 MB</span></li>
+              <li><span class="lang-en">193 MB runtime environment after first setup</span><span class="lang-zh">首次初始化后运行环境占 193 MB</span></li>
+              <li><span class="lang-en">Network needed for first-time initialization</span><span class="lang-zh">首次初始化需要网络</span></li>
+            </ul>
+          </div>
+          <div class="req-card reveal" style="--i:2">
+            <h3><span class="lang-en">Bundled Stack</span><span class="lang-zh">内置组件</span></h3>
+            <ul>
+              <li><span class="lang-en">Debian user-space via PRoot</span><span class="lang-zh">PRoot 提供的 Debian 用户态</span></li>
+              <li><span class="lang-en">Node.js runtime</span><span class="lang-zh">Node.js 运行时</span></li>
+              <li><span class="lang-en">DSH 0.1.1-rc.2</span><span class="lang-zh">DSH 0.1.1-rc.2</span></li>
+              <li><span class="lang-en">Embedded WebView + local web server</span><span class="lang-zh">内嵌 WebView + 本地 Web 服务</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DOWNLOAD ============ -->
+    <section class="section section-download" id="download" data-snap>
+      <div class="container">
+        <div class="download-card reveal">
+          <header class="section-header">
+            <h2>
+              <span class="lang-en">Download DSHBox</span>
+              <span class="lang-zh">下载 DSHBox</span>
+            </h2>
+            <p>
+              <span class="lang-en">The button below always resolves to the latest APK from GitHub Releases. If the API is unreachable, you can still download manually from the Releases page.</span>
+              <span class="lang-zh">下方按钮始终解析 GitHub Releases 上的最新 APK。若 API 加载失败，仍可通过 Release 页面手动下载。</span>
+            </p>
+          </header>
+
+          <div class="download-actions">
+            <a id="download-apk-hero" class="button button-primary button-large" href="https://github.com/WSK-build/DSHBox/releases/latest">
+              <span class="lang-en">Download APK</span>
+              <span class="lang-zh">下载 APK</span>
+            </a>
+            <button id="copy-download-link-hero" class="button button-ghost button-large" type="button">
+              <span class="lang-en">Copy download link</span>
+              <span class="lang-zh">复制下载链接</span>
+            </button>
+          </div>
+
+          <p id="release-information-hero" class="release-info" aria-live="polite">
+            <span class="lang-en">Checking the latest release…</span>
+            <span class="lang-zh">正在获取最新版本…</span>
+          </p>
+
+          <ul class="download-meta">
+            <li>Android 10+</li>
+            <li>ARM64</li>
+            <li>GPL-3.0</li>
+            <li><a href="https://github.com/WSK-build/DSHBox/releases/latest" target="_blank" rel="noopener"><span class="lang-en">View release notes</span><span class="lang-zh">查看 Release 说明</span></a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="section" id="faq" data-snap>
+      <div class="container container-narrow">
+        <header class="section-header reveal">
+          <p class="eyebrow"><span class="lang-en">FAQ</span><span class="lang-zh">常见问题</span></p>
+          <h2>
+            <span class="lang-en">Frequently asked questions</span>
+            <span class="lang-zh">你想问的都在这里</span>
+          </h2>
+          <p>
+            <span class="lang-en">Common questions about running DSH on Android.</span>
+            <span class="lang-zh">关于在 Android 上运行 DSH 的常见问题。</span>
+          </p>
+        </header>
+
+        <div class="faq-list">
+          <details class="faq-item reveal" style="--i:0">
+            <summary>
+              <span class="lang-en">Does DSHBox need root?</span>
+              <span class="lang-zh">DSHBox 需要 Root 吗？</span>
+            </summary>
+            <p>
+              <span class="lang-en">No. DSHBox uses PRoot to provide a Debian user-space environment without rooting your device.</span>
+              <span class="lang-zh">不需要。DSHBox 使用 PRoot 提供免 Root 的 Debian 用户态环境。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:1">
+            <summary>
+              <span class="lang-en">Do I need to install Termux separately?</span>
+              <span class="lang-zh">需要单独安装 Termux 吗？</span>
+            </summary>
+            <p>
+              <span class="lang-en">No. The APK bundles everything it needs — Debian, Node.js, DSH and PRoot. There is no Termux dependency.</span>
+              <span class="lang-zh">不需要。APK 内置 Debian、Node.js、DSH 与 PRoot，完全不依赖 Termux。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:2">
+            <summary>
+              <span class="lang-en">Does it support Android tablets?</span>
+              <span class="lang-zh">支持 Android 平板吗？</span>
+            </summary>
+            <p>
+              <span class="lang-en">Yes. DSHBox has been tested on Android phones and tablets, and the WebUI adapts to larger screens.</span>
+              <span class="lang-zh">支持。DSHBox 已在手机与平板上测试，WebUI 会自动适配大屏。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:3">
+            <summary>
+              <span class="lang-en">Does it support x86 or 32-bit devices?</span>
+              <span class="lang-zh">支持 x86 或 32 位设备吗？</span>
+            </summary>
+            <p>
+              <span class="lang-en">No. The current build targets ARM64 devices only.</span>
+              <span class="lang-zh">不支持。当前构建仅面向 ARM64 设备。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:4">
+            <summary>
+              <span class="lang-en">Is there an iOS version?</span>
+              <span class="lang-zh">有 iOS 版本吗？</span>
+            </summary>
+            <p>
+              <span class="lang-en">No. DSHBox is Android-only. iOS does not allow the kind of local runtime environment DSHBox relies on.</span>
+              <span class="lang-zh">没有。DSHBox 仅支持 Android，iOS 不允许此类本地运行时环境。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:5">
+            <summary>
+              <span class="lang-en">Where is my data stored?</span>
+              <span class="lang-zh">我的数据存在哪里？</span>
+            </summary>
+            <p>
+              <span class="lang-en">All sessions, workspaces and the local web server live inside the app's private storage on your device. DSHBox does not upload your data anywhere by itself.</span>
+              <span class="lang-zh">所有会话、工作区和本地 Web 服务都在 App 私有存储中。DSHBox 不会自行上传你的数据。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:6">
+            <summary>
+              <span class="lang-en">How do I upgrade DSH?</span>
+              <span class="lang-zh">如何升级 DSH？</span>
+            </summary>
+            <p>
+              <span class="lang-en">DSHBox ships a pinned, tested DSH version (currently 0.1.1-rc.2). Updates arrive with new DSHBox releases — check the Releases page for details.</span>
+              <span class="lang-zh">DSHBox 内置经过测试的固定 DSH 版本（当前为 0.1.1-rc.2），随 DSHBox 新版本一起更新，详情见 Releases 页面。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:7">
+            <summary>
+              <span class="lang-en">How do I back up sessions and workspaces?</span>
+              <span class="lang-zh">如何备份会话与工作区？</span>
+            </summary>
+            <p>
+              <span class="lang-en">Use the built-in file manager or your device's file transfer tools to copy the workspace directories out of DSHBox's storage. Keep regular copies before upgrading.</span>
+              <span class="lang-zh">使用内置文件管理器或系统文件传输工具，把工作区目录复制到 DSHBox 存储之外；升级前请保留副本。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:8">
+            <summary>
+              <span class="lang-en">Is PRoot a full security sandbox?</span>
+              <span class="lang-zh">PRoot 是完整的安全沙箱吗？</span>
+            </summary>
+            <p>
+              <span class="lang-en">No. PRoot provides a user-space Linux environment, not a kernel-level sandbox. Do not use it to run untrusted code.</span>
+              <span class="lang-zh">不是。PRoot 提供的是用户态 Linux 环境，不是内核级沙箱，请勿用它运行不受信任的代码。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:9">
+            <summary>
+              <span class="lang-en">Is DSHBox an official DeepSeek project?</span>
+              <span class="lang-zh">DSHBox 是 DeepSeek 官方项目吗？</span>
+            </summary>
+            <p>
+              <span class="lang-en">No. DSHBox is an independent open-source community project for DeepSeek Harness. It is not affiliated with or endorsed by DeepSeek.</span>
+              <span class="lang-zh">不是。DSHBox 是面向 DeepSeek Harness 的独立开源社区项目，与 DeepSeek 无隶属或背书关系。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:10">
+            <summary>
+              <span class="lang-en">DSH, dsh-android or dsh-mobile — what should I call it?</span>
+              <span class="lang-zh">该叫 DSH、dsh-android 还是 dsh-mobile？</span>
+            </summary>
+            <p>
+              <span class="lang-en">DSH is short for DeepSeek Harness. DSHBox is the Android/mobile client for DSH — sometimes written as dsh-android or dsh-mobile — and runs the full DeepSeek Harness locally on your phone or tablet from a single APK.</span>
+              <span class="lang-zh">DSH 是 DeepSeek Harness 的简称。DSHBox 就是 DSH 的安卓/移动端客户端，有时也写作 dsh-android 或 dsh-mobile——只需一个 APK，即可在手机或平板上本地完整运行 DeepSeek Harness。</span>
+            </p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col footer-brand">
+          <span class="footer-brand-row">
+            <img src="./assets/images/app-icon.png" width="192" height="192" alt="" aria-hidden="true">
+            <span class="brand-name">DSHBox</span>
+          </span>
+          <p>
+            <span class="lang-en">Run the full DeepSeek Harness locally on Android phones and tablets.</span>
+            <span class="lang-zh">在安卓手机和平板上，本机运行完整 DeepSeek Harness。</span>
+          </p>
+        </div>
+        <nav class="footer-col" aria-label="Project links">
+          <h3><span class="lang-en">Project</span><span class="lang-zh">项目</span></h3>
+          <ul>
+            <li><a href="https://github.com/WSK-build/DSHBox" target="_blank" rel="noopener"><span class="lang-en">GitHub Repository</span><span class="lang-zh">GitHub 仓库</span></a></li>
+            <li><a href="https://github.com/WSK-build/DSHBox/releases/latest" target="_blank" rel="noopener"><span class="lang-en">Latest Release</span><span class="lang-zh">最新 Release</span></a></li>
+            <li><a href="https://github.com/WSK-build/DSHBox/issues" target="_blank" rel="noopener">Issues</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Community links">
+          <h3><span class="lang-en">Community</span><span class="lang-zh">社区</span></h3>
+          <ul>
+            <li><a href="https://github.com/deepseek-ai/deepseek-harness/discussions/5801" target="_blank" rel="noopener"><span class="lang-en">Community Discussion</span><span class="lang-zh">社区讨论</span></a></li>
+            <li><a href="https://github.com/WSK-build/DSHBox#readme" target="_blank" rel="noopener"><span class="lang-en">Installation Guide</span><span class="lang-zh">安装指南</span></a></li>
+            <li><a href="#faq"><span class="lang-en">FAQ</span><span class="lang-zh">常见问题</span></a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="License links">
+          <h3><span class="lang-en">License</span><span class="lang-zh">许可</span></h3>
+          <ul>
+            <li><a href="https://github.com/WSK-build/DSHBox/blob/main/LICENSE" target="_blank" rel="noopener">GPL-3.0</a></li>
+            <li><a href="https://github.com/WSK-build/DSHBox#readme" target="_blank" rel="noopener"><span class="lang-en">Third-party licenses</span><span class="lang-zh">第三方许可</span></a></li>
+          </ul>
+        </nav>
+      </div>
+
+      <div class="footer-legal">
+        <p class="lang-en">
+          DSHBox is an independent open-source community project for DeepSeek Harness.
+          It is not an official DeepSeek application and is not affiliated with or endorsed by DeepSeek.
+          PRoot provides a user-space Linux environment, not a kernel-level security sandbox.
+        </p>
+        <p class="lang-zh" lang="zh-CN">
+          DSHBox 是面向 DeepSeek Harness 的独立开源社区项目，非 DeepSeek 官方应用，与 DeepSeek 无隶属或背书关系。
+          PRoot 提供用户态 Linux 环境，不等同于内核级安全沙箱。
+        </p>
+        <p>&copy; 2026 DSHBox contributors · GPL-3.0</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./assets/js/main.js" defer></script>
+</body>
+</html>
