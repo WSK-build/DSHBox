@@ -1,7 +1,7 @@
 package com.dshbox.app.util
 
 /**
- * 批导入状态机（纯 JVM，1.2.0 M3 收尾）。
+ * 批导入状态机（纯 JVM，收尾）。
  *
  * 2026-09-08 审查：多选导入最初把队列推进/完成信号写成 Compose 局部函数链，形成
  * 函数环（runImport→finish→advance→startFileImport）无法前向声明，后改协程等待

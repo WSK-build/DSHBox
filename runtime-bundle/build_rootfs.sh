@@ -80,7 +80,7 @@ case "$MODE" in
     fi
     proot-distro install --override-alias "$ALIAS" --rootfs "$ROOTFS_TAR"
     ;;
-  *)
+  * )
     echo "unknown mode: $MODE" >&2
     exit 1
     ;;

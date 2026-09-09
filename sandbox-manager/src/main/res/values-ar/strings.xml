@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sandbox_not_running_debian">الصندوق الرملي غير قيد التشغيل. قم بتشغيل صندوق Debian الرملي أولاً.</string>
+    <string name="dsh_not_ready_timeout">لم يصبح DSH جاهزاً خلال الوقت المحدد</string>
+    <string name="dsh_stopped_retry">تم إيقاف DSH. أعد المحاولة لاحقاً.</string>
+    <string name="dsh_ready_timeout">انتهت مهلة جاهزية DSH</string>
+    <string name="bundle_empty">الأرشيف لا يتضمن أي ملفات</string>
+    <string name="bundle_unsafe_path_rel">يحتوي الأرشيف على مسار غير قانوني (..)؛ تم الحجب: %1$s</string>
+    <string name="bundle_unsafe_path_escape">مسار الأرشيف يتجاوز الدليل الهدف؛ تم الحجب: %1$s</string>
+    <string name="bundle_no_profile">حزمة بيئة التشغيل تفتقر إلى runtime-profile.json (لا يمكن التحقق من سلامة الطبقة؛ تم رفض الاستيراد)</string>
+    <string name="bundle_no_base_snapshot">حزمة بيئة التشغيل تفتقر إلى الطبقة base (تخطيط snapshots يتطلب دليل base/؛ تخطيط layer-archive يتطلب &lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_no_base">حزمة بيئة التشغيل تفتقر إلى الطبقة base</string>
+    <string name="bundle_bad_profile">لا يمكن تحليل runtime-profile.json</string>
+    <string name="bundle_missing_layer">حزمة بيئة التشغيل تفتقر إلى أرشيف الطبقة %1$s (&lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_sha_sidecar_mismatch">ملف .sha256 المرافق للطبقة %1$s لا يتطابق مع runtime-profile.json</string>
+    <string name="bundle_sha_mismatch">فشل التحقق من SHA-256 للطبقة %1$s</string>
+    <string name="npm_bad_registry">عنوان registry غير صالح: %1$s</string>
+    <string name="npm_bad_version">إصدار غير صالح: %1$s</string>
+    <string name="npm_low_storage">مساحة تخزين غير كافية (يحتاج حوالي 1 جيجابايت متاح، المتوفر %1$d ميغابايت فقط)</string>
+    <string name="npm_stage_starting_sandbox">جارٍ تشغيل الصندوق الرملي…</string>
+    <string name="npm_sandbox_start_failed">فشل تشغيل الصندوق الرملي؛ لا يمكن تنفيذ npm install</string>
+    <string name="npm_stage_pulling">جارٍ سحب @deepseek-ai/dsh %1$s من %2$s (مع التبعيات الكاملة؛ يستغرق بضع دقائق)…</string>
+    <string name="npm_install_failed">فشل npm install: %1$s (انظر السجلات)</string>
+    <string name="npm_verify_failed">نتيجة npm install تفتقر إلى @deepseek-ai/dsh/lib/bin.js؛ لا يمكن المتابعة</string>
+    <string name="npm_stage_packing">جارٍ تعبئة طبقة DSH…</string>
+    <string name="npm_pack_failed">فشل تعبئة طبقة DSH: %1$s</string>
+    <string name="npm_pack_abnormal">نتيجة تعبئة غير طبيعية؛ لا يمكن المتابعة</string>
+    <string name="npm_stage_installing">جارٍ تثبيت DSH %1$s…</string>
+    <string name="npm_stage_done">اكتمل التثبيت</string>
+    <string name="dsh_bundle_invalid">الملف المُختار ليس حزمة طبقة DSH صالحة (تفتقر إلى node_modules/@deepseek-ai/dsh/lib/bin.js)</string>
+    <string name="dsh_install_failed">فشل وضع طبقة DSH الجديدة في مكانها (فشل كل من إعادة التسمية والنسخ)</string>
+</resources>

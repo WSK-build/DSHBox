@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,7 +49,8 @@ import com.dshbox.app.util.viewer.FileTypeClassifier
 import com.dshbox.app.util.viewer.LargeTextLoader
 import com.dshbox.app.util.viewer.TextEncoding
 import java.io.File
-import java.text.SimpleDateFormat
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipOutputStream
@@ -158,8 +160,8 @@ internal fun ArchiveViewer(
                         context.contentResolver.openOutputStream(uri)?.use { out ->
                             ArchiveBrowser.openEntryStream(file, fmt, entry.path, snap.charsetLabel)?.use { ins ->
                                 ins.copyTo(out, 64 * 1024)
-                            } ?: error("条目流不可用")
-                        } ?: error("输出流不可用")
+                            } ?: error(context.getString(R.string.viewer_entry_stream_unavailable))
+                        } ?: error(context.getString(R.string.viewer_out_stream_unavailable))
                     }.isSuccess
                 }
                 toast(context.getString(if (ok) R.string.files_export_done else R.string.files_export_failed_generic))
@@ -180,7 +182,7 @@ internal fun ArchiveViewer(
                             ZipOutputStream(out.buffered()).use { zip ->
                                 ArchiveBrowser.exportAllToZip(file, fmt, zip, { job?.ensureActive() }, snap.charsetLabel)
                             }
-                        } ?: error("输出流不可用")
+                        } ?: error(context.getString(R.string.viewer_out_stream_unavailable))
                     }.isSuccess
                 }
                 toast(context.getString(if (ok) R.string.files_export_done else R.string.files_export_failed_generic))
@@ -215,11 +217,11 @@ internal fun ArchiveViewer(
                                 val n = ins.read(buf)
                                 if (n < 0) break
                                 total += n
-                                if (total > ARCHIVE_PREVIEW_MAX_BYTES) error("条目过大")
+                                if (total > ARCHIVE_PREVIEW_MAX_BYTES) error(context.getString(R.string.viewer_entry_too_large))
                                 out.write(buf, 0, n)
                             }
                         }
-                    } ?: error("条目不可读")
+                    } ?: error(context.getString(R.string.viewer_entry_unreadable))
                     target
                 }.getOrNull()
             }
@@ -259,8 +261,9 @@ internal fun ArchiveViewer(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(
-                            R.string.files_archive_entries,
+                        text = pluralStringResource(
+                            R.plurals.files_archive_entries,
+                            snap.entries.size,
                             ArchiveBrowser.formatLabel(snap.format),
                             snap.entries.size,
                         ) + if (snap.truncated) stringResource(R.string.files_archive_truncated) else "",
@@ -461,7 +464,7 @@ private fun ArchiveEntryRow(
         }
         if (!entry.isDirectory && entry.lastModified > 0) {
             Text(
-                text = archiveTimeFmt.format(Date(entry.lastModified)),
+                text = archiveTimeFmt.format(Date(entry.lastModified).toInstant()),
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 26.dp, top = 1.dp),
@@ -490,4 +493,7 @@ private fun visibleEntries(
     }
 }
 
-private val archiveTimeFmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+// 固定 Locale.US——文件时间戳保持 ISO 风格西文数字，
+    // 且不缓存系统 Locale（应用内切语言后仍按西文数字渲染）。
+    private val archiveTimeFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
+        .withZone(ZoneId.systemDefault())

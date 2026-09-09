@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="common_unknown_error">Erreur inconnue</string>
+    <string name="dsh_source_official_name">Registre npm officiel</string>
+    <string name="dsh_source_official_note">Source upstream officielle ; premières publications des dernières versions</string>
+    <string name="dsh_source_npmmirror_name">Ali npmmirror</string>
+    <string name="dsh_source_npmmirror_note">Miroir Alibaba Cloud Chine continentale, généralement le plus rapide</string>
+    <string name="dsh_source_tencent_name">Miroir Tencent Cloud</string>
+    <string name="dsh_source_tencent_note">Miroir Tencent Cloud Chine continentale</string>
+    <string name="dsh_source_huawei_name">Miroir Huawei Cloud</string>
+    <string name="dsh_source_huawei_note">Miroir Huawei Cloud Chine continentale</string>
+</resources>

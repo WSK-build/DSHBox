@@ -43,7 +43,7 @@ die() { echo "[deploy] ERROR: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
         --bundle) BUNDLE="$2"; shift 2 ;;
-        *) die "unknown argument: $1 (usage: deploy_to_device.sh [--bundle <file.tar.gz>])" ;;
+        * ) die "unknown argument: $1 (usage: deploy_to_device.sh [--bundle <file.tar.gz>])" ;;
     esac
 done
 

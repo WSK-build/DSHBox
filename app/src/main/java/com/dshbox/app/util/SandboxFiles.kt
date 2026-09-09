@@ -1,7 +1,10 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import java.io.File
-import java.text.SimpleDateFormat
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
@@ -203,7 +206,7 @@ data class FileEntry(
 }
 
 /** rootfs 顶层系统绑定目录（guest 内由 PRoot --bind 提供，修改无意义且风险高）+ 层元数据标记。
- *  1.2.0 §4.3：由 private 放开为 internal，供 MovePlanner / FolderPicker 等模块内复用。 */
+ * 由 private 放开为 internal，供 MovePlanner / FolderPicker 等模块内复用。 */
 internal val SYSTEM_DIR_NAMES = listOf("proc", "sys", "dev", "system", "apex", "tmp", ".dshbox")
 
 /** 判断单个条目的风险级别：rootfs 顶层系统目录 / DSH 内部数据目录。 */
@@ -236,13 +239,16 @@ fun scanDirectory(logicalDir: File, mapper: PathMapper, isTopLevel: Boolean): Li
     } ?: emptyList()
 }
 
-private val timeFmt = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+// 固定 Locale.US——文件时间戳保持 ISO 风格西文数字，
+    // 且不缓存系统 Locale（应用内切语言后仍按西文数字渲染）。
+    private val timeFmt = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.US)
+        .withZone(ZoneId.systemDefault())
 
-/** 列表副标题：目录显示「目录」，文件显示「大小 · 时间」。 */
-fun entrySubtitle(entry: FileEntry): String = if (entry.isDirectory) {
-    "目录"
+/** 列表副标题：目录显示「目录」，文件显示「大小 · 时间」（可本地化）。 */
+fun entrySubtitle(entry: FileEntry): UiText = if (entry.isDirectory) {
+    UiText.Res(R.string.files_entry_directory)
 } else {
-    "${formatFileSize(entry.size)} · ${timeFmt.format(Date(entry.lastModified))}"
+    UiText.Raw("${formatFileSize(entry.size)} · ${timeFmt.format(Date(entry.lastModified).toInstant())}")
 }
 
 /**

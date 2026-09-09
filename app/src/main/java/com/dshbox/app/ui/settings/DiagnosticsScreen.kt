@@ -31,7 +31,7 @@ import com.dshbox.app.common.Constants
 import java.io.File
 
 /**
- * 1.1.1 (T3)：诊断日志升级——展示全部进程日志条目（DSH / 沙箱 / 访客命令），
+ * 诊断日志升级——展示全部进程日志条目（DSH / 沙箱 / 访客命令），
  * 每条尾部最多 [TAIL_LINES] 行（页面内直接可滚动查看，DSH 排障重点依赖其启动
  * 过程输出）；导出时合并当前文件与其 `.prev` 轮转文件（策略 A 保留最近两代）。
  */
@@ -127,7 +127,7 @@ fun DiagnosticsScreen(
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Text(
-                        text = lines.joinToString("\n").ifEmpty { "（空）" },
+                        text = lines.joinToString("\n").ifEmpty { stringResource(R.string.diagnostics_empty) },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     )
                 }

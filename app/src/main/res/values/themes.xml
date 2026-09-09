@@ -1,5 +1,8 @@
 <resources>
-    <style name="Theme.DSHapp" parent="android:Theme.Material.NoActionBar">
+    <!-- 父主题改为 AppCompat——MainActivity 已继承 AppCompatActivity，
+        旧父主题 android:Theme.Material.NoActionBar 缺少 AppCompatTheme.windowActionBar，
+        appcompat ensureSubDecor 无条件检查，真机冷启动即抛 IllegalStateException。 -->
+    <style name="Theme.DSHapp" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@android:color/white</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

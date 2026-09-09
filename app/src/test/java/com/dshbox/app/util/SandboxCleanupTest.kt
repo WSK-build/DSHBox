@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 1.1.0 (M12/M12.1)：清理分类规则、年龄判定与逐条目归账器。分类规则是清理功能
+ * 清理分类规则、年龄判定与逐条目归账器。分类规则是清理功能
  * 的安全边界——每条「红线路径必须返回 null」的断言都对应一个绝不能被清理删除的目录。
  */
 class SandboxCleanupTest {
@@ -46,7 +46,7 @@ class SandboxCleanupTest {
         assertEquals(Category.CACHE, SandboxCleanup.categorize("bundled-runtime-staging"))
         assertEquals(Category.CACHE, SandboxCleanup.categorize("bundled-runtime-staging.tar.gz"))
         assertEquals(Category.CACHE, SandboxCleanup.categorize("runtime/dsh-staging/node_modules"))
-        // M12.1 P2⑪：proot 临时目录真实位置是 runtime-current/tmp/<role>。
+        // proot 临时目录真实位置是 runtime-current/tmp/<role>。
         assertEquals(Category.GUEST_TMP, SandboxCleanup.categorize("runtime/runtime-current/tmp/sandbox"))
         assertEquals(
             Category.GUEST_TMP,
@@ -78,7 +78,7 @@ class SandboxCleanupTest {
         assertNull(SandboxCleanup.categorize("backups"))
         assertNull(SandboxCleanup.categorize("runtime/tmp/x"))
         assertNull(SandboxCleanup.categorize("runtime/runtime-current/base/template"))
-        // M12.1 P2⑨：最易踩雷的近邻路径（前缀相似但多出字符 / 兄弟目录）。
+        // 最易踩雷的近邻路径（前缀相似但多出字符 / 兄弟目录）。
         assertNull(SandboxCleanup.categorize("runtime/runtime-current/previous2/base"))
         assertNull(SandboxCleanup.categorize("logs_backup/x"))
         assertNull(SandboxCleanup.categorize("runtime/runtime-current/base/var/lib/dpkg/status"))
@@ -118,9 +118,9 @@ class SandboxCleanupTest {
         val ledger = UsageLedger(now, guardActive = false)
         // add() 返回计入「总量」的字节数；扩展名过滤只影响 reclaimable。
         assertEquals(2048L, ledger.add(entry("logs/process-dsh.log", blocks = 4)))
-        // LOGS 只认 .log（M12.1 P2⑦）：README 计总量但不进 reclaimable。
+        // LOGS 只认 .log：README 计总量但不进 reclaimable。
         assertEquals(2048L, ledger.add(entry("logs/README.txt", blocks = 4)))
-        // APT 只认 .deb（M12.1 P2⑥）：lock 文件不进 reclaimable（真实 apt clean 只清包文件）。
+        // APT 只认 .deb：lock 文件不进 reclaimable（真实 apt clean 只清包文件）。
         assertEquals(2048L, ledger.add(entry("runtime/runtime-current/base/var/cache/apt/archives/lock", blocks = 4)))
         // partial/ 内的 .deb 与 apt clean 行为一致（partial 也被清空）。
         assertEquals(

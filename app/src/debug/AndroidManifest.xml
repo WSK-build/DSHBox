@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG 构建专用——DevInstallReceiver（INSTALL_RUNTIME 广播，
+     供 adb/模拟器自动化安装运行环境包）仅注册于 debug 变体；
+     release 不包含该接收器，外部广播无法触发。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name=".dev.DevInstallReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dshbox.app.dev.action.INSTALL_RUNTIME" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

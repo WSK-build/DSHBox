@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="common_unknown_error">未知错误</string>
+    <string name="dsh_source_official_name">npm 官方源</string>
+    <string name="dsh_source_official_note">权威上游，发布最及时</string>
+    <string name="dsh_source_npmmirror_name">阿里 npmmirror</string>
+    <string name="dsh_source_npmmirror_note">国内阿里云镜像，通常最快</string>
+    <string name="dsh_source_tencent_name">腾讯云镜像</string>
+    <string name="dsh_source_tencent_note">国内腾讯云镜像</string>
+    <string name="dsh_source_huawei_name">华为云镜像</string>
+    <string name="dsh_source_huawei_note">国内华为云镜像</string>
+</resources>

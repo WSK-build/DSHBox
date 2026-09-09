@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="common_unknown_error">Unknown error</string>
+    <string name="dsh_source_official_name">npm official registry</string>
+    <string name="dsh_source_official_note">Authoritative upstream; latest releases first</string>
+    <string name="dsh_source_npmmirror_name">Ali npmmirror</string>
+    <string name="dsh_source_npmmirror_note">Mainland China Alibaba Cloud mirror, usually the fastest</string>
+    <string name="dsh_source_tencent_name">Tencent Cloud mirror</string>
+    <string name="dsh_source_tencent_note">Mainland China Tencent Cloud mirror</string>
+    <string name="dsh_source_huawei_name">Huawei Cloud mirror</string>
+    <string name="dsh_source_huawei_note">Mainland China Huawei Cloud mirror</string>
+</resources>

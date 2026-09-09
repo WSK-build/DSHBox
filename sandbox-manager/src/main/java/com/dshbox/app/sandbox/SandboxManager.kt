@@ -1,6 +1,7 @@
 package com.dshbox.app.sandbox
 
 import com.dshbox.app.common.AppResult
+import com.dshbox.app.common.UiText
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -23,7 +24,7 @@ interface SandboxManager {
     val dshUpdateProgress: StateFlow<String?>
 
     /**
-     * 1.1.1 (M10)：DSH 0.1.2-rc.1 起 web 服务使用进程级 launchToken 认证
+     * DSH 0.1.2-rc.1 起 web 服务使用进程级 launchToken 认证
      * （`dsh web:` 启动 URL 携带）。app 从 DSH 进程原始输出解析后经此暴露给
      * WebView：首次加载 `/?token=<值>` 完成 token→签名 cookie 交换，
      * 此后凭持久 cookie 访问。null = 尚未解析到（旧版 DSH 无认证，忽略）。
@@ -87,7 +88,7 @@ interface SandboxManager {
      * wins, incoming-newer replaces (old -> previous/dsh). Does not touch
      * user-data/.dsh.
      *
-     * 1.1.0: [allowDowngrade] overrides the arbitration for EXPLICIT user choices
+     * [allowDowngrade] overrides the arbitration for EXPLICIT user choices
      * (the online-update screen offers older versions with a double confirm);
      * the bundled-provision path never sets it, so APK baselines still never
      * downgrade an installed layer.
@@ -100,7 +101,7 @@ interface SandboxManager {
     ): AppResult<DshUpdateOutcome>
 
     /**
-     * 1.1.0 (M7) — online DSH update step 2: build a fresh DSH layer from the
+     * online DSH update step 2: build a fresh DSH layer from the
      * npm registry [registryUrl] by running npm INSIDE the guest Debian
      * (replicating runtime-bundle/scripts/install_dsh.sh, the exact way the
      * bundled layer is produced), packing it and installing through the normal
@@ -117,10 +118,10 @@ interface SandboxManager {
         registryUrl: String,
         version: String,
         allowDowngrade: Boolean = false,
-        onStage: (String) -> Unit = {},
+        onStage: (UiText) -> Unit = {},
         onLog: (String) -> Unit = {},
         onProcess: (java.lang.Process) -> Unit = {},
-        /** 1.1.1 (M7)：为 true 时 guest 命令等待循环立即中止（在线取消用）。 */
+        /** 为 true 时 guest 命令等待循环立即中止（在线取消用）。 */
         shouldAbort: () -> Boolean = { false },
     ): AppResult<DshUpdateOutcome>
 
@@ -144,7 +145,7 @@ interface SandboxManager {
         command: String,
         onLine: (String) -> Unit = {},
         onProcess: (java.lang.Process) -> Unit = {},
-        /** 1.1.1 (M7)：为 true 时等待循环立即中止。 */
+        /** 为 true 时等待循环立即中止。 */
         shouldAbort: () -> Boolean = { false },
     ): AppResult<Unit>
 }

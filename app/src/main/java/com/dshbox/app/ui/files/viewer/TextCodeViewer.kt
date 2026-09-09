@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import com.dshbox.app.util.viewer.ContentFingerprint
 import com.dshbox.app.util.viewer.LargeTextLoader
 import com.dshbox.app.util.viewer.TextEncoding
@@ -206,12 +207,12 @@ internal fun TextCodeViewer(
                     savedText = text
                     controller.dirty = false
                     // 返工修正：元数据（rwx/时间戳）恢复失败以警告透传，不得静默
-                    onToast(result.warning ?: context.getString(R.string.files_save_done))
+                    onToast(result.warning?.asString(context) ?: context.getString(R.string.files_save_done))
                     onRequestRefresh()
                 }
                 is TextFileStore.SaveOutcome.ExternalChanged -> pendingExternalChange = result.current
                 is TextFileStore.SaveOutcome.Failed -> onToast(
-                    context.getString(R.string.files_save_failed, result.message),
+                    context.getString(R.string.files_save_failed, result.reason.asString(context)),
                 )
             }
         }
@@ -238,7 +239,7 @@ internal fun TextCodeViewer(
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openOutputStream(target)?.use { it.write(out) }
-                        ?: error("输出流不可用")
+                        ?: error(context.getString(R.string.viewer_out_stream_unavailable))
                 }.isSuccess
             }
             onToast(context.getString(if (ok) R.string.files_saveas_done else R.string.files_save_failed_generic))
@@ -294,14 +295,14 @@ internal fun TextCodeViewer(
         } else {
             // 大文件分块只读（§6.4 大文件策略）。
             // 返工修正 #7：SelectionContainer + Text——只读内容可长按选择/复制
-            //（BasicTextField 只读态在部分版本选择行为不可靠），并加纵向滚动。
+            // （BasicTextField 只读态在部分版本选择行为不可靠），并加纵向滚动。
             window?.let { win ->
                 // 返工 #1：分块窗口行尾对齐可能把超长行（big.md ≈738KB/行）整行读入，
                 // Compose Text 一次布局数十万字符 → 主线程卡死「锁屏很久」。显示端截断：
                 // 下一块起点仍从真实行尾推进，被截断的尾部会在下一块开头重现 → 内容不丢。
                 val renderText = if (win.text.length > CHUNK_RENDER_MAX_CHARS) {
                     win.text.take(CHUNK_RENDER_MAX_CHARS) +
-                        "\n…（该块行过长，仅显示前 $CHUNK_RENDER_MAX_CHARS 字符，翻页继续）"
+                        stringResource(R.string.files_chunk_line_truncated, CHUNK_RENDER_MAX_CHARS)
                 } else {
                     win.text
                 }

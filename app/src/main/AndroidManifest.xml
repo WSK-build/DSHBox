@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- 1.2.0 §6.11：targetSdk 30+ 包可见性——外部打开/编辑/分享的目标应用查询签名 -->
+    <!-- targetSdk 30+ 包可见性——外部打开/编辑/分享的目标应用查询签名 -->
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
@@ -30,8 +30,9 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:supportsRtl="true"
+        android:supportsRtl="false"
         android:theme="@style/Theme.DSHapp"
         android:usesCleartextTraffic="false">
 
@@ -56,13 +57,19 @@
                 android:value="DSH sandbox container" />
         </service>
 
-        <receiver
-            android:name=".dev.DevInstallReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.dshbox.app.dev.action.INSTALL_RUNTIME" />
-            </intent-filter>
-        </receiver>
+        <!-- appcompat 应用内语言持久化（API<33 生效；API 33+ 走系统
+             LocaleManager）。autoStoreLocales=true 时进程启动自动恢复上次所选语言。 -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+        <!-- DevInstallReceiver（DEBUG 构建专用安装广播）移入
+             src/debug/AndroidManifest.xml——release 不再注册该接收器，
+             消除 exported 外部触发面。 -->
 
         <!-- 1.2.0 §6.11：外部应用调用（VIEW/EDIT/SEND）的 content URI 支持，
              四根精确 files-path 见 res/xml/file_paths.xml -->

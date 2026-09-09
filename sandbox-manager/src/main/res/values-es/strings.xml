@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sandbox_not_running_debian">El entorno aislado no está en ejecución. Inicia el entorno aislado de Debian primero.</string>
+    <string name="dsh_not_ready_timeout">DSH no se puso listo dentro del tiempo límite</string>
+    <string name="dsh_stopped_retry">DSH ha sido detenido. Inténtalo de nuevo más tarde.</string>
+    <string name="dsh_ready_timeout">Tiempo de espera para la preparación de DSH agotado</string>
+    <string name="bundle_empty">El archivo comprimido no contiene archivos</string>
+    <string name="bundle_unsafe_path_rel">El archivo comprimido contiene una ruta ilegal (..); bloqueado: %1$s</string>
+    <string name="bundle_unsafe_path_escape">Una ruta del archivo comprimido escapa del directorio de destino; bloqueado: %1$s</string>
+    <string name="bundle_no_profile">El paquete del entorno de ejecución carece de runtime-profile.json (no se puede verificar la integridad de la capa; importación rechazada)</string>
+    <string name="bundle_no_base_snapshot">El paquete del entorno de ejecución carece de la capa base (la disposición de instantánea necesita un directorio base/; la disposición de archivo de capa necesita &lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_no_base">El paquete del entorno de ejecución carece de la capa base</string>
+    <string name="bundle_bad_profile">No se pudo analizar runtime-profile.json</string>
+    <string name="bundle_missing_layer">El paquete del entorno de ejecución carece del archivo de capa %1$s (&lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_sha_sidecar_mismatch">El archivo .sha256 acompañante de la capa %1$s no coincide con runtime-profile.json</string>
+    <string name="bundle_sha_mismatch">Falló la verificación SHA-256 de la capa %1$s</string>
+    <string name="npm_bad_registry">URL de registro inválida: %1$s</string>
+    <string name="npm_bad_version">Versión inválida: %1$s</string>
+    <string name="npm_low_storage">Espacio de almacenamiento insuficiente (se requieren aproximadamente 1 GB, solo hay %1$d MB libres)</string>
+    <string name="npm_stage_starting_sandbox">Iniciando entorno aislado…</string>
+    <string name="npm_sandbox_start_failed">El entorno aislado no pudo iniciarse; no se puede ejecutar npm install</string>
+    <string name="npm_stage_pulling">Descargando @deepseek-ai/dsh %1$s desde %2$s (con dependencias completas, esto tarda unos minutos)…</string>
+    <string name="npm_install_failed">npm install falló: %1$s (consulta los registros)</string>
+    <string name="npm_verify_failed">El resultado de npm install carece de @deepseek-ai/dsh/lib/bin.js; no se puede continuar</string>
+    <string name="npm_stage_packing">Empaquetando la capa de DSH…</string>
+    <string name="npm_pack_failed">Error al empaquetar la capa de DSH: %1$s</string>
+    <string name="npm_pack_abnormal">Resultado de empaquetado anómalo; no se puede continuar</string>
+    <string name="npm_stage_installing">Instalando DSH %1$s…</string>
+    <string name="npm_stage_done">Instalación completada</string>
+    <string name="dsh_bundle_invalid">El archivo seleccionado no es un paquete de capa de DSH válido (falta node_modules/@deepseek-ai/dsh/lib/bin.js)</string>
+    <string name="dsh_install_failed">No se pudo colocar la nueva capa de DSH (tanto rename como copy fallaron)</string>
+</resources>

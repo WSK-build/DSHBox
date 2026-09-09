@@ -1,5 +1,7 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import com.dshbox.app.util.viewer.FileTypeClassifier
 import java.io.File
 import kotlinx.coroutines.currentCoroutineContext
@@ -96,7 +98,7 @@ object GlobalSearch {
                 var contentHit = false
                 var snippet: String? = null
 
-                // 1.2.0 §6.1.5：文本候选判定统一改用 FileTypeClassifier（魔数/嗅探/扩展名
+                // 文本候选判定统一改用 FileTypeClassifier（魔数/嗅探/扩展名
                 // 三级），消除旧私有清单与预览白名单不一致的分叉（Makefile 搜索可命中、
                 // 预览打不开）。已知二进制扩展名免读盘直接跳过。
                 val head = if (f.isFile && !nameHit && f.length() in 1..MAX_CONTENT_SIZE &&
@@ -127,7 +129,7 @@ object GlobalSearch {
                 }
                 scanned++
                 if (scanned % 64L == 0L) {
-                    listener?.onProgress(scanned, -1L, "正在扫描 $name")
+                    listener?.onProgress(scanned, -1L, UiText.Res(R.string.search_scanning_name, listOf(name)))
                 }
             }
         }
@@ -137,7 +139,7 @@ object GlobalSearch {
         for (root in roots) {
             walk(root, root, isRootfsTop = root.absolutePath == sandboxPath)
         }
-        listener?.onProgress(scanned, scanned, "搜索完成")
+        listener?.onProgress(scanned, scanned, UiText.Res(R.string.search_done))
         return results
     }
 }

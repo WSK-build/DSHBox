@@ -13,7 +13,7 @@ import java.io.RandomAccessFile
  * 统计口径：**分配块**（lstat st_blocks × 512），与系统「应用存储」/ du 同口径。
  * 符号链接跳过；硬链接（st_nlink > 1）按 (dev,ino) 只计一次。**scan 与 clean
  * 使用同一口径与同一判定函数**（passesAgeGuard / fileEligible / 同样的硬链接去重），
- * 弹窗「可释放」与「已释放」不会互相打架（M12.1 P1①）。
+ * 弹窗「可释放」与「已释放」不会互相打架。
  *
  * 清理红线（categorize 只放行下列前缀，其余路径一律不触碰）：
  * user-data/（含 .dsh 工作区与对话数据）、runtime-current/{node, android-side, dsh}、
@@ -49,8 +49,8 @@ object SandboxCleanup {
             "bundled-runtime-staging" to Category.CACHE,
             "bundled-runtime-staging.tar.gz" to Category.CACHE,
             "runtime/dsh-staging" to Category.CACHE,
-            // proot 临时目录真实位置：PROOT_TMP_DIR = runtime-current/tmp/<role>（M12.1 修正：
-            // 旧版写成 runtime/tmp，是凭空臆造的路径，永远匹配不到）。
+            // proot 临时目录真实位置：PROOT_TMP_DIR = runtime-current/tmp/<role>；
+            // 旧版写成 runtime/tmp，是凭空臆造的路径，永远匹配不到。
             "runtime/runtime-current/tmp" to Category.GUEST_TMP,
             "runtime/runtime-current/base/tmp" to Category.GUEST_TMP,
             "runtime/runtime-current/base/var/cache/apt/archives" to Category.APT,
@@ -146,7 +146,7 @@ object SandboxCleanup {
      * reclaimable 只按文件计（目录 inode 忽略）——clean 侧按目录整删时实际释放
      * 会略大于显示值，宁少勿多。
      *
-     * [checkCancelled] 每进入一个目录时回调一次，供调用方取消长遍历（M12.1 P2⑫）。
+     * [checkCancelled] 每进入一个目录时回调一次，供调用方取消长遍历。
      */
     fun scan(context: Context, guardActive: Boolean, checkCancelled: () -> Unit = {}): ScanResult {
         val now = System.currentTimeMillis()
@@ -210,7 +210,7 @@ object SandboxCleanup {
      * 执行清理，返回实际释放的字节数（与 scan 同为分配块口径，M12.1 P1①）。
      * 全部为宿主侧文件操作（所有目标都在 filesDir/cacheDir 下，不需要 guest 命令）。
      * 只处理 [categories] 中出现且调用方确认的项；调用方须先用 [BackgroundOps]
-     * 确认没有并发安装/导入（M12.1 P1③）。
+     * 确认没有并发安装/导入。
      */
     fun clean(context: Context, guardActive: Boolean, categories: Set<Category>): Long {
         val cutoff = System.currentTimeMillis() - AGE_GUARD_MS
@@ -245,7 +245,7 @@ object SandboxCleanup {
                     if (f.delete()) freed += bytes
                 }
                 // 空目录自底向上清理（深路径先删）；运行中只清超龄目录，
-                // 会话正在使用的目录（近期 mtime、非空）不受影响（M12.1 P2⑩）。
+                // 会话正在使用的目录（近期 mtime、非空）不受影响。
                 val dirs = root.walkTopDown().filter { it.isDirectory && it != root }
                     .sortedByDescending { it.path.length }
                     .toList()
@@ -272,7 +272,7 @@ object SandboxCleanup {
             File(filesDir, "runtime/runtime-current/base/var/cache/apt/archives")
                 .listFiles()?.forEach { f ->
                     // 只删 .deb（等价 apt clean）；lock 与 partial/ 留给 apt 自己管理，
-                    // 避免打断终端里进行中的 apt 操作（M12.1 P2⑥）。
+                    // 避免打断终端里进行中的 apt 操作。
                     if (f.isFile && fileEligible(Category.APT, f.name)) freed += removeWithSize(f, seenHardlinks)
                 }
         }

@@ -14,9 +14,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -24,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -63,32 +66,36 @@ fun TerminalExtraKeysBar(
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // Row 1 - primary controls.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            ExtraKey("ESC", Modifier.weight(1f)) { onKeyBytes(byteArrayOf(0x1B)) }
-            ExtraKey("TAB", Modifier.weight(1f)) { onKeyBytes(byteArrayOf(0x09)) }
-            ExtraKey("HOME", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'H', csiBody = "H")) }
-            ExtraKey("END", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'F', csiBody = "F")) }
-            ExtraKey("CTRL", Modifier.weight(1f), selected = ctrlEnabled, onClick = onToggleCtrl)
-            ExtraKey("PASTE", Modifier.weight(1f), onClick = onPaste)
-        }
+        // 附加按键条恒为 LTR——键盘布局为方向约定俗成内容，
+        // RTL（阿拉伯语）下镜像会导致方向键/翻页键与标签错位。
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            // Row 1 - primary controls.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ExtraKey("ESC", Modifier.weight(1f)) { onKeyBytes(byteArrayOf(0x1B)) }
+                ExtraKey("TAB", Modifier.weight(1f)) { onKeyBytes(byteArrayOf(0x09)) }
+                ExtraKey("HOME", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'H', csiBody = "H")) }
+                ExtraKey("END", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'F', csiBody = "F")) }
+                ExtraKey("CTRL", Modifier.weight(1f), selected = ctrlEnabled, onClick = onToggleCtrl)
+                ExtraKey("PASTE", Modifier.weight(1f), onClick = onPaste)
+            }
 
-        // Row 2 - cursor / paging / editing.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            ExtraKey("↑", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'A', csiBody = "A")) }
-            ExtraKey("↓", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'B', csiBody = "B")) }
-            ExtraKey("←", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'D', csiBody = "D")) }
-            ExtraKey("→", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'C', csiBody = "C")) }
-            ExtraKey("PGUP", Modifier.weight(1f)) { onKeyBytes(csi("5~")) }
-            ExtraKey("PGDN", Modifier.weight(1f)) { onKeyBytes(csi("6~")) }
-            ExtraKey("BKSP", Modifier.weight(1f)) { onKeyBytes(byteArrayOf(0x7F)) }
-            ExtraKey("DEL", Modifier.weight(1f)) { onKeyBytes(csi("3~")) }
+            // Row 2 - cursor / paging / editing.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ExtraKey("↑", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'A', csiBody = "A")) }
+                ExtraKey("↓", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'B', csiBody = "B")) }
+                ExtraKey("←", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'D', csiBody = "D")) }
+                ExtraKey("→", Modifier.weight(1f)) { onKeyBytes(cursorByte(cursorKeyAppMode(), ss3Letter = 'C', csiBody = "C")) }
+                ExtraKey("PGUP", Modifier.weight(1f)) { onKeyBytes(csi("5~")) }
+                ExtraKey("PGDN", Modifier.weight(1f)) { onKeyBytes(csi("6~")) }
+                ExtraKey("BKSP", Modifier.weight(1f)) { onKeyBytes(byteArrayOf(0x7F)) }
+                ExtraKey("DEL", Modifier.weight(1f)) { onKeyBytes(csi("3~")) }
+            }
         }
     }
 }

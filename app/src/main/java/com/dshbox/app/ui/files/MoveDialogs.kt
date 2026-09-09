@@ -20,12 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
+import com.dshbox.app.ui.asString
 import com.dshbox.app.util.ConflictMode
 import com.dshbox.app.util.IssueKind
 import com.dshbox.app.util.MoveFailure
@@ -63,14 +65,14 @@ internal fun MoveConflictDialog(
                         stringResource(R.string.files_conflict_move_file, conflict.source.name)
                     },
                     fontSize = 14.sp,
-                    color = TextSecondary,
+                    color = TextSecondary(),
                 )
                 if (pending.conflicts.size > 1) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = stringResource(R.string.files_conflict_remaining, pending.conflicts.size - 1),
+                        text = pluralStringResource(R.plurals.files_conflict_remaining, pending.conflicts.size - 1, pending.conflicts.size - 1),
                         fontSize = 12.sp,
-                        color = TextHint,
+                        color = TextHint(),
                     )
                 }
                 Spacer(Modifier.height(8.dp))
@@ -88,7 +90,7 @@ internal fun MoveConflictDialog(
                     Text(
                         text = stringResource(R.string.files_conflict_apply_all),
                         fontSize = 13.sp,
-                        color = TextSecondary,
+                        color = TextSecondary(),
                     )
                 }
             }
@@ -125,7 +127,7 @@ internal fun MoveMatrixConfirmDialog(
             Text(
                 text = message,
                 fontSize = 14.sp,
-                color = TextSecondary,
+                color = TextSecondary(),
             )
         },
         confirmButton = {
@@ -172,7 +174,7 @@ internal fun MoveResultDialog(
                         )
                     },
                     fontSize = 14.sp,
-                    color = TextPrimary,
+                    color = TextPrimary(),
                 )
                 crossViewHint?.let { hint ->
                     Spacer(Modifier.height(6.dp))
@@ -187,7 +189,7 @@ internal fun MoveResultDialog(
                     Text(
                         text = stringResource(R.string.files_move_result_failures),
                         fontSize = 12.sp,
-                        color = TextSecondary,
+                        color = TextSecondary(),
                     )
                     Column(
                         modifier = Modifier
@@ -199,7 +201,7 @@ internal fun MoveResultDialog(
                                 text = stringResource(
                                     R.string.files_move_failed_item,
                                     failure.source.name,
-                                    failure.message,
+                                    failure.message.asString(),
                                 ),
                                 fontSize = 11.sp,
                                 color = DangerRed,

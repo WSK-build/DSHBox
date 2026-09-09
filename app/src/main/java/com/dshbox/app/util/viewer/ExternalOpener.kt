@@ -109,7 +109,7 @@ object ExternalOpener {
     /** 单文件导出到 SAF（CreateDocument / OpenDocumentTree 目标），复制内容。 */
     fun exportSingleFile(context: Context, source: File, target: Uri) {
         val out = context.contentResolver.openOutputStream(target)
-            ?: throw FileOpException("无法写入所选导出位置")
+            ?: throw FileOpException("Cannot write to selected export location")
         out.use { o ->
             source.inputStream().use { it.copyTo(o) }
         }

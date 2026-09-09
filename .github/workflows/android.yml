@@ -34,6 +34,10 @@ jobs:
       - name: Grant execute permission to scripts
         run: chmod +x gradlew tools/*.sh runtime-bundle/scripts/*.sh runtime-bundle/build_rootfs.sh
 
+      # 1.2.1 (P6)：多语言资源键位/占位符 parity + 源码硬编码 CJK 扫描
+      - name: Run i18n consistency check
+        run: bash tools/i18n_check.sh
+
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
 

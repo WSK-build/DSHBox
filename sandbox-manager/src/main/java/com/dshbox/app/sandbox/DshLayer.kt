@@ -3,6 +3,8 @@ package com.dshbox.app.sandbox
 import android.util.Log
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
+import com.dshbox.app.common.UiText
+import com.dshbox.app.sandbox.R
 import com.dshbox.app.common.Versions
 import java.io.File
 
@@ -180,7 +182,8 @@ class DshLayer(
                 return AppResult.Failure(
                     AppError(
                         "DSH_BUNDLE_INVALID",
-                        "所选文件不是有效的 DSH 层包（缺少 node_modules/@deepseek-ai/dsh/lib/bin.js）",
+                        "Selected file is not a valid DSH layer package (missing node_modules/@deepseek-ai/dsh/lib/bin.js)",
+                        userMessage = UiText.Res(R.string.dsh_bundle_invalid),
                     ),
                 )
             }
@@ -198,7 +201,8 @@ class DshLayer(
                 if (!staging.copyRecursively(dsh, overwrite = true)) {
                     // Restore the previous layer so the next boot still works.
                     if (!dsh.exists() && previous.exists()) previous.renameTo(dsh)
-                    return AppResult.Failure(AppError("DSH_INSTALL_FAILED", "无法将新 DSH 层就位（rename/copy 均失败）"))
+                    return AppResult.Failure(AppError("DSH_INSTALL_FAILED", "Cannot place new DSH layer (both rename and copy failed)",
+                        userMessage = UiText.Res(R.string.dsh_install_failed)))
                 }
                 staging.deleteRecursively()
             }
@@ -280,7 +284,7 @@ class DshLayer(
     }
 
     private fun versionFromPackage(dshDirRoot: File): String? {
-        // 1.1.0 (M3): prefer the REAL product version from
+        // prefer the REAL product version from
         // node_modules/@deepseek-ai/dsh/package.json; the layer-root package.json
         // is only a build stub. Both are parsed BOM-tolerantly — the shipped stub
         // starts with a UTF-8 BOM (EF BB BF) and Android's org.json throws on it,

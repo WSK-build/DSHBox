@@ -78,11 +78,11 @@ class BundleManager(
      * must already be the target slot directory. The caller is responsible for
      * clearing any stale slot contents before calling this.
      *
-     * 1.1.0 (M5): the container is sniffed from the stream magic, never the file
+     * the container is sniffed from the stream magic, never the file
      * name — zstd (0x28 B5 2F FD), gzip (0x1F 8B) and plain tar ("ustar" at
      * offset 257) are all accepted, so a user-supplied layer package in any of
      * these shapes installs without renaming.
-     * 1.1.0 (M12.4): bzip2 ("BZh") and xz (FD 37 7A 58 5A 00) dispatched by
+     * bzip2 ("BZh") and xz (FD 37 7A 58 5A 00) dispatched by
      * magic as well, closing the format-coverage gaps (they were heading into
      * the gzip branch and failing with a misleading error).
      */
@@ -296,7 +296,7 @@ class BundleManager(
         false
     }
 
-    /** True when [file] begins with the bzip2 magic ("BZh" + level digit). 1.1.0 (M12.4). */
+    /** True when [file] begins with the bzip2 magic ("BZh" + level digit). 1.1.0 . */
     private fun isBzip2File(file: File): Boolean = try {
         file.inputStream().use { input ->
             val b1 = input.read(); val b2 = input.read(); val b3 = input.read()
@@ -306,7 +306,7 @@ class BundleManager(
         false
     }
 
-    /** True when [file] begins with the xz magic (FD 37 7A 58 5A 00). 1.1.0 (M12.4). */
+    /** True when [file] begins with the xz magic (FD 37 7A 58 5A 00). 1.1.0 . */
     private fun isXzFile(file: File): Boolean = try {
         file.inputStream().use { input ->
             val head = ByteArray(6)
@@ -324,7 +324,7 @@ class BundleManager(
         false
     }
 
-    /** True when [file] is an uncompressed tar ("ustar" magic at header offset 257). 1.1.0 (M5). */
+    /** True when [file] is an uncompressed tar ("ustar" magic at header offset 257). 1.1.0 . */
     private fun isTarFile(file: File): Boolean = try {
         FileInputStream(file).use { input ->
             val header = ByteArray(262)

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sandbox_not_running_debian">Le bac à sable ne fonctionne pas. Démarrez d\'abord le bac à sable Debian.</string>
+    <string name="dsh_not_ready_timeout">DSH n\'est pas devenu prêt dans le délai imparti</string>
+    <string name="dsh_stopped_retry">DSH a été arrêté. Réessayez plus tard.</string>
+    <string name="dsh_ready_timeout">Délai d\'attente de disponibilité de DSH dépassé</string>
+    <string name="bundle_empty">L\'archive ne contient aucun fichier</string>
+    <string name="bundle_unsafe_path_rel">L\'archive contient un chemin illégal (..) ; bloqué : %1$s</string>
+    <string name="bundle_unsafe_path_escape">Un chemin d\'archive sort du répertoire cible ; bloqué : %1$s</string>
+    <string name="bundle_no_profile">Le paquet d\'environnement d\'exécution manque de runtime-profile.json (l\'intégrité de la couche ne peut pas être vérifiée ; importation refusée)</string>
+    <string name="bundle_no_base_snapshot">Le paquet d\'environnement d\'exécution manque de la couche base (la disposition snapshot nécessite un répertoire base/ ; la disposition layer-archive nécessite &lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_no_base">Le paquet d\'environnement d\'exécution manque de la couche base</string>
+    <string name="bundle_bad_profile">Impossible d\'analyser runtime-profile.json</string>
+    <string name="bundle_missing_layer">Le paquet d\'environnement d\'exécution manque de l\'archive de couche %1$s (&lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_sha_sidecar_mismatch">Le fichier .sha256 associé de la couche %1$s ne correspond pas à runtime-profile.json</string>
+    <string name="bundle_sha_mismatch">Échec de la vérification SHA-256 pour la couche %1$s</string>
+    <string name="npm_bad_registry">URL de registre invalide : %1$s</string>
+    <string name="npm_bad_version">Version invalide : %1$s</string>
+    <string name="npm_low_storage">Espace de stockage insuffisant (environ 1 Go requis, %1$d Mo uniquement disponibles)</string>
+    <string name="npm_stage_starting_sandbox">Démarrage du bac à sable…</string>
+    <string name="npm_sandbox_start_failed">Le bac à sable n\'a pas pu démarrer ; impossible d\'exécuter npm install</string>
+    <string name="npm_stage_pulling">Récupération de @deepseek-ai/dsh %1$s depuis %2$s (avec les dépendances complètes ; cela prend quelques minutes)…</string>
+    <string name="npm_install_failed">Échec de npm install : %1$s (consultez les journaux)</string>
+    <string name="npm_verify_failed">Le résultat de npm install ne contient pas @deepseek-ai/dsh/lib/bin.js ; impossible de continuer</string>
+    <string name="npm_stage_packing">Compression de la couche DSH…</string>
+    <string name="npm_pack_failed">Échec de la compression de la couche DSH : %1$s</string>
+    <string name="npm_pack_abnormal">Résultat de compression anormal ; impossible de continuer</string>
+    <string name="npm_stage_installing">Installation de DSH %1$s…</string>
+    <string name="npm_stage_done">Installation terminée</string>
+    <string name="dsh_bundle_invalid">Le fichier sélectionné n\'est pas un paquet de couche DSH valide (il manque node_modules/@deepseek-ai/dsh/lib/bin.js)</string>
+    <string name="dsh_install_failed">Impossible de mettre en place la nouvelle couche DSH (rename et copy ont tous deux échoué)</string>
+</resources>

@@ -7,7 +7,7 @@ import org.junit.Test
 import java.net.ServerSocket
 
 /**
- * 1.1.1 (M9)：健康检查对 DSH 0.1.2-rc.1 认证行为的兼容性回归。
+ * 健康检查对 DSH 0.1.2-rc.1 认证行为的兼容性回归。
  * DSH 新版 webserver 对无 token 请求返回 401/302——任何 HTTP 响应都说明
  * webserver 存活，只有连不上/超时才判不健康（修复前只认 200..299，
  * 401 导致 DSH 被误判未就绪、120s 超时、进程残留占端口）。

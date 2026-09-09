@@ -10,6 +10,12 @@ data class AppError(
     val message: String,
     val cause: Throwable? = null,
     val recoverable: Boolean = true,
+    /**
+     * 用户可见文案（可本地化）。[message] 保留原样用于日志与既有
+     * 拼接路径；UI 渲染点优先展示 userMessage（为 null 时回退 message，
+     * 兼容尚未迁移的生产方）。领域层产出文案请用 userMessage + UiText。
+     */
+    val userMessage: UiText? = null,
 ) {
     companion object {
         fun unrecoverable(code: String, message: String) =

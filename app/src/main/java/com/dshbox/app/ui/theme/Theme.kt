@@ -2,6 +2,7 @@ package com.dshbox.app.ui.theme
 
 import android.app.Activity
 import android.content.Context
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -9,13 +10,16 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
@@ -27,6 +31,11 @@ enum class ThemeMode {
 
 /**
  * Theme preference with lightweight SharedPreferences persistence.
+ *
+ * 模式同时同步到 AppCompatDelegate.setDefaultNightMode——窗口层
+ * （windowBackground / 冷启动窗口 / windowLightStatusBar）由系统夜模式驱动，
+ * 若只驱动 Compose 配色，应用内选色会与冷启动窗口、系统栏图标色不一致
+ * （系统深色 + 应用浅色时冷启动窗口深灰、首帧后跳浅色）。
  */
 object AppThemeState {
     private const val PREFS_NAME = "app_settings"
@@ -40,6 +49,8 @@ object AppThemeState {
         mode = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name)
         }.getOrDefault(ThemeMode.SYSTEM)
+        // 冷启动窗口须在首个 Activity 创建前按持久化模式生效。
+        applyNightMode(mode)
     }
 
     fun setMode(context: Context, newMode: ThemeMode) {
@@ -48,6 +59,17 @@ object AppThemeState {
             .edit()
             .putString(KEY_THEME_MODE, newMode.name)
             .apply()
+        applyNightMode(newMode)
+    }
+
+    private fun applyNightMode(m: ThemeMode) {
+        AppCompatDelegate.setDefaultNightMode(
+            when (m) {
+                ThemeMode.SYSTEM -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                ThemeMode.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+                ThemeMode.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            },
+        )
     }
 }
 
@@ -116,9 +138,14 @@ fun DshAppTheme(
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
-    MaterialTheme(
-        colorScheme = colorScheme,
-        shapes = AppShapes,
-        content = content,
-    )
+    // 全局强制 LTR 布局方向——阿拉伯语仅保留翻译与文本自身的 bidi 渲染，
+    // 页面布局（页签顺序/导航/行方向/图标位置）不整体镜像（用户真机实测反馈镜像混乱）。
+    // 与 Manifest supportsRtl="false" 双保险一致。阿拉伯语文本仍按 Unicode bidi 正常显示。
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            shapes = AppShapes,
+            content = content,
+        )
+    }
 }

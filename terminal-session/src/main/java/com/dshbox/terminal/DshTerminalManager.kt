@@ -23,6 +23,11 @@ import kotlinx.coroutines.flow.asStateFlow
 class DshTerminalManager(
     private val pathsProvider: () -> TerminalPaths?,
     private val overlayInstaller: TerminalOverlayInstaller? = null,
+    /**
+     * 会话展示标题生成器，由 app 层注入（本模块不持有字符串资源，
+     * 保持无资源依赖；app 侧用 stringResource 实现，语言切换后新快照即用新语言）。
+     */
+    private val titleFormatter: (kind: Kind, order: Int) -> String = { _, _ -> "" },
 ) {
 
     enum class Kind { SANDBOX, FAILSAFE }
@@ -39,12 +44,9 @@ class DshTerminalManager(
         val exited: Boolean,
         val exitCode: Int,
         val signal: Int?,
-    ) {
-        val displayTitle: String get() = when (kind) {
-            Kind.SANDBOX -> "终端 $order"
-            Kind.FAILSAFE -> "受限 $order"
-        }
-    }
+        /** 展示标题（由注入的 titleFormatter 生成，快照重建时刷新）。 */
+        val displayTitle: String = "",
+    )
 
     /** Internal mutable holder. */
     private class Handle(
@@ -220,6 +222,7 @@ class DshTerminalManager(
 
     private fun Handle.toUi(): SessionUi = SessionUi(
         id, kind, order, running, exited, exitCode, signal,
+        displayTitle = titleFormatter(kind, order),
     )
 
     /** Recomputes and publishes the observable list (callers hold [lock]). */

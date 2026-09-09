@@ -1,5 +1,7 @@
 package com.dshbox.app.util.viewer
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import com.github.luben.zstd.ZstdInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
@@ -71,7 +73,7 @@ object ArchiveBrowser {
 
     sealed interface Result {
         data class Ok(val snapshot: Snapshot) : Result
-        data class Error(val message: String, val cause: Throwable? = null) : Result
+        data class Error(val message: UiText, val cause: Throwable? = null) : Result
     }
 
     /**
@@ -120,11 +122,13 @@ object ArchiveBrowser {
             ),
         )
     } catch (t: Throwable) {
-        // zstd .so 缺失（x86_64 模拟器）表现为 UnsatisfiedLinkError，必须软提示而非崩溃
-        if (t is UnsatisfiedLinkError || (t.cause is UnsatisfiedLinkError)) {
-            Result.Error("当前设备缺少 zstd 原生库（仅 arm64 真机支持 tar.zst），请使用外部应用打开", t)
+        // zstd .so 缺失（x86_64 模拟器）表现为 UnsatisfiedLinkError；若类加载已先失败，
+        // 再访问可能抛 NoClassDefFoundError（cause 链含 UnsatisfiedLinkError）——必须
+        // 遍历 cause 链判定，软提示而非崩溃。
+        if (t.hasUnsatisfiedLinkCause()) {
+            Result.Error(UiText.Res(R.string.archivebrowser_err_no_zstd_native), t)
         } else {
-            Result.Error("压缩包打开失败（文件可能损坏或格式不受支持）", t)
+            Result.Error(UiText.Res(R.string.archivebrowser_err_open_failed), t)
         }
     }
 
@@ -164,7 +168,7 @@ object ArchiveBrowser {
     // 打开加密包不拒绝（免 JDK 的流式回退）。损坏/垃圾包打开抛异常 → browse 收敛 Error。
 
     /**
-     * 第三轮审查（P2 返工，实证修正）：条目名编码判定改为**字节级 CEN 严格校验**。
+     * 第三轮审查：条目名编码判定改为**字节级 CEN 严格校验**。
      * 实证（commons-compress 1.27.1）：UTF-8 解码 GBK 条目名产出 U+003F（问号）而非
      * U+FFFD——解码结果启发式（按替换字符回退）在 commons 上不成立、永不触发。
      * 方案：扫中央目录，对 general purpose bit11 **未置位**的条目用严格 UTF-8 解码器
@@ -345,7 +349,7 @@ object ArchiveBrowser {
         // 表现为无异常返回 0 条目——明文 tar 不足 1024 字节的空结果按损坏包处理（压缩格式
         // 的合法空包可能远小于 1024，不做此判定）
         if (format == Format.TAR && out.isEmpty() && !truncated && file.length() in 1 until 1024L) {
-            throw IOException("压缩包不完整或已损坏")
+            throw IOException("Archive entry stream incomplete or corrupted")
         }
         return Triple(out, truncated, charset.name())
     }
@@ -404,7 +408,7 @@ object ArchiveBrowser {
     private fun decompressor(file: File, format: Format): InputStream {
         val raw = BufferedInputStream(file.inputStream())
         return when (format) {
-            Format.ZIP -> throw IOException("ZIP 不走 tar 路径")
+            Format.ZIP -> throw IOException("ZIP must not take the tar path")
             Format.TAR -> raw
             Format.TAR_GZ -> GzipCompressorInputStream(raw)
             Format.TAR_BZ2 -> BZip2CompressorInputStream(raw)
@@ -476,5 +480,18 @@ object ArchiveBrowser {
 
     /** "UTF-8"/"GBK" 标签 → Charset（openEntry/export 复用 browse 判定的字符集）。 */
     private fun String.toCharsetCompat(): Charset = if (this == "GBK") CHARSET_GBK else CHARSET_UTF8
-}
 
+/** 遍历 cause 链：是否由 zstd 原生库缺失（UnsatisfiedLinkError）引起。 */
+private fun Throwable.hasUnsatisfiedLinkCause(): Boolean {
+    var cur: Throwable? = this
+    while (cur != null) {
+        if (cur is UnsatisfiedLinkError) return true
+        // zstd-jni 1.5.7 在 JVM 上把 UnsatisfiedLinkError 嵌进
+        // ExceptionInInitializerError 的消息文本而非 cause 链，需按消息兜底。
+        if (cur.message?.contains("UnsatisfiedLinkError") == true) return true
+        if (cur.cause === cur) break
+        cur = cur.cause
+    }
+    return false
+}
+}

@@ -3,6 +3,8 @@ package com.dshbox.app.util
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
@@ -22,14 +24,14 @@ import java.util.zip.ZipOutputStream
  *   [deleteQuietly] 清理；
  * - 失败时抛出带具体原因 [FileOpException]，UI 展示真实错误而非笼统的「操作失败」。
  */
-class FileOpException(message: String, cause: Throwable? = null) : Exception(message, cause)
+class FileOpException(message: String, cause: Throwable? = null, val uiText: UiText? = null) : Exception(message, cause)
 
 /** 导出到 SAF 目录时统一使用的 MIME（避免按扩展名猜测 MIME 导致创建失败）。 */
 private const val GENERIC_MIME = "application/octet-stream"
 
 /** 进度回调：done/total 单位字节或条目；total <= 0 表示未知总量。 */
 fun interface ProgressListener {
-    fun onProgress(done: Long, total: Long, stage: String)
+    fun onProgress(done: Long, total: Long, stage: UiText)
 }
 
 object FileOps {
@@ -45,7 +47,7 @@ object FileOps {
         output: OutputStream,
         offset: Long,
         total: Long,
-        stage: String,
+        stage: UiText,
         listener: ProgressListener?,
         bufferSize: Int = DEFAULT_BUFFER_SIZE,
     ) {
@@ -81,17 +83,17 @@ object FileOps {
         targetDir: File,
         resolvedName: String,
         listener: ProgressListener?,
-        stage: String = "导入中",
+        stage: UiText = UiText.Res(R.string.stage_importing),
     ): File {
         targetDir.mkdirs()
         // 消毒失败（含 /、..、控制字符等）一律拒绝，绝不回退未消毒原名，防路径穿越
         val safe = sanitizeFileName(resolvedName)
-            ?: throw FileOpException("文件名无效，已拒绝导入：$resolvedName")
+            ?: throw FileOpException("Invalid file name, import rejected: $resolvedName", uiText = UiText.Res(R.string.fileops_err_invalid_name, listOf(resolvedName)))
         val target = File(targetDir, safe)
         val resolver = context.contentResolver
         val size = resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
         val input = resolver.openInputStream(uri)
-            ?: throw FileOpException("无法打开所选文件（openInputStream 返回 null）")
+            ?: throw FileOpException("Cannot open selected file (openInputStream returned null)", uiText = UiText.Res(R.string.fileops_err_open_input_stream))
         input.use { ins ->
             target.outputStream().use { out ->
                 copyStream(ins, out, offset = 0L, total = size, stage = stage, listener = listener)
@@ -109,11 +111,11 @@ object FileOps {
         treeUri: Uri,
         selected: List<File>,
         listener: ProgressListener?,
-        stage: String = "导出中",
+        stage: UiText = UiText.Res(R.string.stage_exporting),
         conflictMode: ConflictMode = ConflictMode.OVERWRITE,
     ): Int {
         val rootDoc = DocumentFile.fromTreeUri(context, treeUri)
-            ?: throw FileOpException("无法访问所选导出目录")
+            ?: throw FileOpException("Cannot access selected export directory", uiText = UiText.Res(R.string.fileops_err_access_export_dir))
         val items = computeExportItems(selected)
         val total = items.sumOf { totalSize(it.first) }
         var done = 0L
@@ -134,13 +136,13 @@ object FileOps {
                         var node = rootDoc
                         for (seg in targetSegs) {
                             node = node.findFile(seg) ?: node.createDirectory(seg)
-                                ?: throw FileOpException("无法在导出目录创建子目录 $seg")
+                                ?: throw FileOpException("Cannot create subdirectory in export directory: $seg", uiText = UiText.Res(R.string.fileops_err_create_subdir, listOf(seg)))
                         }
                     } else {
                         val node = resolveTargetNode(rootDoc, targetSegs, conflictMode)
                             ?: return@forEach // SKIP
                         val out = context.contentResolver.openOutputStream(node.uri)
-                            ?: throw FileOpException("无法写入导出文件 ${targetSegs.lastOrNull() ?: f.name}")
+                            ?: throw FileOpException("Cannot write export file ${targetSegs.lastOrNull() ?: f.name}", uiText = UiText.Res(R.string.fileops_err_write_file, listOf(targetSegs.lastOrNull() ?: f.name)))
                         out.use { o ->
                             f.inputStream().use { ins ->
                                 copyStream(ins, o, offset = done, total = total, stage = stage, listener = listener)
@@ -154,7 +156,7 @@ object FileOps {
             } else {
                 val node = resolveTargetNode(rootDoc, segs, conflictMode) ?: continue // SKIP
                 val out = context.contentResolver.openOutputStream(node.uri)
-                    ?: throw FileOpException("无法写入导出文件 ${src.name}")
+                    ?: throw FileOpException("Cannot write export file ${src.name}", uiText = UiText.Res(R.string.fileops_err_write_file, listOf(src.name)))
                 out.use { o ->
                     src.inputStream().use { ins ->
                         copyStream(ins, o, offset = done, total = total, stage = stage, listener = listener)
@@ -198,20 +200,20 @@ object FileOps {
                                 counter++
                             } while (candidate != null)
                             candidate = node.createFile(GENERIC_MIME, "${stem}-${counter - 1}$ext")
-                                ?: throw FileOpException("无法在导出目录创建文件 $seg")
+                                ?: throw FileOpException("Cannot create file in export directory: $seg", uiText = UiText.Res(R.string.fileops_err_create_file, listOf(seg)))
                             candidate
                         }
                         ConflictMode.OVERWRITE -> existing
                     }
                 }
                 return node.createFile(GENERIC_MIME, seg)
-                    ?: throw FileOpException("无法在导出目录创建文件 $seg")
+                    ?: throw FileOpException("Cannot create file in export directory: $seg", uiText = UiText.Res(R.string.fileops_err_create_file, listOf(seg)))
             } else {
                 node = node.findFile(seg) ?: node.createDirectory(seg)
-                    ?: throw FileOpException("无法在导出目录创建子目录 $seg")
+                    ?: throw FileOpException("Cannot create subdirectory in export directory: $seg")
             }
         }
-        throw FileOpException("导出目标路径为空")
+        throw FileOpException("Export target path is empty", uiText = UiText.Res(R.string.fileops_err_empty_export_path))
     }
 
     /**
@@ -223,7 +225,7 @@ object FileOps {
         zipUri: Uri,
         selected: List<File>,
         listener: ProgressListener?,
-        stage: String = "打包中",
+        stage: UiText = UiText.Res(R.string.stage_zipping),
     ): Int {
         val items = computeExportItems(selected)
         val total = items.sumOf { totalSize(it.first) }
@@ -231,7 +233,7 @@ object FileOps {
         var count = 0
         try {
             val out = context.contentResolver.openOutputStream(zipUri)
-                ?: throw FileOpException("无法创建压缩包文件")
+                ?: throw FileOpException("Cannot create archive file", uiText = UiText.Res(R.string.fileops_err_create_zip))
             out.use { stream ->
                 ZipOutputStream(stream).use { zip ->
                     for ((src, rel) in items) {

@@ -184,7 +184,7 @@ private fun MarkdownPreview(text: String, modifier: Modifier = Modifier) {
             .build()
     }
     val display = if (text.length > MARKDOWN_PREVIEW_MAX_CHARS) {
-        text.take(MARKDOWN_PREVIEW_MAX_CHARS) + "\n\n…（内容过长，预览已截断）"
+        text.take(MARKDOWN_PREVIEW_MAX_CHARS) + stringResource(R.string.files_preview_truncated)
     } else {
         text
     }
@@ -301,14 +301,14 @@ private fun WebPreview(
                 // ③ 无 addJavascriptInterface
                 webViewRef = this
                 // 返工 D：文件名须路径编码——空格/#/?/中文未编码时 URL 解析异常致预览空白
-                //（用 Uri.encode 而非 URLEncoder：后者把空格编成 +，属表单语义非路径语义）
+                // （用 Uri.encode 而非 URLEncoder：后者把空格编成 +，属表单语义非路径语义）
                 loadUrl("https://$WEB_VIRTUAL_DOMAIN/dshbox-doc/${android.net.Uri.encode(file.name)}")
             }
         },
         modifier = modifier.fillMaxSize(),
     )
 
-    // ⑥ 退出即销毁（M2 decoder 教训同标准）
+    // ⑥ 退出即销毁
     DisposableEffect(Unit) {
         onDispose {
             webViewRef?.let { wv ->

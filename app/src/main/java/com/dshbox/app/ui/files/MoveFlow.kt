@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import com.dshbox.app.util.ConflictMode
 import com.dshbox.app.util.FileEntry
 import com.dshbox.app.util.MoveEngine
@@ -31,7 +32,7 @@ import kotlinx.coroutines.withContext
 /** 进度对话框状态（§7.3 自 FilesScreen 迁出为 internal，供移动编排与文件页操作共用）。 */
 internal data class ProgressUi(
     val active: Boolean = false,
-    val stage: String = "",
+    val stage: UiText = UiText.Raw(""),
     val done: Long = 0L,
     val total: Long = -1L,
 )
@@ -179,7 +180,7 @@ internal class MoveFlow(
             it.kind == IssueKind.ILLEGAL_CYCLE || it.kind == IssueKind.SYSTEM_DIR_FORBIDDEN
         }
         if (blocking != null) {
-            showError(blocking.message)
+            showError(blocking.message.asString(context))
             return
         }
         val noOps = plan.issues.filter { it.kind == IssueKind.NO_OP }
@@ -306,7 +307,7 @@ internal class MoveFlow(
         cancelProgressJob()
         val job = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgressUi(ProgressUi(active = true, stage = context.getString(R.string.files_progress_move_prepare)))
+            showProgressUi(ProgressUi(active = true, stage = UiText.raw(context.getString(R.string.files_progress_move_prepare))))
             try {
                 val result = withContext(Dispatchers.IO) {
                     MoveEngine.moveWithin(
@@ -333,7 +334,12 @@ internal class MoveFlow(
                 afterMoveRefresh(plan)
             } catch (e: Exception) {
                 clearProgress()
-                showError(context.getString(R.string.files_move_failed, e.message ?: "未知错误"))
+                val errorText = if (e is com.dshbox.app.util.FileOpException) {
+                    (e.uiText ?: (e.message?.let { UiText.raw(it) } ?: UiText.Res(R.string.error_unknown))).asString(context)
+                } else {
+                    (e.message?.let { UiText.raw(it) } ?: UiText.Res(R.string.error_unknown)).asString(context)
+                }
+                showError(context.getString(R.string.files_move_failed, errorText))
                 afterMoveRefresh(plan)
             }
         }

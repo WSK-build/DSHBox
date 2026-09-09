@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,7 +95,7 @@ internal fun PdfViewer(
             )
         }
         is PdfUiState.Failed -> PdfNoticePane(
-            message = s.message,
+            message = stringResource(s.messageRes),
             retryTextRes = R.string.files_viewer_retry,
             onFallback = onFallback,
             modifier = modifier,
@@ -142,7 +143,7 @@ private fun ReadyPane(state: PdfUiState.Ready, modifier: Modifier = Modifier) {
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
-            text = stringResource(R.string.files_pdf_page_hint, state.pageCount),
+            text = pluralStringResource(R.plurals.files_pdf_page_hint, state.pageCount, state.pageCount),
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -381,7 +382,7 @@ private fun PasswordDialog(
 
 private sealed interface PdfUiState {
     data object Loading : PdfUiState
-    data class Failed(val message: String) : PdfUiState
+    data class Failed(val messageRes: Int) : PdfUiState
     data class Encrypted(val wrongPassword: Boolean) : PdfUiState
     data class Ready(val renderer: PdfRenderer, val pageCount: Int, val firstAspect: Float) : PdfUiState
 }
@@ -391,7 +392,7 @@ private fun openPdf(file: File, password: String?): PdfUiState {
     val pfd = try {
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     } catch (_: Exception) {
-        return PdfUiState.Failed("无法读取该 PDF 文件（可能已损坏或不可读）")
+        return PdfUiState.Failed(R.string.files_pdf_unreadable)
     }
     return try {
         val renderer = if (password != null && Build.VERSION.SDK_INT >= 35) {
@@ -414,7 +415,7 @@ private fun openPdf(file: File, password: String?): PdfUiState {
             // LoadParams 构造声明抛 IOException：密码路径的打开失败按「密码错误」处理
             PdfUiState.Encrypted(wrongPassword = true)
         } else {
-            PdfUiState.Failed("PDF 打开失败（文件可能损坏或格式不受支持）")
+            PdfUiState.Failed(R.string.files_pdf_open_failed)
         }
     }
 }

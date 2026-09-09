@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sandbox_not_running_debian">Песочница не запущена. Сначала запустите Debian-песочницу.</string>
+    <string name="dsh_not_ready_timeout">DSH не стал готовым в установленное время</string>
+    <string name="dsh_stopped_retry">DSH был остановлен. Попробуйте позже.</string>
+    <string name="dsh_ready_timeout">Время ожидания готовности DSH истекло</string>
+    <string name="bundle_empty">Архив не содержит файлов</string>
+    <string name="bundle_unsafe_path_rel">Архив содержит недопустимый путь (..); заблокировано: %1$s</string>
+    <string name="bundle_unsafe_path_escape">Путь архива выходит за пределы целевого каталога; заблокировано: %1$s</string>
+    <string name="bundle_no_profile">Пакет среды выполнения не содержит runtime-profile.json (невозможно проверить целостность слоя; импорт отклонён)</string>
+    <string name="bundle_no_base_snapshot">Пакет среды выполнения не содержит базовый слой (схема снапшота требует каталог base/; схема слоёного архива требует &lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_no_base">Пакет среды выполнения не содержит базовый слой</string>
+    <string name="bundle_bad_profile">Не удалось разобрать runtime-profile.json</string>
+    <string name="bundle_missing_layer">Пакет среды выполнения не содержит архив слоя %1$s (&lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_sha_sidecar_mismatch">Файл .sha256 слоя %1$s не совпадает с runtime-profile.json</string>
+    <string name="bundle_sha_mismatch">Проверка SHA-256 слоя %1$s не пройдена</string>
+    <string name="npm_bad_registry">Недопустимый URL реестра: %1$s</string>
+    <string name="npm_bad_version">Недопустимая версия: %1$s</string>
+    <string name="npm_low_storage">Недостаточно места (требуется около 1 ГБ, свободно только %1$d МБ)</string>
+    <string name="npm_stage_starting_sandbox">Запуск песочницы…</string>
+    <string name="npm_sandbox_start_failed">Не удалось запустить песочницу; невозможно выполнить npm install</string>
+    <string name="npm_stage_pulling">Получение @deepseek-ai/dsh %1$s из %2$s (с полной зависимостью; это займёт несколько минут)…</string>
+    <string name="npm_install_failed">npm install не удался: %1$s (см. журналы)</string>
+    <string name="npm_verify_failed">Результат npm install не содержит @deepseek-ai/dsh/lib/bin.js; невозможно продолжить</string>
+    <string name="npm_stage_packing">Упаковка слоя DSH…</string>
+    <string name="npm_pack_failed">Не удалось упаковать слой DSH: %1$s</string>
+    <string name="npm_pack_abnormal">Аномальный результат упаковки; невозможно продолжить</string>
+    <string name="npm_stage_installing">Установка DSH %1$s…</string>
+    <string name="npm_stage_done">Установка завершена</string>
+    <string name="dsh_bundle_invalid">Выбранный файл не является допустимым пакетом слоя DSH (отсутствует node_modules/@deepseek-ai/dsh/lib/bin.js)</string>
+    <string name="dsh_install_failed">Не удалось установить новый слой DSH (и переименование, и копирование завершились неудачей)</string>
+</resources>

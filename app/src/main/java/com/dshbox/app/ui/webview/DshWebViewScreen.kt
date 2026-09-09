@@ -187,7 +187,7 @@ internal class DshWebContainer(
                 }
             }
 
-            // 1.1.1 (T2)：DSH 重启换新 launchToken 后，旧 token 的首次访问返回 401
+            // DSH 重启换新 launchToken 后，旧 token 的首次访问返回 401
             // （WebView 显示 ERR_HTTP_RESPONSE_CODE_FAILURE）。此时签名 cookie 通常
             // 已生效（或即将种入）——自动刷新一次即可恢复，无需用户手动刷新。
             // 仅主框架 401 且尚未自动刷新过时触发，防死循环。
@@ -284,7 +284,7 @@ internal class DshWebContainer(
 }
 
 /**
- * 1.1.1 (M10)：在 [base] 上追加 DSH launchToken 查询参数（`?token=<值>`）。
+ * 在 [base] 上追加 DSH launchToken 查询参数（`?token=<值>`）。
  * 旧版 DSH / token 未就绪时原样返回；token 为 base64url 字符集（A-Za-z0-9_-），
  * 无需 URL 编码。
  */
@@ -307,7 +307,7 @@ fun DshWebViewScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // 1.1.1 (M10)：DSH 进程级 launchToken（从 `dsh web:` 原始输出解析）——
+    // DSH 进程级 launchToken（从 `dsh web:` 原始输出解析）——
     // 首次加载携带它完成 token→签名 cookie 交换，此后 WebView 凭持久 cookie 访问。
     val dshLaunchToken by (context.applicationContext as com.dshbox.app.DshApp)
         .container.sandboxManager.dshLaunchToken.collectAsState()
@@ -368,7 +368,7 @@ fun DshWebViewScreen(
         }
     }
 
-    // 1.1.1 (M10)：launchToken 就绪后带 token 加载（首次完成 cookie 交换；
+    // launchToken 就绪后带 token 加载（首次完成 cookie 交换；
         // DSH 重启 token 变化时再次触发，幂等）。401 认证页也会被覆盖为带 token 重载。
         LaunchedEffect(dshLaunchToken, dshState) {
             val token = dshLaunchToken
@@ -457,7 +457,7 @@ fun DshWebViewScreen(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Filled.Tune,
-                            contentDescription = "页面控制",
+                            contentDescription = stringResource(R.string.webview_page_controls),
                             tint = Color.White,
                             modifier = Modifier.size(20.dp),
                         )
@@ -488,7 +488,7 @@ fun DshWebViewScreen(
                         } else {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
-                                contentDescription = "刷新",
+                                contentDescription = stringResource(R.string.webview_refresh),
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp),
                             )
@@ -523,7 +523,7 @@ fun DshWebViewScreen(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
-                                text = "页面控制",
+                                text = stringResource(R.string.webview_page_controls),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -535,8 +535,8 @@ fun DshWebViewScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Close,
-                                    contentDescription = "关闭",
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                contentDescription = stringResource(R.string.files_close),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
@@ -557,7 +557,7 @@ fun DshWebViewScreen(
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("刷新页面")
+                            Text(stringResource(R.string.webview_refresh_page))
                         }
                     }
                 }

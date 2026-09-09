@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sandbox_not_running_debian">沙箱未运行，请先启动 Debian 沙箱</string>
+    <string name="dsh_not_ready_timeout">DSH 未能在限定时间内就绪</string>
+    <string name="dsh_stopped_retry">DSH 已被停止，请稍后重试</string>
+    <string name="dsh_ready_timeout">DSH 就绪超时</string>
+    <string name="bundle_empty">压缩包内没有文件</string>
+    <string name="bundle_unsafe_path_rel">压缩包包含非法路径（..），已拦截：%1$s</string>
+    <string name="bundle_unsafe_path_escape">压缩包路径越界，已拦截：%1$s</string>
+    <string name="bundle_no_profile">运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）</string>
+    <string name="bundle_no_base_snapshot">运行环境包缺少 base 层（快照布局需 base/ 目录；层归档布局需 &lt;layer&gt;.tar[.zst/.gz/.bz2/.xz]）</string>
+    <string name="bundle_no_base">运行环境包缺少 base 层</string>
+    <string name="bundle_bad_profile">runtime-profile.json 无法解析</string>
+    <string name="bundle_missing_layer">运行环境包缺少 %1$s 层归档（&lt;layer&gt;.tar[.zst/.gz/.bz2/.xz]）</string>
+    <string name="bundle_sha_sidecar_mismatch">层 %1$s 的 .sha256 侧车与 runtime-profile.json 声明不一致</string>
+    <string name="bundle_sha_mismatch">层 %1$s SHA-256 校验失败</string>
+    <string name="npm_bad_registry">registry 地址不合法：%1$s</string>
+    <string name="npm_bad_version">版本号不合法：%1$s</string>
+    <string name="npm_low_storage">存储空间不足（需约 1GB 可用，当前仅 %1$dMB）</string>
+    <string name="npm_stage_starting_sandbox">正在启动沙箱…</string>
+    <string name="npm_sandbox_start_failed">沙箱启动失败，无法执行 npm 安装</string>
+    <string name="npm_stage_pulling">正在从 %2$s 拉取 @deepseek-ai/dsh %1$s（含完整依赖，需要几分钟）…</string>
+    <string name="npm_install_failed">npm 安装失败：%1$s（详见日志）</string>
+    <string name="npm_verify_failed">npm 安装结果缺少 @deepseek-ai/dsh/lib/bin.js，无法继续</string>
+    <string name="npm_stage_packing">正在打包 DSH 层…</string>
+    <string name="npm_pack_failed">打包 DSH 层失败：%1$s</string>
+    <string name="npm_pack_abnormal">打包结果异常，无法继续</string>
+    <string name="npm_stage_installing">正在安装 DSH %1$s…</string>
+    <string name="npm_stage_done">安装完成</string>
+    <string name="dsh_bundle_invalid">所选文件不是有效的 DSH 层包（缺少 node_modules/@deepseek-ai/dsh/lib/bin.js）</string>
+    <string name="dsh_install_failed">无法将新 DSH 层就位（rename/copy 均失败）</string>
+</resources>
