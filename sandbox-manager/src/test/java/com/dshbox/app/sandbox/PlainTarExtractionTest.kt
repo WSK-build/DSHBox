@@ -11,7 +11,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * 1.1.0 (M5): BundleManager.extractTarGz must accept UNCOMPRESSED tar by the
+ * BundleManager.extractTarGz must accept UNCOMPRESSED tar by the
  * "ustar" magic at offset 257, in addition to gzip/zstd — a user-supplied DSH
  * layer packed as plain .tar installs without renaming.
  */

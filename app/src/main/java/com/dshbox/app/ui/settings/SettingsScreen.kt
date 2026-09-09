@@ -28,6 +28,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Surface
@@ -48,10 +49,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.os.LocaleListCompat
 import com.dshbox.app.BuildConfig
 import com.dshbox.app.DshApp
 import com.dshbox.app.R
+import com.dshbox.app.util.AppUpdater
 import com.dshbox.app.util.ArchiveErrors
 import com.dshbox.app.util.ArchiveExtractor
 import com.dshbox.app.util.BackgroundOps
@@ -60,10 +64,14 @@ import com.dshbox.app.util.formatFileSize
 import com.dshbox.app.util.queryDisplayName
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
+import com.dshbox.app.common.UiText
+import com.dshbox.app.ui.asString
 import com.dshbox.app.common.Constants
 import com.dshbox.app.sandbox.SandboxManager
 import com.dshbox.app.sandbox.DshUpdateOutcome
 import com.dshbox.app.service.SandboxService
+import com.dshbox.app.ui.theme.AppLanguage
+import com.dshbox.app.ui.theme.AppLocaleState
 import com.dshbox.app.ui.theme.AppThemeState
 import com.dshbox.app.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
@@ -77,7 +85,7 @@ import java.io.File
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
-    // 1.1.0 (M12)：设置页常驻组合（keepAlive），由 MainScreen 传当前页激活状态，
+    // 设置页常驻组合（keepAlive），由 MainScreen 传当前页激活状态，
     // 用于「进设置页自动重算存储占用」；dshActive 供 /tmp 智能清理判定。
     isActive: Boolean = false,
     sandboxRunning: Boolean,
@@ -89,31 +97,36 @@ fun SettingsScreen(
     val sandboxManager = (context.applicationContext as DshApp).container.sandboxManager
     var showDiagnostics by remember { mutableStateOf(false) }
     var showBatteryDialog by remember { mutableStateOf(false) }
-    // 1.1.0 (M8)：更新 DSH（在线）改为独立界面 DshUpdateScreen（源探测 → 选版本 → guest npm 安装）。
+    // 语言选择器单选对话框（外观区块）。
+    var showLanguageDialog by remember { mutableStateOf(false) }
+    var updateChecking by remember { mutableStateOf(false) }
+    var updateCheckResult by remember { mutableStateOf<AppUpdater.CheckResult?>(null) }
+    var showUpdateCheckDialog by remember { mutableStateOf(false) }
+    // 更新 DSH（在线）改为独立界面 DshUpdateScreen（源探测 → 选版本 → guest npm 安装）。
     var showDshOnlineUpdate by remember { mutableStateOf(false) }
     // 更新 DSH（离线导入）说明弹窗
     var showDshOfflineInfo by remember { mutableStateOf(false) }
     // 离线上导入运行环境包的二次确认（重置虚拟系统/数据丢失）
     var showImportRuntimeWarn by remember { mutableStateOf(false) }
-    // 1.1.0 (M9)：两个离线导入的进行中状态（202MB 官方包复制+分层解压耗时较长，必须有反馈）
+    // 两个离线导入的进行中状态（202MB 官方包复制+分层解压耗时较长，必须有反馈）
     var importingRuntime by remember { mutableStateOf(false) }
     var importingDsh by remember { mutableStateOf(false) }
-    // 1.1.0 (M12)：存储占用（系统分配块口径，filesDir + cacheDir）与清理弹窗状态。
+    // 存储占用（系统分配块口径，filesDir + cacheDir）与清理弹窗状态。
     var storageScan by remember { mutableStateOf<SandboxCleanup.ScanResult?>(null) }
     var storageScanning by remember { mutableStateOf(false) }
     var showCleanupDialog by remember { mutableStateOf(false) }
     var cleanupRunning by remember { mutableStateOf(false) }
     var cleanupFreed by remember { mutableStateOf<Long?>(null) }
-    // 1.1.0 (M12.1)：各清理项独立勾选（P2⑬）；回滚备份默认不勾，安全项默认勾选。
+    // 各清理项独立勾选；回滚备份默认不勾，安全项默认勾选。
     val cleanupSelected = remember { mutableStateMapOf<SandboxCleanup.Category, Boolean>() }
-    // 1.1.0 (M12.1 P2⑫)：30s 内复用上次扫描；切走页取消扫描协程；支持手动刷新。
+    // P2⑫)：30s 内复用上次扫描；切走页取消扫描协程；支持手动刷新。
     var scanJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var lastScanAt by remember { mutableStateOf(0L) }
     var lastScanGuard by remember { mutableStateOf<Boolean?>(null) }
     // 装配 DSH 移动端适配包（cordis 插件，指令注入方式 B）
     var assembleRunning by remember { mutableStateOf(false) }
     var assembleChecking by remember { mutableStateOf(false) }
-    // 1.1.1 (T2 开关版)：装配状态本地标记（开关瞬时响应），进入设置页自动检测校准。
+    // 开关版)：装配状态本地标记（开关瞬时响应），进入设置页自动检测校准。
     val assemblePrefs = remember { context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE) }
     var assembleInstalled by remember {
         mutableStateOf(assemblePrefs.getBoolean(PREF_MOBILE_ADAPT_INSTALLED, false))
@@ -121,7 +134,7 @@ fun SettingsScreen(
     // 装配行动作占位：运行函数定义在本函数体更后处，用 var 引用、点击时取值。
     var assembleRowAction by remember { mutableStateOf<() -> Unit>({}) }
 
-    // 1.1.1 (T2 开关版)：仅首次（本地标记从未设置过）进入设置页时校准一次开关；
+    // 开关版)：仅首次（本地标记从未设置过）进入设置页时校准一次开关；
     // 此后开关状态完全由本地标记保持（装配/移除成功时翻转），不再反复查询。
     LaunchedEffect(isActive) {
         if (isActive && !assembleRunning && !assemblePrefs.contains(PREF_MOBILE_ADAPT_INSTALLED)) {
@@ -138,7 +151,7 @@ fun SettingsScreen(
         }
     }
 
-    // 1.1.1 (T2)：本地装配标记持久化（免 guest 查询：点击即切，瞬时响应；仅装配/移除
+    // 本地装配标记持久化（免 guest 查询：点击即切，瞬时响应；仅装配/移除
     // 成功时更新，失败保持原状）。
     fun setAssembleInstalled(v: Boolean) {
         assembleInstalled = v
@@ -169,7 +182,8 @@ fun SettingsScreen(
                     scope.launch { sandboxManager.runGuestCommand("bash $stage/uninstall.sh $profile", onLine = {}) }
                     Toast.makeText(
                         context,
-                        context.getString(R.string.settings_assemble_mobile_adapt_failed) + "：" + res.error.message,
+                        context.getString(R.string.settings_assemble_mobile_adapt_failed) +
+                            detailOf(context, res.error),
                         Toast.LENGTH_LONG,
                     ).show()
                 }
@@ -177,7 +191,7 @@ fun SettingsScreen(
         }
     }
 
-    // 1.1.1 (T2)：一键移除已装配的移动端适配插件（uninstall.sh）；不重启 DSH、无弹窗。
+    // 一键移除已装配的移动端适配插件（uninstall.sh）；不重启 DSH、无弹窗。
     val runRemoveMobileAdapt = fun() {
         if (assembleRunning) return
         assembleRunning = true
@@ -199,7 +213,8 @@ fun SettingsScreen(
                 is AppResult.Failure -> {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.settings_assemble_mobile_adapt_remove_failed) + "：" + res.error.message,
+                        context.getString(R.string.settings_assemble_mobile_adapt_remove_failed) +
+                            detailOf(context, res.error),
                         Toast.LENGTH_LONG,
                     ).show()
                 }
@@ -215,7 +230,7 @@ fun SettingsScreen(
 
     // 沙箱或 DSH 任一运行中时，guest /tmp 与 proot 临时目录走 24h 智能清理。
     val tmpGuardActive = sandboxRunning || dshActive
-    // 1.1.0 (M12.1 P1③)：后台安装/导入进行中时禁止清理（与其清理目标并发会摧毁
+    // P1③)：后台安装/导入进行中时禁止清理（与其清理目标并发会摧毁
     // 首启安装或打断导入）。
     val busyOps by BackgroundOps.busyCount.collectAsState()
     val maintenanceBusy = busyOps > 0
@@ -244,7 +259,7 @@ fun SettingsScreen(
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 throw ce
             } finally {
-                // 1.1.0 (M12.1 P1④)：无论成败（含取消）都复位，杜绝「统计中…」死锁。
+                // P1④)：无论成败（含取消）都复位，杜绝「统计中…」死锁。
                 storageScanning = false
             }
         }
@@ -263,24 +278,24 @@ fun SettingsScreen(
             scope.launch {
                 importingRuntime = true
                 try {
-                    // M12.1 P1③：登记后台操作，阻止清理与其并发（写入 cacheDir）。
+                    // 登记后台操作，阻止清理与其并发（写入 cacheDir）。
                     val result = BackgroundOps.runTracked { installUpdateFromUri(context, sandboxManager, uri) }
                     val message = when (result) {
                         is AppResult.Success -> context.getString(R.string.settings_update_imported)
                         is AppResult.Failure -> context.getString(
                             R.string.settings_update_import_failed,
-                            result.error.message,
+                            result.error.userMessage?.asString(context) ?: result.error.message,
                         )
                     }
                     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 } catch (ce: kotlinx.coroutines.CancellationException) {
                     throw ce
                 } catch (e: Exception) {
-                    // 1.1.0 (M11): 兜底——任何异常都不得直通协程（rememberCoroutineScope
+                    // 兜底——任何异常都不得直通协程（rememberCoroutineScope
                     // 无异常处理器，直通即 crash）。
                     Toast.makeText(
                         context,
-                        context.getString(R.string.settings_update_import_failed, e.message ?: "未知错误"),
+                        context.getString(R.string.settings_update_import_failed, e.message ?: context.getString(R.string.error_unknown)),
                         Toast.LENGTH_LONG,
                     ).show()
                 } finally {
@@ -300,7 +315,7 @@ fun SettingsScreen(
             scope.launch {
                 importingDsh = true
                 try {
-                    // M12.1 P1③：登记后台操作，阻止清理与其并发（写入 cacheDir）。
+                    // 登记后台操作，阻止清理与其并发（写入 cacheDir）。
                     val result = BackgroundOps.runTracked { installDshFromUri(context, sandboxManager, uri) }
                     when (result) {
                         is AppResult.Success -> {
@@ -313,18 +328,18 @@ fun SettingsScreen(
                         }
                         is AppResult.Failure -> Toast.makeText(
                             context,
-                            context.getString(R.string.settings_update_import_failed, result.error.message),
+                            context.getString(R.string.settings_update_import_failed, result.error.userMessage?.asString(context) ?: result.error.message),
                             Toast.LENGTH_LONG,
                         ).show()
                     }
                 } catch (ce: kotlinx.coroutines.CancellationException) {
                     throw ce
                 } catch (e: Exception) {
-                    // 1.1.0 (M11): 兜底——函数内已把复制/解压转成 AppResult，此处只防
+                    // 兜底——函数内已把复制/解压转成 AppResult，此处只防
                     // 未预见的异常路径直通协程导致 crash。
                     Toast.makeText(
                         context,
-                        context.getString(R.string.settings_update_import_failed, e.message ?: "未知错误"),
+                        context.getString(R.string.settings_update_import_failed, e.message ?: context.getString(R.string.error_unknown)),
                         Toast.LENGTH_LONG,
                     ).show()
                 } finally {
@@ -334,7 +349,7 @@ fun SettingsScreen(
         }
     }
 
-    // 1.1.0 (M8)：在线更新走独立界面（仿 DiagnosticsScreen 的覆盖式挂载）。
+    // 在线更新走独立界面（仿 DiagnosticsScreen 的覆盖式挂载）。
     if (showDshOnlineUpdate) {
         DshUpdateScreen(
             onBack = { showDshOnlineUpdate = false },
@@ -366,10 +381,10 @@ fun SettingsScreen(
                     if (sandboxRunning) R.string.settings_sandbox_ready else R.string.settings_sandbox_not_ready,
                 ),
             )
-            // 1.1.0 (M12)：存储占用拆为「沙盒数据 + 应用缓存」两行，系统分配块口径
+            // 存储占用拆为「沙盒数据 + 应用缓存」两行，系统分配块口径
             // （含 cacheDir——崩溃残留的导入暂存在这里，系统存储页也把它算在内），
             // 进设置页自动重算；两行均可点击手动强制刷新，行尾刷新图标作提示
-            // （M12.1 P2⑫ + M12.3 UX 一致性）。
+            // 。
             val scan = storageScan
             SettingsRow(
                 title = stringResource(R.string.settings_storage_data),
@@ -390,7 +405,7 @@ fun SettingsScreen(
             SettingsActionRow(
                 title = stringResource(R.string.settings_cleanup_title),
                 onClick = {
-                    // M12.2：入口预判——后台安装/导入进行中直接 toast，不再先弹窗再显示
+                    // 入口预判——后台安装/导入进行中直接 toast，不再先弹窗再显示
                     // 「后台忙」（弹窗内的忙碌分支仍保留，兜住弹窗打开期间新启动的任务）。
                     if (maintenanceBusy) {
                         Toast.makeText(
@@ -400,7 +415,7 @@ fun SettingsScreen(
                         ).show()
                     } else {
                         cleanupFreed = null
-                        // M12.1 P2⑬：各清理项独立勾选——安全项默认勾选，回滚备份默认不勾。
+                        // 各清理项独立勾选——安全项默认勾选，回滚备份默认不勾。
                         cleanupSelected.clear()
                         SandboxCleanup.Category.values().forEach {
                             cleanupSelected[it] = it != SandboxCleanup.Category.ROLLBACK
@@ -444,7 +459,7 @@ fun SettingsScreen(
                     modifier = Modifier.padding(vertical = 4.dp),
                 )
             }
-            // 1.1.0 (M8)：更新 DSH（在线）——进入独立界面：并行探测各 npm 源
+            // 更新 DSH（在线）——进入独立界面：并行探测各 npm 源
             // （版本号 + 延迟），选源选版本后在沙箱内用 npm 拉取 @deepseek-ai/dsh
             // 及完整依赖替换内置层（沿用官方构建方式）。
             SettingsActionRow(
@@ -471,7 +486,7 @@ fun SettingsScreen(
         }
 
         // 装配 DSH 移动端适配包（cordis 插件，指令注入方式 B）——位于「外观」上方。
-        // 1.1.1 (T2 开关版)：无弹窗开关，进入设置页自动检测校准；切换中禁用防连点。
+        // 开关版)：无弹窗开关，进入设置页自动检测校准；切换中禁用防连点。
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -488,7 +503,7 @@ fun SettingsScreen(
                 checked = assembleInstalled,
                 enabled = !assembleRunning && !assembleChecking,
                 onCheckedChange = { assembleRowAction() },
-                // 1.1.1 (T2)：打开=绿、关闭=灰白（覆盖 M3 默认主题色）。
+                // 打开=绿、关闭=灰白（覆盖 M3 默认主题色）。
                 colors = SwitchDefaults.colors(
                     checkedTrackColor = Color(0xFF10A37F),
                     uncheckedTrackColor = Color(0xFFD5D5D5),
@@ -531,6 +546,18 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+
+            // 语言选择器（联合国六语 + 跟随系统，默认跟随系统）。
+            Spacer(modifier = Modifier.height(8.dp))
+            val currentLanguageLabel = when (val lang = AppLocaleState.current) {
+                AppLanguage.SYSTEM -> stringResource(R.string.settings_appearance_follow_system)
+                else -> lang.nativeName
+            }
+            SettingsRow(
+                title = stringResource(R.string.settings_language),
+                value = currentLanguageLabel,
+                onClick = { showLanguageDialog = true },
+            )
         }
 
         SettingsSection(title = stringResource(R.string.settings_section_permissions)) {
@@ -546,15 +573,18 @@ fun SettingsScreen(
         )
 
         SettingsSection(title = stringResource(R.string.settings_section_update)) {
-            // Row 1：检查更新 App —— App 自查更新能力尚未接入，机制预留。
+            // Row 1：检查更新 App —— 联网查询 GitHub Releases 最新 tag，有新版本则弹窗引导去官网下载。
             SettingsActionRow(
                 title = stringResource(R.string.settings_check_update),
                 onClick = {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.settings_check_app_update_reserved),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    if (!updateChecking) {
+                        scope.launch {
+                            updateChecking = true
+                            updateCheckResult = AppUpdater.checkLatest()
+                            updateChecking = false
+                            showUpdateCheckDialog = true
+                        }
+                    }
                 },
             )
             // Row 2：离线导入运行环境包 —— 先弹"重置虚拟系统/数据丢失"二次确认，再选包导入。
@@ -567,7 +597,7 @@ fun SettingsScreen(
         SettingsSection(title = stringResource(R.string.settings_section_about)) {
             SettingsRow(
                 title = stringResource(R.string.app_name),
-                // M12.3：显示 v 前缀，与版本号写法统一（BuildConfig.VERSION_NAME="1.1.0"）。
+                // 显示 v 前缀，与版本号写法统一（BuildConfig.VERSION_NAME="1.1.0"）。
                 value = "v${BuildConfig.VERSION_NAME}",
             )
         }
@@ -615,7 +645,7 @@ fun SettingsScreen(
         )
     }
 
-    // 1.1.0 (M9)：导入进行中提示（不可取消——中断会留下半成品，流程内部会自行清理）。
+    // 导入进行中提示（不可取消——中断会留下半成品，流程内部会自行清理）。
     if (importingRuntime || importingDsh) {
         AlertDialog(
             onDismissRequest = { },
@@ -633,8 +663,8 @@ fun SettingsScreen(
         )
     }
 
-    // 1.1.0 (M12)：清理缓存与垃圾文件。弹窗先展示逐项可释放大小（与实际执行同一
-    // 判定函数），各清理项独立勾选（M12.1 P2⑬），确认后执行并回报释放量。
+    // 清理缓存与垃圾文件。弹窗先展示逐项可释放大小（与实际执行同一
+    // 判定函数），各清理项独立勾选，确认后执行并回报释放量。
     if (showCleanupDialog) {
         val scan = storageScan
         val rollbackBytes = scan?.reclaimable?.get(SandboxCleanup.Category.ROLLBACK) ?: 0L
@@ -644,7 +674,7 @@ fun SettingsScreen(
 
         fun runCleanup() {
             if (cleanupRunning) return
-            // M12.1 P1③：执行前二次校验——弹窗打开期间可能有后台安装/导入启动。
+            // 执行前二次校验——弹窗打开期间可能有后台安装/导入启动。
             if (maintenanceBusy) return
             val categories = selectedCategories.toSet()
             if (categories.isEmpty()) return
@@ -657,7 +687,7 @@ fun SettingsScreen(
                 } catch (ce: kotlinx.coroutines.CancellationException) {
                     throw ce
                 } finally {
-                    // M12.1 P1④：无论成败（含取消）都复位，杜绝弹窗 dismiss 死锁。
+                    // 无论成败（含取消）都复位，杜绝弹窗 dismiss 死锁。
                     cleanupRunning = false
                 }
             }
@@ -677,7 +707,7 @@ fun SettingsScreen(
                     val freedNow = cleanupFreed
                     when {
                         maintenanceBusy && cleanupFreed == null -> {
-                            // M12.1 P1③：后台安装/导入进行中——清理入口整体禁用。
+                            // 后台安装/导入进行中——清理入口整体禁用。
                             Text(
                                 text = stringResource(R.string.settings_cleanup_busy),
                                 color = MaterialTheme.colorScheme.error,
@@ -788,6 +818,100 @@ fun SettingsScreen(
             },
         )
     }
+
+    // 语言单选对话框。语言项显示各语言「自称」（不随界面语言翻译）；
+    // 跟随系统项附注当前系统语言，帮助用户确认系统语言归属。选择即生效
+    // （AppCompatDelegate 重建前台 Activity），无需重启。
+    if (showUpdateCheckDialog) {
+        val res = updateCheckResult
+        val msg = when {
+            res == null || res.error -> stringResource(R.string.settings_update_error_msg)
+            res.isNewer -> stringResource(
+                R.string.settings_update_available_msg,
+                res.latestTag.orEmpty(),
+                res.currentVersion,
+            )
+            else -> stringResource(R.string.settings_update_latest_msg, res.currentVersion)
+        }
+        AlertDialog(
+            onDismissRequest = { showUpdateCheckDialog = false },
+            title = { Text(stringResource(R.string.settings_check_update)) },
+            text = { Text(msg) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUpdateCheckDialog = false
+                    AppUpdater.openSite(context)
+                }) {
+                    Text(stringResource(R.string.settings_update_open_site))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpdateCheckDialog = false }) {
+                    Text(stringResource(R.string.settings_cancel_action))
+                }
+            },
+        )
+    }
+
+    if (showLanguageDialog) {
+        val systemLocaleName = remember {
+            LocaleListCompat.getDefault().get(0)?.displayName.orEmpty()
+        }
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = { Text(stringResource(R.string.settings_language)) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                ) {
+                    AppLanguage.entries.forEach { lang ->
+                        val selected = AppLocaleState.current == lang
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    AppLocaleState.set(context, lang)
+                                    showLanguageDialog = false
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = selected, onClick = null)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                if (lang == AppLanguage.SYSTEM) {
+                                    Text(
+                                        text = stringResource(R.string.settings_appearance_follow_system),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    if (systemLocaleName.isNotEmpty()) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.settings_language_system_locale,
+                                                systemLocaleName,
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = lang.nativeName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguageDialog = false }) {
+                    Text(stringResource(R.string.home_stop_cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -803,7 +927,7 @@ private fun ThemeModeButton(
             onClick = onClick,
             modifier = modifier.height(44.dp),
         ) {
-            Text(label)
+            Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, softWrap = false)
         }
     } else {
         OutlinedButton(
@@ -811,7 +935,7 @@ private fun ThemeModeButton(
             onClick = onClick,
             modifier = modifier.height(44.dp),
         ) {
-            Text(label)
+            Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, softWrap = false)
         }
     }
 }
@@ -861,17 +985,24 @@ private fun SettingsRow(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
+            // 长翻译下标题限单行防挤压右侧 value。
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
         )
         if (trailingIcon != null) trailingIcon()
     }
 }
 
-/** 存储行尾部的「点击刷新」小图标（M12.3：与可点击行为配对，避免视觉不一致）。 */
+/** 存储行尾部的「点击刷新」小图标。 */
 @Composable
 private fun RefreshHintIcon() {
     Icon(
@@ -884,11 +1015,17 @@ private fun RefreshHintIcon() {
     )
 }
 
+/** 错误详情拼接段——优先可本地化 userMessage，回退原始 message。 */
+private fun detailOf(context: Context, error: com.dshbox.app.common.AppError): String {
+    val detail = error.userMessage?.asString(context) ?: error.message
+    return if (detail.isNotEmpty()) "：" + detail else ""
+}
+
 @Composable
 private fun SettingsActionRow(
     title: String,
     onClick: () -> Unit,
-    /** 1.1.1 (T2)：行右侧状态文本（装配行用），显示在箭头前。 */
+    /** 行右侧状态文本（装配行用），显示在箭头前。 */
     value: String? = null,
 ) {
     Row(
@@ -903,6 +1040,10 @@ private fun SettingsActionRow(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.weight(1f),
+            // 长翻译下标题限单行。
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
         )
         Spacer(modifier = Modifier.width(8.dp))
         if (value != null) {
@@ -911,6 +1052,9 @@ private fun SettingsActionRow(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 8.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
             )
         }
         Text(
@@ -930,7 +1074,7 @@ private suspend fun installUpdateFromUri(
     // hand it to SandboxManager.importRuntimeBundle (layered clean-replace per §2.3:
     // new body -> runtime-current, old body -> previous/, protects DSH layer + user-data).
     //
-    // 1.1.0 (M11): the SAF->cache copy can itself throw IOException (cloud provider
+    // the SAF->cache copy can itself throw IOException (cloud provider
     // interrupted, cache disk full — the official bundle is ~200MB). Convert it to an
     // AppResult; an exception escaping this function would crash the app because the
     // caller's rememberCoroutineScope has no exception handler.
@@ -939,12 +1083,14 @@ private suspend fun installUpdateFromUri(
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 target.outputStream().use { output -> input.copyTo(output) }
-            } ?: return@withContext AppResult.Failure(AppError("UPDATE_READ_FAILED", "无法读取所选文件"))
+            } ?: return@withContext AppResult.Failure(AppError("UPDATE_READ_FAILED", "Cannot read selected file",
+                userMessage = UiText.Res(R.string.settings_pick_failed_read)))
         } catch (ce: kotlinx.coroutines.CancellationException) {
             throw ce
         } catch (e: Exception) {
             return@withContext AppResult.Failure(
-                AppError("UPDATE_COPY_FAILED", "读取所选文件失败：${ArchiveErrors.describe(e)}"),
+                AppError("UPDATE_COPY_FAILED", "Failed to read selected file: ${ArchiveErrors.describe(e)}",
+                    userMessage = UiText.Res(R.string.settings_read_failed_reason, listOf(ArchiveErrors.describe(e).asString(context)))),
             )
         }
         sandboxManager.stopSandbox()
@@ -959,11 +1105,11 @@ private suspend fun installDshFromUri(
     sandboxManager: SandboxManager,
     uri: Uri,
 ): AppResult<DshUpdateOutcome> = withContext(Dispatchers.IO) {
-    // 接受：单个 .tar.gz / .tar.zst / .tar（1.1.0 M5 起支持裸 tar）DSH 层包，
+    // 接受：单个 .tar.gz / .tar.zst / .tar（起支持裸 tar）DSH 层包，
     // 或 .zip（内含 DSH 层包，zip 内允许一层目录前缀，1.1.0 起递归查找）。
     // 不依赖文件名——按内容魔数识别类型。
     //
-    // 1.1.0 (M11)：ArchiveExtractor.extract 的契约是「清理后重抛」，损坏 zip（截断 /
+    // ArchiveExtractor.extract 的契约是「清理后重抛」，损坏 zip（截断 /
     // CRC 失败 / 加密）与 SAF 复制中断都会抛异常；rememberCoroutineScope 无异常处理器，
     // 异常直通协程即 crash。这里把复制与解压都转成 AppResult，只有 CancellationException
     // 保持重抛（结构化取消语义）。
@@ -973,12 +1119,14 @@ private suspend fun installDshFromUri(
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 probe.outputStream().use { output -> input.copyTo(output) }
-            } ?: return@withContext AppResult.Failure(AppError("DSH_READ_FAILED", "无法读取所选文件"))
+            } ?: return@withContext AppResult.Failure(AppError("DSH_READ_FAILED", "Cannot read selected file",
+                userMessage = UiText.Res(R.string.settings_pick_failed_read)))
         } catch (ce: kotlinx.coroutines.CancellationException) {
             throw ce
         } catch (e: Exception) {
             return@withContext AppResult.Failure(
-                AppError("DSH_COPY_FAILED", "读取所选文件失败：${ArchiveErrors.describe(e)}"),
+                AppError("DSH_COPY_FAILED", "Failed to read selected file: ${ArchiveErrors.describe(e)}",
+                    userMessage = UiText.Res(R.string.settings_read_failed_reason, listOf(ArchiveErrors.describe(e).asString(context)))),
             )
         }
         when (ArchiveExtractor.detectFormat(probe)) {
@@ -989,20 +1137,22 @@ private suspend fun installDshFromUri(
                     throw ce
                 } catch (e: Exception) {
                     return@withContext AppResult.Failure(
-                        AppError("DSH_EXTRACT_FAILED", "解压失败：${ArchiveErrors.describe(e)}"),
+                        AppError("DSH_EXTRACT_FAILED", "Extraction failed: ${ArchiveErrors.describe(e)}",
+                            userMessage = UiText.Res(R.string.files_extract_failed, listOf(ArchiveErrors.describe(e).asString(context)))),
                     )
                 }
-                // 1.1.0 (M4): 递归查找层包（右键压缩文件夹的 zip 有一层目录前缀）；
+                // 递归查找层包（右键压缩文件夹的 zip 有一层目录前缀）；
                 // 即使误选了其它 tar 包（如运行环境 zip 里的 base.tar.zst）也不会再
                 // 损坏现有层——DshLayer.installFromBundle 会先解到暂存区做形态校验
                 // （bin.js 缺失即拒绝并保留原层）。
-                // 1.1.0 (M12.4): 查找放宽到 .tar（裸 tar）与 .tgz——压缩格式本就按
+                // 查找放宽到 .tar（裸 tar）与 .tgz——压缩格式本就按
                 // 内容魔数识别，zip 内层包不再要求特定扩展名。
                 val layer = staging.walkTopDown().firstOrNull {
                     it.isFile && (it.name.endsWith(".tar.gz") || it.name.endsWith(".tar.zst") ||
                         it.name.endsWith(".tar") || it.name.endsWith(".tgz"))
                 } ?: return@withContext AppResult.Failure(
-                    AppError("DSH_BUNDLE_NOT_FOUND", "zip 内未找到 DSH 层包（*.tar.gz / *.tar.zst / *.tar / *.tgz）"),
+                    AppError("DSH_BUNDLE_NOT_FOUND", "DSH layer package not found in zip (*.tar.gz / *.tar.zst / *.tar / *.tgz)",
+                        userMessage = UiText.Res(R.string.settings_zip_no_dsh_layer)),
                 )
                 val sha = File(layer.path + ".sha256")
                     .takeIf { it.isFile }

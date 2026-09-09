@@ -74,6 +74,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -84,7 +85,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.dshbox.app.DshApp
 import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import com.dshbox.app.sandbox.SandboxState
+import com.dshbox.app.ui.asString
 import com.dshbox.app.util.ArchiveExtractor
 import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.util.ConflictMode
@@ -217,7 +220,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 
     // 导入参数（launcher 回调前暂存）
     var importMode by remember { mutableStateOf("file") } // file | extract
-    // 1.2.0 M3 收尾（用户需求）：「从安卓导入」多选——OpenMultipleDocuments 批处理。
+    // 收尾（用户需求）：「从安卓导入」多选——OpenMultipleDocuments 批处理。
     // 队列逐件串行导入（冲突弹窗逐件决策），全部完成或取消后清理；取消=中止整个批。
     var importQueue by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var importQueueTarget by remember { mutableStateOf<File?>(null) }
@@ -244,7 +247,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         progress = ui
     }
 
-    fun showProgress(stage: String, done: Long = 0L, total: Long = -1L) {
+    fun showProgress(stage: UiText, done: Long = 0L, total: Long = -1L) {
         progress = ProgressUi(active = true, stage = stage, done = done, total = total)
     }
 
@@ -300,13 +303,13 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
      * 条目级「删除/重命名」的操作门禁（复查第七轮修正）：按 [entryLayer] 物理层判定——
      * node/dsh 层内条目、嵌套 `.dsh` 内部文件均命中（与 §4.2 全域语义对齐）；
      * 不再用 [isRiskEntry] 的名称口径（层内文件返回 NORMAL 会完全静默）。
-     * 「打开」仍用名称口径：层内逐目录弹窗会使导航不可用（见 MODIFICATION_LOG R27）。
+     * 「打开」仍用名称口径：层内逐目录弹窗会使导航不可用。
      */
     fun isGatedEntry(entry: FileEntry): Boolean = riskLevelOfLayer(entryLayer(entry)) != null
 
     /**
      * 当前目录的风险级别（系统目录 / 运行环境层 / DSH 内部数据目录），无风险返回 null。
-     * 1.2.0 §4.1：统一收敛到 [layerOf]（段匹配优先 + 前缀归属），删除原视图分支——
+     * 统一收敛到 [layerOf]（段匹配优先 + 前缀归属），删除原视图分支——
      * 行为变化（有意收紧）：工作区下嵌套 `.dsh`（如 foo/.dsh）现在也会命中 DSH_DATA。
      */
     fun protectedRiskLevel(dir: File): RiskLevel? = riskLevelOfLayer(pathLayer(dir))
@@ -355,7 +358,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             "rename" -> if (renameTarget != null) showRenameDialog = true
             "write" -> showNewFolderDialog = true
             "import" -> showImportMenu = true
-            // 1.2.0 §5.1：源侧风险强确认通过后进入目标选择器
+            // 源侧风险强确认通过后进入目标选择器
             "move" -> moveFlow.onMoveRiskConfirmed()
         }
         pendingRiskEntry = null
@@ -407,13 +410,13 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             val target = File(physical, safeName)
             if (target.exists()) {
                 showToastRes(R.string.files_rename_conflict)
-                // M3: 清空输入便于重输，弹窗保留
+                // 清空输入便于重输，弹窗保留
                 newFolderName = ""
                 return
             }
             target.mkdirs()
         }
-        created.onFailure { showError(it.message ?: "创建失败") }
+        created.onFailure { showError(it.message ?: context.getString(R.string.files_create_failed)) }
         newFolderName = ""
         showNewFolderDialog = false
         refreshEntries()
@@ -432,7 +435,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         val src = mapper.resolvePhysical(File(entry.logicalPath))
         val parent = src.parentFile
         if (parent == null) {
-            showError(context.getString(R.string.files_rename_failed, "路径异常"))
+            showError(context.getString(R.string.files_rename_failed, context.getString(R.string.files_path_error)))
             renameTarget = null
             renameName = ""
             showRenameDialog = false
@@ -446,12 +449,12 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             showRenameDialog = false
             return
         }
-        // 1.2.0 §5.7：重命名收敛为「同目录移动」统一走 moveWithin，
+        // 重命名收敛为「同目录移动」统一走 moveWithin，
         // renameTo 失败自动走复制兜底（含 rwx/时间戳同步），修复 1.1.1 失败无兜底问题
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(context.getString(R.string.files_progress_moving, entry.name))
+            showProgress(UiText.raw(context.getString(R.string.files_progress_moving, entry.name)))
             try {
                 val result = withContext(Dispatchers.IO) {
                     MoveEngine.moveWithin(listOf(MoveTask(src, dest)), listener = null)
@@ -462,7 +465,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 // 必须先判取消，否则取消会被误报为「重命名成功」
                 when {
                     result.cancelled -> showToastRes(R.string.files_progress_cancelled)
-                    failure != null -> showError(context.getString(R.string.files_rename_failed, failure.message))
+                    failure != null -> showError(context.getString(R.string.files_rename_failed, failure.message.asString(context)))
                     else -> showToast(context.getString(R.string.files_rename_done, entry.name, safeNewName))
                 }
             } catch (e: CancellationException) {
@@ -470,7 +473,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 clearProgress()
-                showError(context.getString(R.string.files_rename_failed, e.message ?: "未知错误"))
+                showError(context.getString(R.string.files_rename_failed, e.message ?: context.getString(R.string.error_unknown)))
             } finally {
                 renameTarget = null
                 renameName = ""
@@ -488,7 +491,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(context.getString(R.string.files_progress_deleting))
+            showProgress(UiText.raw(context.getString(R.string.files_progress_deleting)))
             try {
                 withContext(Dispatchers.IO) {
                     targets.forEach { t ->
@@ -510,7 +513,14 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 showDeleteConfirm = false
                 pendingDeleteTarget = null
                 exitSelection()
-                showError(e.message ?: "删除失败")
+                // 删除异常——FileOpException 优先展示可本地化 uiText。
+                val detail = if (e is com.dshbox.app.util.FileOpException) {
+                    e.uiText?.asString(context)
+                        ?: e.message?.let { com.dshbox.app.common.UiText.raw(it).asString(context) }
+                } else {
+                    e.message
+                }
+                showError(detail ?: context.getString(R.string.files_delete_failed))
             }
         }
     }
@@ -523,7 +533,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             val self = currentCoroutineContext()[Job]
             val physicalTarget = mapper.resolvePhysical(targetDir)
             val finalName = resolveConflictName(physicalTarget, baseName, mode)
-            showProgress(context.getString(R.string.files_progress_importing, baseName), 0, -1)
+            showProgress(UiText.raw(context.getString(R.string.files_progress_importing, baseName)), 0, -1)
             try {
                 if (finalName == null) {
                     clearProgress()
@@ -535,7 +545,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     FileOps.importFromUri(
                         context, uri, physicalTarget, finalName,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, context.getString(R.string.files_progress_importing, finalName), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_importing, finalName)), done, total))
                         },
                     )
                 }
@@ -552,7 +562,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             } catch (e: Exception) {
                 FileOps.deleteQuietly(File(physicalTarget, finalName ?: baseName))
                 clearProgress()
-                showError(context.getString(R.string.files_import_failed, e.message ?: "未知错误"))
+                showError(context.getString(R.string.files_import_failed, e.message ?: context.getString(R.string.error_unknown)))
                 importBatchDone?.complete(false)
             }
         }
@@ -571,16 +581,16 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     fun mergeExtracted(extractedDir: File, targetDir: File, mode: ConflictMode) {
         cancelProgressJob()
         progressJob = scope.launch {
-            // 1.1.0 (M12.1 P1③)：合并期间 extractedDir 仍在 cacheDir，登记后台操作
+            // P1③)：合并期间 extractedDir 仍在 cacheDir，登记后台操作
             // 阻止设置页清理并发删除它。begin→end 跨越整个协程（含取消路径）。
             BackgroundOps.begin()
-            showProgress(context.getString(R.string.files_progress_merging))
+            showProgress(UiText.raw(context.getString(R.string.files_progress_merging)))
             val self = currentCoroutineContext()[Job]
             try {
                 val physicalTarget = mapper.resolvePhysical(targetDir)
                 withContext(Dispatchers.IO) {
                     // S4: 递归逐文件统一冲突策略，避免覆盖同名目录时静默丢弃其子文件
-                    // 1.2.0 §5.3.4：mergeTree 下沉到 FileOps（叶子节点统一走移动引擎单项逻辑）
+                    // mergeTree 下沉到 FileOps（叶子节点统一走移动引擎单项逻辑）
                     MoveEngine.mergeTree(extractedDir, physicalTarget, mode)
                     extractedDir.deleteRecursively()
                 }
@@ -596,7 +606,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             } catch (e: Exception) {
                 FileOps.deleteQuietly(extractedDir)
                 clearProgress()
-                showError(context.getString(R.string.files_merge_failed, e.message ?: "未知错误"))
+                showError(context.getString(R.string.files_merge_failed, e.message ?: context.getString(R.string.error_unknown)))
                 importBatchDone?.complete(false)
             } finally {
                 BackgroundOps.end()
@@ -608,14 +618,14 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     fun startExtractImport(uri: Uri, targetDir: File) {
         cancelProgressJob()
         progressJob = scope.launch {
-            // 1.1.0 (M12.1 P1③)：import_*/extract_* 都在 cacheDir，登记后台操作
+            // P1③)：import_*/extract_* 都在 cacheDir，登记后台操作
             // 阻止设置页清理并发删除（切走页后协程仍存活但进度 UI 不可见）。
             BackgroundOps.begin()
             val self = currentCoroutineContext()[Job]
             val physicalTarget = mapper.resolvePhysical(targetDir)
             var tmpArchive: File? = null
             var tmpExtract: File? = null
-            showProgress(context.getString(R.string.files_progress_prepare))
+            showProgress(UiText.raw(context.getString(R.string.files_progress_prepare)))
             try {
                 tmpArchive = File(context.cacheDir, "import_${System.currentTimeMillis()}")
                 withContext(Dispatchers.IO) {
@@ -653,7 +663,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     ArchiveExtractor.extract(
                         tmpArchive!!, tmpExtract!!,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, context.getString(R.string.files_progress_extracting), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_extracting)), done, total))
                         },
                     )
                 }
@@ -706,7 +716,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 FileOps.deleteQuietly(tmpArchive)
                 FileOps.deleteQuietly(tmpExtract)
                 clearProgress()
-                showError(context.getString(R.string.files_extract_failed, e.message ?: "未知错误"))
+                showError(context.getString(R.string.files_extract_failed, e.message ?: context.getString(R.string.error_unknown)))
                 importBatchDone?.complete(false)
             } finally {
                 BackgroundOps.end()
@@ -725,26 +735,26 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(context.getString(R.string.files_progress_exporting))
+            showProgress(UiText.raw(context.getString(R.string.files_progress_exporting)))
             try {
                 val count = withContext(Dispatchers.IO) {
                     FileOps.exportToTree(
                         context, treeUri, physicalSelected,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, context.getString(R.string.files_progress_exporting), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_exporting)), done, total))
                         },
                     )
                 }
                 clearProgress()
                 exitSelection()
                 refreshEntries()
-                showToast(context.getString(R.string.files_export_done_count, count))
+                showToast(context.resources.getQuantityString(R.plurals.files_export_done_count, count, count))
             } catch (e: CancellationException) {
                 clearProgress()
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 clearProgress()
-                showError(context.getString(R.string.files_export_failed, e.message ?: "未知错误"))
+                showError(context.getString(R.string.files_export_failed, e.message ?: context.getString(R.string.error_unknown)))
             }
         }
     }
@@ -758,26 +768,26 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(context.getString(R.string.files_progress_zipping))
+            showProgress(UiText.raw(context.getString(R.string.files_progress_zipping)))
             try {
                 val count = withContext(Dispatchers.IO) {
                     FileOps.exportToZip(
                         context, zipUri, physicalSelected,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, context.getString(R.string.files_progress_zipping), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_zipping)), done, total))
                         },
                     )
                 }
                 clearProgress()
                 exitSelection()
                 refreshEntries()
-                showToast(context.getString(R.string.files_zip_done_count, count))
+                showToast(context.resources.getQuantityString(R.plurals.files_zip_done_count, count, count))
             } catch (e: CancellationException) {
                 clearProgress()
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 clearProgress()
-                showError(context.getString(R.string.files_export_failed, e.message ?: "未知错误"))
+                showError(context.getString(R.string.files_export_failed, e.message ?: context.getString(R.string.error_unknown)))
             }
         }
     }
@@ -830,11 +840,8 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         if (importBatchState.wantsSummary()) {
             val (ok, failed) = importBatchState.summaryArgs()
             showToast(
-                context.getString(
-                    if (failed == 0) R.string.files_import_batch_done
-                    else R.string.files_import_batch_done_fail,
-                    ok, failed,
-                ),
+                if (failed == 0) context.resources.getQuantityString(R.plurals.files_import_batch_done, ok, ok)
+                else context.resources.getQuantityString(R.plurals.files_import_batch_done_fail, ok, ok, failed),
             )
         }
     }
@@ -876,7 +883,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         refreshEntries()
     }
 
-    // 全局搜索（防抖）：搜索进度与文件操作进度（progress）完全分离（M2）
+    // 全局搜索（防抖）：搜索进度与文件操作进度（progress）完全分离
     LaunchedEffect(searchQuery) {
         searchJob?.cancel()
         val query = searchQuery.trim()
@@ -921,14 +928,14 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     // ---------------- UI ----------------
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().background(PageBg)) {
+        Column(modifier = Modifier.fillMaxSize().background(PageBg())) {
             // ---------- 1. 顶部分段切换 + 全局图标操作 ----------
             if (selectionMode) {
                 SelectionActionBar(
                     count = selectedPaths.size,
                     canRename = selectedPaths.size == 1,
                     canExport = selectedPaths.isNotEmpty(),
-                    // 1.2.0 M1：多选栏移动入口（§5.1）
+                    // 多选栏移动入口（§5.1）
                     onMove = {
                         moveFlow.startMove(entries.filter { it.logicalPath in selectedPaths })
                     },
@@ -973,7 +980,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         Icon(
                             imageVector = Icons.Outlined.Refresh,
                             contentDescription = stringResource(R.string.files_refresh),
-                            tint = TextSecondary,
+                            tint = TextSecondary(),
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -997,7 +1004,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         Icon(
                             imageVector = Icons.Outlined.Sort,
                             contentDescription = stringResource(R.string.files_sort),
-                            tint = TextSecondary,
+                            tint = TextSecondary(),
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -1010,7 +1017,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                             contentDescription = stringResource(
                                 if (viewMode == ViewMode.LIST) R.string.files_view_grid else R.string.files_view_list,
                             ),
-                            tint = TextSecondary,
+                            tint = TextSecondary(),
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -1037,7 +1044,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     Text(
                         text = stringResource(R.string.files_search_results),
                         fontSize = 13.sp,
-                        color = TextSecondary,
+                        color = TextSecondary(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -1067,7 +1074,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 )
             } else if (entries.isEmpty()) {
                 EmptyState(
-                    // M1: 空态导入同样过风险检查，与悬浮胶囊行为一致
+                    // 空态导入同样过风险检查，与悬浮胶囊行为一致
                     onImport = {
                         val risk = protectedRiskLevel(currentDir)
                         if (risk != null) {
@@ -1319,7 +1326,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         stringResource(R.string.files_conflict_msg_dir)
                     },
                     fontSize = 14.sp,
-                    color = TextSecondary,
+                    color = TextSecondary(),
                 )
             },
             confirmButton = {
@@ -1389,14 +1396,14 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                             stringResource(riskDialogTextRes(layer, isMoveAction, sandboxRunning), it.name)
                         } ?: stringResource(R.string.files_risk_generic),
                         fontSize = 14.sp,
-                        color = TextSecondary,
+                        color = TextSecondary(),
                     )
                     if (isMoveAction && moveFlow.state.moveRiskCount > 1 && entry != null) {
                         Spacer(Modifier.height(6.dp))
                         Text(
                             text = stringResource(R.string.files_risk_move_multi, selectedPaths.size, moveFlow.state.moveRiskCount),
                             fontSize = 12.sp,
-                            color = TextHint,
+                            color = TextHint(),
                         )
                     }
                 }
@@ -1427,9 +1434,9 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             text = {
                 Text(
                     if (single != null) stringResource(R.string.files_delete_confirm_single, single.name)
-                    else stringResource(R.string.files_delete_confirm_msg, selectedPaths.size),
+                    else pluralStringResource(R.plurals.files_delete_confirm_msg, selectedPaths.size, selectedPaths.size),
                     fontSize = 14.sp,
-                    color = TextSecondary,
+                    color = TextSecondary(),
                 )
             },
             confirmButton = {
@@ -1495,7 +1502,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 Text(
                     text = errorMessage,
                     fontSize = 14.sp,
-                    color = TextSecondary,
+                    color = TextSecondary(),
                 )
             },
             confirmButton = {
@@ -1588,9 +1595,9 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             text = {
                 Column {
                     Text(
-                        text = progress.stage,
+                        text = progress.stage.asString(),
                         fontSize = 14.sp,
-                        color = TextSecondary,
+                        color = TextSecondary(),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -1604,7 +1611,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         Text(
                             text = "${progress.done.formatSize()} / ${progress.total.formatSize()}",
                             fontSize = 12.sp,
-                            color = TextHint,
+                            color = TextHint(),
                         )
                     } else {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -1660,11 +1667,11 @@ private fun MenuListDialog(
                         Text(
                             text = stringResource(item.labelRes),
                             fontSize = 14.sp,
-                            color = TextPrimary,
+                            color = TextPrimary(),
                         )
                     }
                     if (index < items.lastIndex) {
-                        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                        HorizontalDivider(color = DividerColor(), thickness = 0.5.dp)
                     }
                 }
             }
@@ -1700,10 +1707,10 @@ private fun SelectionActionBar(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
-            text = stringResource(R.string.files_selected_count, count),
+            text = pluralStringResource(R.plurals.files_selected_count, count, count),
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            color = TextPrimary,
+            color = TextPrimary(),
             modifier = Modifier.weight(1f),
         )
         SelectionChip(Icons.Outlined.DriveFileMove, stringResource(R.string.files_move), enabled = canExport, onClick = onMove)
@@ -1730,7 +1737,7 @@ private fun SelectionChip(
         Icon(
             imageVector = icon,
             contentDescription = contentDesc,
-            tint = if (enabled) PrimaryGreen else TextHint,
+            tint = if (enabled) PrimaryGreen else TextHint(),
             modifier = Modifier.size(18.dp),
         )
     }
@@ -1749,14 +1756,14 @@ private fun GlobalSearchField(
         modifier = modifier
             .height(34.dp)
             .clip(RoundedCornerShape(8.dp))
-            .border(1.dp, DividerColor, RoundedCornerShape(8.dp))
+            .border(1.dp, DividerColor(), RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = Icons.Outlined.Search,
             contentDescription = null,
-            tint = TextHint,
+            tint = TextHint(),
             modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.width(6.dp))
@@ -1765,7 +1772,7 @@ private fun GlobalSearchField(
                 Text(
                     text = stringResource(R.string.files_search_hint),
                     fontSize = 12.sp,
-                    color = TextHint,
+                    color = TextHint(),
                     maxLines = 1,
                 )
             }
@@ -1773,7 +1780,7 @@ private fun GlobalSearchField(
                 value = query,
                 onValueChange = onQueryChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, color = TextPrimary),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, color = TextPrimary()),
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -1786,7 +1793,7 @@ private fun GlobalSearchField(
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = stringResource(R.string.files_clear_search),
-                    tint = TextHint,
+                    tint = TextHint(),
                     modifier = Modifier.size(14.dp),
                 )
             }
@@ -1805,10 +1812,10 @@ private fun FloatingCapsule(
 ) {
     Column(
         modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(26.dp), ambientColor = CardShadow, spotColor = CardShadow)
+            .shadow(4.dp, RoundedCornerShape(26.dp), ambientColor = CardShadow(), spotColor = CardShadow())
             .clip(RoundedCornerShape(26.dp))
-            .background(Color.White.copy(alpha = 0.82f))
-            .border(1.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(26.dp))
+            .background(CardBg().copy(alpha = 0.82f))
+            .border(1.dp, DividerColor().copy(alpha = 0.6f), RoundedCornerShape(26.dp))
             .padding(horizontal = 4.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -1844,7 +1851,7 @@ private fun CapsuleIconButton(
     }
 }
 
-// ---------- 选择方框（P3） ----------
+// -------- 选择方框 ----------
 
 /** 选择状态方框：未选中为空心边框，选中为绿色底 + 白色对号；点击直接切换选择。 */
 @Composable
@@ -1860,7 +1867,7 @@ private fun SelectionCheckbox(
             .background(if (selected) PrimaryGreen else Color.Transparent)
             .border(
                 width = 1.5.dp,
-                color = if (selected) PrimaryGreen else TextHint,
+                color = if (selected) PrimaryGreen else TextHint(),
                 shape = RoundedCornerShape(5.dp),
             )
             .clickable(onClick = onClick),
@@ -1897,7 +1904,7 @@ private fun FileListRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .background(if (selected) SelectedRowBg else Color.Transparent)
+            .background(if (selected) SelectedRowBg() else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(start = 24.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1911,7 +1918,7 @@ private fun FileListRow(
         Icon(
             imageVector = if (entry.isDirectory) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
             contentDescription = null,
-            tint = if (entry.isDirectory) PrimaryGreen else TextHint,
+            tint = if (entry.isDirectory) PrimaryGreen else TextHint(),
             modifier = Modifier.size(24.dp),
         )
         Spacer(Modifier.width(12.dp))
@@ -1920,15 +1927,15 @@ private fun FileListRow(
                 text = entry.name,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                color = TextPrimary,
+                color = TextPrimary(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = entrySubtitle(entry),
+                text = entrySubtitle(entry).asString(),
                 fontSize = 12.sp,
-                color = TextHint,
+                color = TextHint(),
                 maxLines = 1,
             )
         }
@@ -1936,7 +1943,7 @@ private fun FileListRow(
             Icon(
                 imageVector = Icons.Filled.MoreVert,
                 contentDescription = stringResource(R.string.files_more),
-                tint = TextSecondary,
+                tint = TextSecondary(),
                 modifier = Modifier
                     .size(24.dp)
                     .clip(RoundedCornerShape(8.dp))
@@ -1978,7 +1985,7 @@ private fun FileListRow(
     HorizontalDivider(
         modifier = Modifier.padding(start = 60.dp),
         thickness = 0.5.dp,
-        color = DividerColor,
+        color = DividerColor(),
     )
 }
 
@@ -1996,7 +2003,7 @@ private fun FileGridCell(
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) SelectedRowBg else Color.Transparent)
+            .background(if (selected) SelectedRowBg() else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 14.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -2013,7 +2020,7 @@ private fun FileGridCell(
         Icon(
             imageVector = if (entry.isDirectory) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
             contentDescription = null,
-            tint = if (entry.isDirectory) PrimaryGreen else TextHint,
+            tint = if (entry.isDirectory) PrimaryGreen else TextHint(),
             modifier = Modifier.size(32.dp),
         )
         Spacer(Modifier.height(8.dp))
@@ -2021,16 +2028,16 @@ private fun FileGridCell(
             text = entry.name,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            color = TextPrimary,
+            color = TextPrimary(),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = entrySubtitle(entry),
+            text = entrySubtitle(entry).asString(),
             fontSize = 11.sp,
-            color = TextHint,
+            color = TextHint(),
             maxLines = 1,
         )
     }
@@ -2055,7 +2062,7 @@ private fun SearchResultsContent(
             Text(
                 text = stringResource(R.string.files_search_scanning),
                 fontSize = 13.sp,
-                color = TextSecondary,
+                color = TextSecondary(),
             )
         }
     } else if (results.isEmpty()) {
@@ -2074,7 +2081,7 @@ private fun SearchResultsContent(
             Text(
                 text = stringResource(R.string.files_search_empty),
                 fontSize = 14.sp,
-                color = TextSecondary,
+                color = TextSecondary(),
             )
         }
     } else {
@@ -2105,7 +2112,7 @@ private fun SearchResultRow(
             Icon(
                 imageVector = if (result.isDirectory) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
                 contentDescription = null,
-                tint = if (result.isDirectory) PrimaryGreen else TextHint,
+                tint = if (result.isDirectory) PrimaryGreen else TextHint(),
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(10.dp))
@@ -2113,7 +2120,7 @@ private fun SearchResultRow(
                 text = result.name,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                color = TextPrimary,
+                color = TextPrimary(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -2130,7 +2137,7 @@ private fun SearchResultRow(
         Text(
             text = result.logicalPath,
             fontSize = 11.sp,
-            color = TextHint,
+            color = TextHint(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 28.dp),
@@ -2140,14 +2147,14 @@ private fun SearchResultRow(
             Text(
                 text = result.snippet,
                 fontSize = 12.sp,
-                color = TextSecondary,
+                color = TextSecondary(),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 28.dp),
             )
         }
     }
-    HorizontalDivider(modifier = Modifier.padding(start = 24.dp), thickness = 0.5.dp, color = DividerColor)
+    HorizontalDivider(modifier = Modifier.padding(start = 24.dp), thickness = 0.5.dp, color = DividerColor())
 }
 
 // ---------- 空态 ----------
@@ -2172,13 +2179,13 @@ private fun EmptyState(
         Text(
             text = stringResource(R.string.files_empty_title),
             fontSize = 14.sp,
-            color = TextSecondary,
+            color = TextSecondary(),
         )
         Spacer(Modifier.height(4.dp))
         Text(
             text = stringResource(R.string.files_empty_hint),
             fontSize = 12.sp,
-            color = TextHint,
+            color = TextHint(),
         )
         Spacer(Modifier.height(16.dp))
         TextButton(

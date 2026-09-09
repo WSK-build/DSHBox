@@ -2,10 +2,12 @@ package com.dshbox.app.runtime
 
 import android.content.Context
 import android.util.Log
+import com.dshbox.app.R
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.DshNpmSource
 import com.dshbox.app.common.DshSources
+import com.dshbox.app.common.UiText
 import com.dshbox.app.common.Versions
 import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.sandbox.DshUpdateOutcome
@@ -34,24 +36,26 @@ data class DshSourceProbe(
     val latestVersion: String?,
     /** All published versions, newest first. */
     val versions: List<String>,
-    val error: String? = null,
+    /** 探测失败的展示原因（可本地化）。 */
+    val error: UiText? = null,
 )
 
 /** UI-facing state of the online DSH install started from the update screen. */
 data class DshOnlineInstallState(
     val running: Boolean = false,
-    val stage: String = "",
+    /** 当前安装阶段（可本地化；来自领域层 onStage 或本管理器）。 */
+    val stage: UiText = UiText.Raw(""),
     /** Recent npm/tar output lines (bounded, oldest first). */
     val logs: List<String> = emptyList(),
     /** Set once the install settles (success or failure). */
     val result: AppResult<DshUpdateOutcome>? = null,
     val cancelled: Boolean = false,
-    /** 1.1.1 (T1)：安装开始时刻（System.currentTimeMillis，用于展示已用时）。 */
+    /** 安装开始时刻（System.currentTimeMillis，用于展示已用时）。 */
     val startedAtMs: Long = 0L,
 )
 
 /**
- * 1.1.0 (M6/M7) — online DSH update, redesigned:
+ * online DSH update, redesigned:
  *  - probe every source in [DshSources.ALL] IN PARALLEL: latency + dist-tags.latest
  *    + the full published-version list. (1.0.0 probed mirrors one by one and could
  *    then only fail at the never-configured prebuilt-layer download — the feature
@@ -120,7 +124,7 @@ class RuntimeUpdateManager(
                 latencyMs = System.currentTimeMillis() - startedAt,
                 latestVersion = null,
                 versions = emptyList(),
-                error = t.message ?: "未知错误",
+                error = t.message?.let { UiText.raw(it) } ?: UiText.Res(R.string.error_unknown),
             )
         }
     }
@@ -137,13 +141,18 @@ class RuntimeUpdateManager(
         if (_installState.value.running) return
         installCancelled = false
         activeGuestProcess = null
-        _installState.value = DshOnlineInstallState(running = true, stage = "准备安装…", startedAtMs = System.currentTimeMillis())
+        _installState.value = DshOnlineInstallState(
+            running = true,
+            stage = UiText.Res(R.string.update_stage_prepare),
+            startedAtMs = System.currentTimeMillis(),
+        )
         scope.launch {
-            // 1.1.0 (M12.1 P1③)：登记后台操作，阻止设置页清理与其并发——
+            // P1③)：登记后台操作，阻止设置页清理与其并发——
             // npm 安装写 base/tmp（GUEST_TMP）与 dsh-staging（CACHE），均为清理目标。
             BackgroundOps.runTracked {
-                appendLog("· 源：${source.name}（${source.url}）")
-                appendLog("· 包：@deepseek-ai/dsh@$version")
+                // 日志流不本地化（与 npm/guest 原始输出混排），源名按当前语言解析。
+                appendLog("· source: ${source.name.asString(appContext)} (${source.url})")
+                appendLog("· package: @deepseek-ai/dsh@$version")
                 val result = sandboxManager.installDshFromNpm(
                     registryUrl = source.url,
                     version = version,
@@ -151,7 +160,7 @@ class RuntimeUpdateManager(
                     onStage = { stage -> update { it.copy(stage = stage) } },
                     onLog = ::appendLog,
                     onProcess = { process -> activeGuestProcess = process },
-                    // 1.1.1 (M7)：取消标志透传给 guest 命令等待循环——点「取消」后
+                    // 取消标志透传给 guest 命令等待循环——点「取消」后
                     // waitFor 语义被轮询取代，~300ms 内整套安装即收敛。
                     shouldAbort = { installCancelled },
                 )
@@ -160,7 +169,11 @@ class RuntimeUpdateManager(
                 }
                 _installState.value = _installState.value.copy(
                     running = false,
-                    stage = if (result is AppResult.Success) "安装完成" else "安装失败",
+                    stage = if (result is AppResult.Success) {
+                        UiText.Res(R.string.update_stage_done)
+                    } else {
+                        UiText.Res(R.string.update_stage_failed)
+                    },
                     result = result,
                     cancelled = installCancelled,
                 )
@@ -170,7 +183,7 @@ class RuntimeUpdateManager(
     }
 
     /**
-     * Cancels the running install. 1.1.1 (M4): the original implementation only
+     * Cancels the running install. 1.1.1 : the original implementation only
      * called [Process.destroy] (SIGTERM), which is INERT for PRoot — proot
      * relays SIGTERM into the guest and itself stays alive, so `--kill-on-exit`
      * never fires and `waitFor()` never returns; the install appears stuck and
@@ -180,7 +193,7 @@ class RuntimeUpdateManager(
      * [Process.destroyForcibly] as a backstop. The pipeline then settles into a
      * failure with [DshOnlineInstallState.cancelled] set.
      *
-     * 1.1.1 (M6): the tree kill (full /proc scan + one `/system/bin/kill -KILL`
+     * the tree kill (full /proc scan + one `/system/bin/kill -KILL`
      * spawn per pid, each waited) used to run synchronously on the UI thread,
      * freezing the screen for ~1-3s so cancel felt dead/slow; it now runs on
      * this manager's own background scope and the button responds instantly.
@@ -188,9 +201,9 @@ class RuntimeUpdateManager(
     fun cancelDshInstall() {
         if (!_installState.value.running) return
         installCancelled = true
-        appendLog("· 用户取消了安装")
+        appendLog("· install cancelled by user")
         scope.launch {
-            // M6.2：真机诊断（logcat cancel: procRegistered=true pid=null ...
+            // 真机诊断（logcat cancel: procRegistered=true pid=null ...
             // destroyForcibly executed=true 但 proot 存活）证实两条原路都不可靠：
             //   1) 反射 Process.pid() 在 e.g. 该机返回 null → SIGKILL 树杀从未执行；
             //   2) destroyForcibly() 实际只发 SIGTERM，PRoot 会转发它而自己不退出。
@@ -213,12 +226,12 @@ class RuntimeUpdateManager(
     }
 
     /**
-     * 定位在线安装的 proot 及其整棵 guest 进程树（M6.2）。特征：cmdline 含
+     * 定位在线安装的 proot 及其整棵 guest 进程树。特征：cmdline 含
      * "dsh-stage"（npm 阶段 `--prefix /tmp/dsh-stage` 与打包阶段 `tar -C
      * /tmp/dsh-stage` 都带）且以 libproot 二进制为 argv0 的进程即安装 proot；
      * 返回 [proot + 全部后代]；找不到返回空列表。
      * 注：cmdline 的 argv0 是 proot 的**完整路径**（如 /data/app/.../libproot.so），
-     * 不能 startsWith("libproot")（M6.2 首版此判断恒为 false，树杀从未生效）。
+     * 不能 startsWith("libproot")。
      */
     private fun findInstallProotTree(): List<Int> {
         val table = readProcTable() ?: return emptyList()

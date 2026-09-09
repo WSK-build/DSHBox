@@ -8,7 +8,7 @@ package com.dshbox.app.util.viewer.highlight
  *
  * 首发覆盖 6 种语言（§6.4）：json、yaml、shell、python、javascript、java(+kotlin 共用
  * C 系规则)。规则为「逐位置 lookingAt」的行内正则——跨行结构（多行注释/三引号字符串/
- * 多行模板串）不做跨行状态跟踪，M2 已知限制（记 MODIFICATION_LOG；textmate 1.2.x 评估）。
+ * 多行模板串）不做跨行状态跟踪，已知限制（记 textmate 1.2.x 评估）。
  *
  * 已知限制（按设计接受）：行内正则无法识别「行中间开始的多行注释」，例如
  * `code /* comment */` 会把 `code` 后整行按注释处理；换行即恢复正常分词，不污染后续行。

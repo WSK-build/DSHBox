@@ -1,6 +1,7 @@
 package com.dshbox.app.di
 
 import android.content.Context
+import com.dshbox.app.R
 import com.dshbox.app.bridge.BridgeRouter
 import com.dshbox.app.bridge.api.BridgeApi
 import com.dshbox.app.runtime.RuntimeUpdateManager
@@ -17,7 +18,7 @@ object ServiceLocator {
         val sandboxConfig = SandboxConfig(
             appFilesDir = context.filesDir,
             nativeLibraryDir = context.applicationInfo.nativeLibraryDir,
-            // 1.1.1 (M5)：npm 下载缓存宿主目录（guest 侧 bind 为 /root/.npm），
+            // npm 下载缓存宿主目录（guest 侧 bind 为 /root/.npm），
             // 随「应用缓存」可一键清理，不再占 base/root/.npm 的红线区空间。
             appCacheDir = context.cacheDir,
         )
@@ -78,6 +79,14 @@ object ServiceLocator {
                 )
             },
             overlayInstaller = overlayInstaller,
+            // 会话标题由 app 层资源化生成（终端 1 / 受限 1 → Terminal 1 / Failsafe 1）。
+            titleFormatter = { kind, order ->
+                val res = when (kind) {
+                    com.dshbox.terminal.DshTerminalManager.Kind.SANDBOX -> R.string.terminal_session_sandbox
+                    com.dshbox.terminal.DshTerminalManager.Kind.FAILSAFE -> R.string.terminal_session_failsafe
+                }
+                context.getString(res, order)
+            },
         )
         val runtimeUpdateManager = RuntimeUpdateManager(context, sandboxManager)
         return AppContainer(context, sandboxConfig, sandboxManager, bridgeRouter, dshTerminalManager, runtimeUpdateManager)

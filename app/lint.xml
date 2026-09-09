@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- lint 白名单。
+     PluralsCandidate 的 6 处均为「数量词嵌入长句」的句子（非纯数量短语），
+     拆成 plurals 会造成六语复数形态爆炸且无损实益（阿拉伯语/俄语词形由句子
+     意合承载）；此处显式忽略默认英文主文件的该提示。 -->
+<lint>
+    <issue id="PluralsCandidate">
+        <ignore path="src/main/res/values/strings.xml" />
+    </issue>
+    <!-- paste_text/copy_text/text_selection_more 由 terminal-view 库包内消费
+         （TextSelectionCursorController）；app 同名覆盖提供六语译文而不触碰第三方库；
+         lint 无法跨包见引用，故按默认文件忽略本 issue。 -->
+    <issue id="UnusedResources">
+        <ignore path="src/main/res/values/strings.xml" />
+    </issue>
+</lint>

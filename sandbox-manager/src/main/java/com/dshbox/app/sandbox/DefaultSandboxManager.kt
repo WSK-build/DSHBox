@@ -3,7 +3,9 @@ package com.dshbox.app.sandbox
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.Constants
+import com.dshbox.app.common.UiText
 import com.dshbox.app.common.LogRedactor
+import com.dshbox.app.sandbox.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -55,7 +57,7 @@ class DefaultSandboxManager(
     private val _dshUpdateProgress = MutableStateFlow<String?>(null)
     override val dshUpdateProgress: StateFlow<String?> = _dshUpdateProgress.asStateFlow()
 
-    // 1.1.1 (M10)：DSH 进程级 launchToken（从 `dsh web:` 原始输出解析，仅内存）。
+    // DSH 进程级 launchToken（从 `dsh web:` 原始输出解析，仅内存）。
     private val _dshLaunchToken = MutableStateFlow<String?>(null)
     override val dshLaunchToken: StateFlow<String?> = _dshLaunchToken.asStateFlow()
 
@@ -81,7 +83,7 @@ class DefaultSandboxManager(
             _dshState.value = DshState.ERROR
             return
         }
-        // 1.1.1 (M5)：一次性迁移——旧实现把 npm 下载缓存留在 base/root/.npm
+        // 一次性迁移——旧实现把 npm 下载缓存留在 base/root/.npm
         // （运行环境本体红线区，清理功能清不到，实测膨胀 446MB）。此后 npm 缓存
         // 由 runGuestCommand 的 bind 指向宿主 cacheDir/npm-cache，base 内不再写入；
         // 这里幂等删除旧残留以释放空间（缓存无状态，删除安全；无残留时为空操作）。
@@ -129,7 +131,7 @@ class DefaultSandboxManager(
             // restarting the sandbox.
             if (_dshState.value != DshState.STOPPED && _dshState.value != DshState.ERROR) {
                 dshProcess?.let { processRunner.stop(it) }
-                // 1.1.1 (M8)：同上——句柄丢失时按 cmdline marker 兜底清扫 DSH 树。
+                // 同上——句柄丢失时按 cmdline marker 兜底清扫 DSH 树。
                 runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
                 dshProcess = null
                 _dshState.value = DshState.STOPPED
@@ -169,8 +171,9 @@ class DefaultSandboxManager(
             return AppResult.Failure(
                 AppError(
                     code = "SANDBOX_NOT_RUNNING",
-                    message = "沙箱未运行，请先启动 Debian 沙箱",
+                    message = "Sandbox not running; please start Debian sandbox first",
                     recoverable = true,
+                    userMessage = UiText.Res(R.string.sandbox_not_running_debian),
                 ),
             )
         }
@@ -234,14 +237,15 @@ class DefaultSandboxManager(
                     )
                 }
                 DshState.ERROR -> {
-                    return AppResult.Failure(AppError("DSH_NOT_READY", "DSH 未能在限定时间内就绪"))
+                    return AppResult.Failure(AppError("DSH_NOT_READY", "DSH did not become ready within the time limit", userMessage = UiText.Res(R.string.dsh_not_ready_timeout)))
                 }
                 DshState.STOPPED -> {
                     return AppResult.Failure(
                         AppError(
                             "DSH_STOPPED",
-                            "DSH 已被停止，请稍后重试",
+                            "DSH has been stopped, please try again later",
                             recoverable = true,
+                            userMessage = UiText.Res(R.string.dsh_stopped_retry),
                         ),
                     )
                 }
@@ -249,7 +253,7 @@ class DefaultSandboxManager(
             }
             delay(500L)
         }
-        return AppResult.Failure(AppError("DSH_NOT_READY", "DSH 就绪超时"))
+        return AppResult.Failure(AppError("DSH_NOT_READY", "DSH ready timeout", userMessage = UiText.Res(R.string.dsh_ready_timeout)))
     }
 
     override suspend fun stopDsh() = lifecycleMutex.withLock { stopDshLocked() }
@@ -260,7 +264,7 @@ class DefaultSandboxManager(
         dshHealthLoopJob?.cancel()
         dshHealthLoopJob = null
         dshProcess?.let { processRunner.stop(it) }
-        // 1.1.1 (M8)：仅靠 dshProcess 句柄不可靠——真机实证句柄为 null 时旧 DSH
+        // 仅靠 dshProcess 句柄不可靠——真机实证句柄为 null 时旧 DSH
         // proot 继续存活、占着 3080，换层后新 DSH 反复 EADDRINUSE 起不来。
         // 按 cmdline marker（@deepseek-ai/dsh/lib/bin.js）兜底清扫旧 DSH 进程树，
         // 保证停机路径 3080 必然释放（安装/重启用，含句柄丢失场景）。
@@ -425,11 +429,11 @@ class DefaultSandboxManager(
      *    top-level folder (Windows 右键压缩文件夹会产生该前缀), OR
      *  - a single tar-family outer package (.tar.gz / .tar.zst / .tar / .tar.bz2 /
      *    .tar.xz by magic) whose contents are EITHER the layered body snapshot
-     *    (base/, node/, android-side/, runtime-profile.json) OR — 1.1.0 M12.4 —
+     * (base/, node/, android-side/, runtime-profile.json) OR — —
      *    the layer archives themselves (tar of archives: base.tar.* etc.), which
      *    is then processed through the same archive-validation pipeline as a zip.
      *
-     * 1.1.0 fixes / hardening (MODIFICATION_LOG.md M1/M2):
+     * / hardening :
      *  - layer archives are matched EXACTLY (<layer>.tar.<ext>). 1.0.0 used
      *    startsWith("<layer>.tar."), which ALSO matched the "<layer>.tar.zst.sha256"
      *    sidecar; ZipInputStream walks entries in archive order, so the 92-byte
@@ -465,13 +469,14 @@ class DefaultSandboxManager(
                 ZipFile(source).use { zip ->
                     val fileEntries = zip.entries().asSequence().filterNot { it.isDirectory }.toList()
                     if (fileEntries.isEmpty()) {
-                        return@withLock AppResult.Failure(AppError("BUNDLE_EMPTY", "压缩包内没有文件"))
+                        return@withLock AppResult.Failure(AppError("BUNDLE_EMPTY", "Archive contains no files", userMessage = UiText.Res(R.string.bundle_empty)))
                     }
                     // Name-level analysis (exact layer matching, common folder prefix,
                     // traversal rejection) lives in the pure, unit-tested RuntimeBundleLayout.
                     val layout = when (val parsed = RuntimeBundleLayout.analyze(fileEntries.map { it.name })) {
                         is RuntimeBundleLayout.Result.Unsafe -> return@withLock AppResult.Failure(
-                            AppError("BUNDLE_UNSAFE_PATH", "压缩包包含非法路径（..），已拦截：${parsed.entryName}"),
+                            AppError("BUNDLE_UNSAFE_PATH", "Archive contains illegal path (..), blocked: ${parsed.entryName}",
+                                userMessage = UiText.Res(R.string.bundle_unsafe_path_rel, listOf(parsed.entryName))),
                         )
                         is RuntimeBundleLayout.Result.Ok -> parsed
                     }
@@ -482,7 +487,8 @@ class DefaultSandboxManager(
                         val target = File(staging, norm).canonicalFile
                         if (!isWithinDir(target, staging)) {
                             return@withLock AppResult.Failure(
-                                AppError("BUNDLE_UNSAFE_PATH", "压缩包路径越界，已拦截：${entry.name}"),
+                                AppError("BUNDLE_UNSAFE_PATH", "Archive path escapes target directory, blocked: ${entry.name}",
+                                    userMessage = UiText.Res(R.string.bundle_unsafe_path_escape, listOf(entry.name))),
                             )
                         }
                         targets[entry] = target
@@ -506,14 +512,15 @@ class DefaultSandboxManager(
                 }
                 when (val r = extractStagedLayers(staging, archives, sidecars,
                     profileFile ?: return@withLock AppResult.Failure(
-                        AppError("BUNDLE_NO_PROFILE", "运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）"),
+                        AppError("BUNDLE_NO_PROFILE", "Runtime bundle missing runtime-profile.json (cannot verify layer integrity, import rejected)",
+                            userMessage = UiText.Res(R.string.bundle_no_profile)),
                     ),
                 )) {
                     is AppResult.Failure -> return@withLock r
                     is AppResult.Success -> Unit
                 }
             } else {
-                // 单 tar/gz/zst/裸 tar 外层包：支持两种内容布局（M12.4）——
+                // 单 tar/gz/zst/裸 tar 外层包：支持两种内容布局——
                 //  A) 快照布局：直接是 base/、node/、android-side/ 目录 + runtime-profile.json；
                 //  B) 层归档布局（tar of archives）：把官方 zip 的内容（base.tar.* 等层归档 +
                 //     profile）原样打成 tar —— 自动按 zip 同款逻辑识别层归档并解压，
@@ -524,7 +531,8 @@ class DefaultSandboxManager(
                 }
                 if (!File(staging, "runtime-profile.json").isFile) {
                     return@withLock AppResult.Failure(
-                        AppError("BUNDLE_NO_PROFILE", "运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）"),
+                        AppError("BUNDLE_NO_PROFILE", "Runtime bundle missing runtime-profile.json (cannot verify layer integrity, import rejected)",
+                            userMessage = UiText.Res(R.string.bundle_no_profile)),
                     )
                 }
                 if (!File(staging, "base").isDirectory) {
@@ -548,7 +556,8 @@ class DefaultSandboxManager(
                         return@withLock AppResult.Failure(
                             AppError(
                                 "BUNDLE_NO_BASE",
-                                "运行环境包缺少 base 层（快照布局需 base/ 目录；层归档布局需 <layer>.tar[.zst/.gz/.bz2/.xz]）",
+                                "Runtime bundle missing base layer (snapshot layout requires base/ directory; layer archive layout requires <layer>.tar[.zst/.gz/.bz2/.xz])",
+                                userMessage = UiText.Res(R.string.bundle_no_base_snapshot),
                             ),
                         )
                     }
@@ -559,7 +568,8 @@ class DefaultSandboxManager(
                 }
             }
             if (!File(staging, "base").isDirectory) {
-                return@withLock AppResult.Failure(AppError("BUNDLE_NO_BASE", "运行环境包缺少 base 层"))
+                return@withLock AppResult.Failure(AppError("BUNDLE_NO_BASE", "Runtime bundle missing base layer",
+                    userMessage = UiText.Res(R.string.bundle_no_base)))
             }
             val runtimeDir = runtimeCurrentDir()
             val previous = File(runtimeDir, "previous")
@@ -613,7 +623,7 @@ class DefaultSandboxManager(
     }
 
     /**
-     * 共享的「层归档 → 校验 → 解压 → sentinel」步骤（1.1.0 M12.4 从 zip 分支抽出，
+     * 共享的「层归档 → 校验 → 解压 → sentinel」步骤（从 zip 分支抽出，
      * zip 布局与 tar-of-archives 布局共用）：要求 runtime-profile.json 存在且可解析；
      * 逐层做 .sha256 侧车与 profile 声明的交叉核对 + SHA-256 校验；解压到
      * staging/<layer> 并记录 sentinel；每层解压完成后立即删除层归档以压低峰值磁盘。
@@ -627,28 +637,33 @@ class DefaultSandboxManager(
     ): AppResult<Unit> {
         if (!profileFile.isFile) {
             return AppResult.Failure(
-                AppError("BUNDLE_NO_PROFILE", "运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）"),
+                AppError("BUNDLE_NO_PROFILE", "Runtime bundle missing runtime-profile.json (cannot verify layer integrity, import rejected)",
+                    userMessage = UiText.Res(R.string.bundle_no_profile)),
             )
         }
         val parsedProfile = RuntimeProfile.parse(profileFile)
         if (parsedProfile == null) {
-            return AppResult.Failure(AppError("BUNDLE_BAD_PROFILE", "runtime-profile.json 无法解析"))
+            return AppResult.Failure(AppError("BUNDLE_BAD_PROFILE", "runtime-profile.json cannot be parsed",
+                userMessage = UiText.Res(R.string.bundle_bad_profile)))
         }
         for (layer in listOf("base", "node", "android-side")) {
             val arch = archives[layer]
                 ?: return AppResult.Failure(
-                    AppError("BUNDLE_MISSING_LAYER", "运行环境包缺少 $layer 层归档（<layer>.tar[.zst/.gz/.bz2/.xz]）"),
+                    AppError("BUNDLE_MISSING_LAYER", "Runtime bundle missing $layer layer archive (<layer>.tar[.zst/.gz/.bz2/.xz])",
+                        userMessage = UiText.Res(R.string.bundle_missing_layer, listOf(layer))),
                 )
             val inProfile = parsedProfile.layer(layer)?.sha256?.takeIf { it.isNotBlank() }
             val inSidecar = sidecars[layer]?.takeIf { it.isNotBlank() }
             if (inProfile != null && inSidecar != null && !inProfile.equals(inSidecar, ignoreCase = true)) {
                 return AppResult.Failure(
-                    AppError("BUNDLE_SHA256_MISMATCH", "层 $layer 的 .sha256 侧车与 runtime-profile.json 声明不一致"),
+                    AppError("BUNDLE_SHA256_MISMATCH", "Layer $layer .sha256 sidecar does not match runtime-profile.json declaration",
+                        userMessage = UiText.Res(R.string.bundle_sha_sidecar_mismatch, listOf(layer))),
                 )
             }
             val expected = inSidecar ?: inProfile
             if (expected != null && !bundleManager.verifySha256(arch, expected)) {
-                return AppResult.Failure(AppError("BUNDLE_SHA256_MISMATCH", "层 $layer SHA-256 校验失败"))
+                return AppResult.Failure(AppError("BUNDLE_SHA256_MISMATCH", "Layer $layer SHA-256 verification failed",
+                    userMessage = UiText.Res(R.string.bundle_sha_mismatch, listOf(layer))))
             }
             val dest = File(staging, layer)
             when (val r = bundleManager.extractTarGz(arch, dest)) {
@@ -677,7 +692,7 @@ class DefaultSandboxManager(
         onProcess: (java.lang.Process) -> Unit,
         shouldAbort: () -> Boolean,
     ): AppResult<Unit> = withContext(Dispatchers.IO) {
-        // 1.1.1 (M5)：npm 的默认缓存位置是 ~/.npm（guest HOME=/root）。把它 bind 到宿主
+        // npm 的默认缓存位置是 ~/.npm（guest HOME=/root）。把它 bind 到宿主
         // cacheDir/npm-cache，下载中间产物不再落 base/root/.npm（运行环境本体红线区、
         // 清理功能清不到，实测曾膨胀 446MB）；缓存归 cacheDir 后随「应用缓存」可一键清理。
         // bind 目标必须是已存在目录（proot 对不存在的 bind 目标会报错）。
@@ -711,11 +726,11 @@ class DefaultSandboxManager(
         val outcome = lifecycleMutex.withLock {
             _dshUpdateProgress.value = "installing DSH ${newVersion ?: ""}"
             try {
-                // 1.1.1 (M2)：旧条件 `== DshState.RUNNING` 是死代码——状态机只有
+                // 旧条件 `== DshState.RUNNING` 是死代码——状态机只有
                 // STARTING/READY/ERROR/STOPPED，RUNNING 从不被赋值，导致换层前
                 // 旧 DSH 进程从未被主动停掉（其 proot 树仍持有旧层句柄，一直跑
                 // 到 phase 2 restartDsh() 才被终结）。改为停掉全部「在线」态；
-                // 1.1.1 (M9)：并纳入 ERROR——误判（健康检查 401 等）遗留的存活
+                // 并纳入 ERROR——误判（健康检查 401 等）遗留的存活
                 // DSH 进程同样必须清掉，否则换层后重启 EADDRINUSE。
                 val dshActive = _dshState.value != DshState.STOPPED &&
                     _dshState.value != DshState.UNINITIALIZED
@@ -742,7 +757,7 @@ class DefaultSandboxManager(
     }
 
     /**
-     * 1.1.0 (M7): build + install a fresh DSH layer from an npm registry by running
+     * build + install a fresh DSH layer from an npm registry by running
      * npm INSIDE the guest Debian — replicating runtime-bundle/scripts/install_dsh.sh,
      * the exact way the bundled layer is produced. Flow:
      *   1. storage preflight (~1 GB free) + shell-injection guard on both params;
@@ -762,17 +777,19 @@ class DefaultSandboxManager(
         registryUrl: String,
         version: String,
         allowDowngrade: Boolean,
-        onStage: (String) -> Unit,
+        onStage: (UiText) -> Unit,
         onLog: (String) -> Unit,
         onProcess: (java.lang.Process) -> Unit,
         shouldAbort: () -> Boolean,
     ): AppResult<DshUpdateOutcome> = withContext(Dispatchers.IO) {
         // Both values end up inside `sh -c` — allow only a strict safe charset.
         if (!Regex("^https?://[A-Za-z0-9.:/_%~#?=&+-]+$").matches(registryUrl)) {
-            return@withContext AppResult.Failure(AppError("DSH_NPM_BAD_REGISTRY", "registry 地址不合法：$registryUrl"))
+            return@withContext AppResult.Failure(AppError("DSH_NPM_BAD_REGISTRY", "Invalid registry URL: $registryUrl",
+                userMessage = UiText.Res(R.string.npm_bad_registry, listOf(registryUrl))))
         }
         if (!Regex("^[A-Za-z0-9.+-]+$").matches(version)) {
-            return@withContext AppResult.Failure(AppError("DSH_NPM_BAD_VERSION", "版本号不合法：$version"))
+            return@withContext AppResult.Failure(AppError("DSH_NPM_BAD_VERSION", "Invalid version: $version",
+                userMessage = UiText.Res(R.string.npm_bad_version, listOf(version))))
         }
         val freeBytes = runCatching {
             android.os.StatFs(config.runtimeDir.absolutePath).availableBytes
@@ -781,16 +798,18 @@ class DefaultSandboxManager(
             return@withContext AppResult.Failure(
                 AppError(
                     "DSH_NPM_LOW_STORAGE",
-                    "存储空间不足（需约 1GB 可用，当前仅 ${freeBytes / (1024 * 1024)}MB）",
+                    "Insufficient storage (need ~1GB available, currently only ${freeBytes / (1024 * 1024)}MB)",
+                    userMessage = UiText.Res(R.string.npm_low_storage, listOf((freeBytes / (1024 * 1024)).toInt())),
                 ),
             )
         }
         // The guest must be alive for npm.
         if (_sandboxState.value != SandboxState.RUNNING) {
-            onStage("正在启动沙箱…")
+            onStage(UiText.Res(R.string.npm_stage_starting_sandbox))
             startSandbox()
             if (_sandboxState.value != SandboxState.RUNNING) {
-                return@withContext AppResult.Failure(AppError("SANDBOX_NOT_RUNNING", "沙箱启动失败，无法执行 npm 安装"))
+                return@withContext AppResult.Failure(AppError("SANDBOX_NOT_RUNNING", "Sandbox failed to start, cannot run npm install",
+                    userMessage = UiText.Res(R.string.npm_sandbox_start_failed)))
             }
         }
 
@@ -811,33 +830,37 @@ class DefaultSandboxManager(
             append("npm install --prefix '$stage' '$pkgSpec' --registry '$registryUrl' --no-audit --no-fund --loglevel=notice")
         }
         try {
-            onStage("正在从 $registryUrl 拉取 @deepseek-ai/dsh $version（含完整依赖，需要几分钟）…")
+            onStage(UiText.Res(R.string.npm_stage_pulling, listOf(version, registryUrl)))
             when (val r = runGuestCommand(npmScript, onLog, onProcess, shouldAbort)) {
                 is AppResult.Failure -> return@withContext AppResult.Failure(
-                    AppError("DSH_NPM_INSTALL_FAILED", "npm 安装失败：${r.error.message}（详见日志）"),
+                    AppError("DSH_NPM_INSTALL_FAILED", "npm install failed: ${r.error.message} (see log)",
+                        userMessage = UiText.Res(R.string.npm_install_failed, listOf(r.error.message))),
                 )
                 is AppResult.Success -> Unit
             }
             val stagedBin = File(baseRootfs(), "tmp/dsh-stage/node_modules/@deepseek-ai/dsh/lib/bin.js")
             if (!stagedBin.isFile) {
                 return@withContext AppResult.Failure(
-                    AppError("DSH_NPM_VERIFY_FAILED", "npm 安装结果缺少 @deepseek-ai/dsh/lib/bin.js，无法继续"),
+                    AppError("DSH_NPM_VERIFY_FAILED", "npm install result missing @deepseek-ai/dsh/lib/bin.js, cannot continue",
+                        userMessage = UiText.Res(R.string.npm_verify_failed)),
                 )
             }
-            onStage("正在打包 DSH 层…")
+            onStage(UiText.Res(R.string.npm_stage_packing))
             when (val r = runGuestCommand("tar -C '$stage' -czf '$tarPath' .", onLog, onProcess, shouldAbort)) {
                 is AppResult.Failure -> return@withContext AppResult.Failure(
-                    AppError("DSH_NPM_PACK_FAILED", "打包 DSH 层失败：${r.error.message}"),
+                    AppError("DSH_NPM_PACK_FAILED", "Failed to pack DSH layer: ${r.error.message}",
+                        userMessage = UiText.Res(R.string.npm_pack_failed, listOf(r.error.message))),
                 )
                 is AppResult.Success -> Unit
             }
             val tarFile = File(baseRootfs(), "tmp/dsh-stage.tar.gz")
             if (!tarFile.isFile || tarFile.length() < 1024) {
-                return@withContext AppResult.Failure(AppError("DSH_NPM_PACK_FAILED", "打包结果异常，无法继续"))
+                return@withContext AppResult.Failure(AppError("DSH_NPM_PACK_FAILED", "Pack result is abnormal, cannot continue",
+                    userMessage = UiText.Res(R.string.npm_pack_abnormal)))
             }
-            onStage("正在安装 DSH $version…")
+            onStage(UiText.Res(R.string.npm_stage_installing, listOf(version)))
             val result = updateDsh(tarFile, null, version, allowDowngrade)
-            if (result is AppResult.Success) onStage("安装完成")
+            if (result is AppResult.Success) onStage(UiText.Res(R.string.npm_stage_done))
             return@withContext result
         } finally {
             // Best-effort cleanup on every path (host side + guest side).
@@ -1019,7 +1042,7 @@ class DefaultSandboxManager(
     private fun isDshProcessAlive(): Boolean = dshProcess?.process?.isAlive == true
 
     /**
-     * 1.1.1 (M10)：从 DSH 进程原始输出解析进程级 launchToken。DSH 0.1.2-rc.1
+     * 从 DSH 进程原始输出解析进程级 launchToken。DSH 0.1.2-rc.1
      * 启动打印 `dsh web: http://host:port/?token=<随机值>`；token 仅存在于进程
      * 内存（不落盘），官方 printUrl 输出是宿主集成的唯一入口。在进程内再次启动
      * 时 token 会刷新，但 WebView 的签名 cookie 持久有效，首次交换后无需重取；
@@ -1036,7 +1059,7 @@ class DefaultSandboxManager(
         val end = line.indexOf('&', start).let { if (it < 0) line.length else it }
         val token = line.substring(start, end).trim().takeIf { it.isNotEmpty() }
         if (token != null) {
-            // 1.1.1 (T2 修正)：DSH 进程重启会生成新 launchToken，旧值随即失效——
+            // 修正)：DSH 进程重启会生成新 launchToken，旧值随即失效——
             // 每次捕获都更新（不因已持有旧值而跳过），WebView 侧随 StateFlow 变化
             // 自动用新 token 重载，避免 401 + ERR_HTTP_RESPONSE_CODE_FAILURE。
             _dshLaunchToken.value = token
@@ -1052,7 +1075,7 @@ class DefaultSandboxManager(
      */
     private suspend fun restartDshProcessInPlace(): Boolean = lifecycleMutex.withLock {
         dshProcess?.let { processRunner.stop(it) }
-        // 1.1.1 (M8)：健康循环重启同样需要 cmdline 兜底，否则旧树不清时
+        // 健康循环重启同样需要 cmdline 兜底，否则旧树不清时
         // 新进程 EADDRINUSE、循环重启陷入死转（真机 17:15~17:22 实证）。
         runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
         dshProcess = null
@@ -1104,7 +1127,7 @@ class DefaultSandboxManager(
                     restartAttempts++
                     if (restartAttempts >= Constants.MAX_AUTO_RESTART_ATTEMPTS) {
                         Log.w(TAG, "dsh health: reached max auto-restart attempts")
-                        // 1.1.1 (M9)：健康循环退场前清理 DSH 进程（可能占着 3080），
+                        // 健康循环退场前清理 DSH 进程（可能占着 3080），
                         // 否则 ERROR 状态下真实进程存活，后续启动全部 EADDRINUSE。
                         dshProcess?.let { processRunner.stop(it) }
                         runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
@@ -1123,7 +1146,7 @@ class DefaultSandboxManager(
                     // Initial startup gets the full configured timeout; do not
                     // give up after only a few fast probe failures.
                     Log.w(TAG, "dsh health: initial start timed out")
-                    // 1.1.1 (M9)：同上——退场前清掉仍存活（误判为不健康）的 DSH 进程。
+                    // 同上——退场前清掉仍存活（误判为不健康）的 DSH 进程。
                     dshProcess?.let { processRunner.stop(it) }
                     runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
                     dshProcess = null

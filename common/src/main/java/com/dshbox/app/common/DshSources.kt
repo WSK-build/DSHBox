@@ -10,9 +10,11 @@ package com.dshbox.app.common
  * 实测（2026-08）：四个源均返回 200 + 一致的 dist-tags/versions 结构，latest=0.1.1-rc.2。
  */
 data class DshNpmSource(
-    val name: String,
+    /** 展示名（起为可本地化 [UiText]）。 */
+    val name: UiText,
     val url: String,
-    val note: String,
+    /** 展示给用户的补充说明（可本地化）。 */
+    val note: UiText,
     /** 是否国内源（仅用于展示排序/标记，不影响探测——探测永远并行发起）。 */
     val chinaMirror: Boolean = false,
 ) {
@@ -24,26 +26,26 @@ object DshSources {
     /** 探测与安装的源清单，官方上游在前（权威），国内镜像随后。 */
     val ALL: List<DshNpmSource> = listOf(
         DshNpmSource(
-            name = "npm 官方源",
+            name = UiText.Res(R.string.dsh_source_official_name),
             url = "https://registry.npmjs.org",
-            note = "权威上游，发布最及时",
+            note = UiText.Res(R.string.dsh_source_official_note),
         ),
         DshNpmSource(
-            name = "阿里 npmmirror",
+            name = UiText.Res(R.string.dsh_source_npmmirror_name),
             url = "https://registry.npmmirror.com",
-            note = "国内阿里云镜像，通常最快",
+            note = UiText.Res(R.string.dsh_source_npmmirror_note),
             chinaMirror = true,
         ),
         DshNpmSource(
-            name = "腾讯云镜像",
+            name = UiText.Res(R.string.dsh_source_tencent_name),
             url = "https://mirrors.cloud.tencent.com/npm",
-            note = "国内腾讯云镜像",
+            note = UiText.Res(R.string.dsh_source_tencent_note),
             chinaMirror = true,
         ),
         DshNpmSource(
-            name = "华为云镜像",
+            name = UiText.Res(R.string.dsh_source_huawei_name),
             url = "https://repo.huaweicloud.com/repository/npm",
-            note = "国内华为云镜像",
+            note = UiText.Res(R.string.dsh_source_huawei_note),
             chinaMirror = true,
         ),
     )

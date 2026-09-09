@@ -117,6 +117,8 @@ enum class AppIcons(val imageVector: ImageVector) {
     @Composable
     fun Content() = androidx.compose.material3.Icon(
         imageVector = imageVector,
-        contentDescription = name,
+        // contentDescription 置 null——导航栏图标语义由 label 提供
+        // （stringResource labelRes），六语下 TalkBack 不再朗读英文枚举名，也避免双读。
+        contentDescription = null,
     )
 }

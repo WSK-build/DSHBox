@@ -2,6 +2,7 @@ package com.dshbox.app.ui.files
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -18,22 +19,51 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
+import com.dshbox.app.ui.theme.AppThemeState
+import com.dshbox.app.ui.theme.DarkAccentContainer
+import com.dshbox.app.ui.theme.DarkBackground
+import com.dshbox.app.ui.theme.DarkBorder
+import com.dshbox.app.ui.theme.DarkSurface
+import com.dshbox.app.ui.theme.DarkTextPrimary
+import com.dshbox.app.ui.theme.DarkTextSecondary
+import com.dshbox.app.ui.theme.DarkTextTertiary
+import com.dshbox.app.ui.theme.ThemeMode
 import com.dshbox.app.util.Layer
 import java.io.File
 
-// --- 共享设计 token（1.2.0 §4.3：供 FilesScreen / FolderPickerScreen 等文件页组件复用） ---
+// --- 共享设计 token（供 FilesScreen / FolderPickerScreen 等文件页组件复用） ---
 internal val PrimaryGreen = Color(0xFF10A37F)
-internal val PageBg = Color(0xFFFFFFFF)
-internal val CardBg = Color(0xFFF8FAF9)
-internal val LightGreenCard = Color(0xFFF2F9F6)
-internal val SelectedRowBg = Color(0xFFEAF8F4)
-internal val TextPrimary = Color(0xFF1F2937)
-internal val TextSecondary = Color(0xFF6B7280)
-internal val TextHint = Color(0xFF9CA3AF)
-internal val DividerColor = Color(0xFFF3F4F6)
-internal val ControlBg = Color(0xFFF3F4F6)
-internal val CardShadow = Color(0x0A000000)
 internal val DangerRed = Color(0xFFDC2626)
+
+/** 文件页是否处于深色：与应用主题开关（浅色/深色/跟随系统）联动。 */
+@Composable
+internal fun filesUseDarkTheme(): Boolean = when (AppThemeState.mode) {
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
+// 深色模式下自动切换到应用深色调色板（浅色值保持历史基线不变）。
+@Composable
+internal fun PageBg(): Color = if (filesUseDarkTheme()) DarkBackground else Color(0xFFFFFFFF)
+@Composable
+internal fun CardBg(): Color = if (filesUseDarkTheme()) DarkSurface else Color(0xFFF8FAF9)
+@Composable
+internal fun LightGreenCard(): Color = if (filesUseDarkTheme()) DarkAccentContainer else Color(0xFFF2F9F6)
+@Composable
+internal fun SelectedRowBg(): Color = if (filesUseDarkTheme()) DarkAccentContainer else Color(0xFFEAF8F4)
+@Composable
+internal fun TextPrimary(): Color = if (filesUseDarkTheme()) DarkTextPrimary else Color(0xFF1F2937)
+@Composable
+internal fun TextSecondary(): Color = if (filesUseDarkTheme()) DarkTextSecondary else Color(0xFF6B7280)
+@Composable
+internal fun TextHint(): Color = if (filesUseDarkTheme()) DarkTextTertiary else Color(0xFF9CA3AF)
+@Composable
+internal fun DividerColor(): Color = if (filesUseDarkTheme()) DarkBorder else Color(0xFFF3F4F6)
+@Composable
+internal fun ControlBg(): Color = if (filesUseDarkTheme()) DarkSurface else Color(0xFFF3F4F6)
+@Composable
+internal fun CardShadow(): Color = if (filesUseDarkTheme()) Color(0x33000000) else Color(0x0A000000)
 
 /** 顶部胶囊分段切换（沙盒 / 工作区视图选择）。1.2.0 §4.3 由 FilesScreen 迁出提权。 */
 @Composable
@@ -46,7 +76,7 @@ internal fun SegmentedSwitch(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(ControlBg)
+            .background(ControlBg())
             .padding(2.dp),
     ) {
         options.forEachIndexed { index, label ->
@@ -64,7 +94,7 @@ internal fun SegmentedSwitch(
                     text = label,
                     fontSize = 14.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) Color.White else TextSecondary,
+                    color = if (isSelected) Color.White else TextSecondary(),
                 )
             }
         }
@@ -117,12 +147,12 @@ internal fun Breadcrumb(
         }
         segments.forEachIndexed { index, (label, target) ->
             if (index > 0) {
-                Text(text = " / ", fontSize = 13.sp, color = TextHint)
+                Text(text = " / ", fontSize = 13.sp, color = TextHint())
             }
             Text(
                 text = label,
                 fontSize = 13.sp,
-                color = if (index == segments.lastIndex) TextSecondary else TextHint,
+                color = if (index == segments.lastIndex) TextSecondary() else TextHint(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = if (index == segments.lastIndex) {

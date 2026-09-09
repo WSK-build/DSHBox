@@ -1,5 +1,7 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.BufferedInputStream
@@ -68,7 +70,7 @@ object ArchiveExtractor {
             when (detectFormat(archive)) {
                 Format.ZIP -> extractZip(archive, destRoot, listener)
                 Format.TAR_GZ -> extractTarGz(archive, destRoot, listener)
-                null -> throw FileOpException("无法识别的压缩包格式（仅支持 ZIP / TAR.GZ）")
+                null -> throw FileOpException("Unrecognized archive format (only ZIP / TAR.GZ supported)")
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             FileOps.deleteQuietly(destDir)
@@ -94,7 +96,7 @@ object ArchiveExtractor {
                 val entry = it.nextElement()
                 if (entry.generalPurposeBit.usesEncryption()) {
                     // 加密压缩包不支持内建解压（计划 D5：加密压缩包解密不做）
-                    throw FileOpException("压缩包包含加密条目，不支持内建解压")
+                    throw FileOpException("Archive contains encrypted entries; built-in extraction not supported")
                 }
                 if (entry.isDirectory) {
                     val dir = safeResolve(destRoot, entry.name)
@@ -104,16 +106,16 @@ object ArchiveExtractor {
                     target.parentFile?.mkdirs()
                     zip.getInputStream(entry).use { ins ->
                         FileOutputStream(target).use { out ->
-                            FileOps.copyStream(ins, out, offset = done, total = total, stage = "解压中", listener = listener)
+                            FileOps.copyStream(ins, out, offset = done, total = total, stage = UiText.Res(R.string.files_progress_extracting), listener = listener)
                         }
                     }
                     count++
                 }
                 done += entry.compressedSize
-                listener?.onProgress(done, total, "解压中")
+                listener?.onProgress(done, total, UiText.Res(R.string.files_progress_extracting))
             }
         }
-        listener?.onProgress(total, total, "解压完成")
+        listener?.onProgress(total, total, UiText.Res(R.string.files_extract_done))
         return count
     }
 
@@ -137,7 +139,7 @@ object ArchiveExtractor {
                                 val target = safeResolve(destRoot, name)
                                 target.parentFile?.mkdirs()
                                 FileOutputStream(target).use { out ->
-                                    FileOps.copyStream(tar, out, offset = done, total = total, stage = "解压中", listener = listener)
+                                    FileOps.copyStream(tar, out, offset = done, total = total, stage = UiText.Res(R.string.files_progress_extracting), listener = listener)
                                 }
                                 count++
                             }
@@ -145,7 +147,7 @@ object ArchiveExtractor {
                                 // 拒绝越界链接；越界一律抛错中止
                                 val linkTarget = resolveLinkTarget(destRoot, name, entry.linkName)
                                 if (!isWithin(linkTarget, destRoot)) {
-                                    throw FileOpException("压缩包含越界链接，已中止：$name -> ${entry.linkName}")
+                                    throw FileOpException("Archive contains out-of-bounds link, aborted: $name -> ${entry.linkName}")
                                 }
                                 // 安全范围内的链接：普通文件内容复制（Android 无法可靠创建 symlink，保持数据）
                                 val target = safeResolve(destRoot, name)
@@ -165,12 +167,12 @@ object ArchiveExtractor {
                     val currentBytes = gzip.compressedCount
                     done += (currentBytes - lastBytes)
                     lastBytes = currentBytes
-                    listener?.onProgress(done, total, "解压中")
+                    listener?.onProgress(done, total, UiText.Res(R.string.files_progress_extracting))
                     entry = tar.nextEntry
                 }
             }
         }
-        listener?.onProgress(total, total, "解压完成")
+        listener?.onProgress(total, total, UiText.Res(R.string.files_extract_done))
         return count
     }
 
@@ -180,14 +182,14 @@ object ArchiveExtractor {
         if (cleaned.isEmpty()) return destRoot
         val parts = cleaned.split('/')
         if (parts.any { it == ".." }) {
-            throw FileOpException("压缩包含非法路径，已拦截：$name")
+            throw FileOpException("Archive contains illegal path, blocked: $name")
         }
         if (parts.any { it.isEmpty() }) {
             // 容忍空段（如 ./a/b），仅过滤
         }
         val target = File(destRoot, parts.joinToString(File.separator)).canonicalFile
         if (!isWithin(target, destRoot)) {
-            throw FileOpException("压缩包路径越界，已拦截：$name")
+            throw FileOpException("Archive path escapes target directory, blocked: $name")
         }
         return target
     }

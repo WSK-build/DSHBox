@@ -49,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
+import com.dshbox.app.common.UiText
+import com.dshbox.app.ui.asString
 import com.dshbox.app.ui.files.riskDialogTextRes
 import com.dshbox.app.ui.files.riskLevelOfLayer
 import com.dshbox.app.util.Layer
@@ -63,7 +65,8 @@ import com.dshbox.app.util.viewer.OfficeTextExtractor
 import com.dshbox.app.util.viewer.TextEncoding
 import com.dshbox.app.util.viewer.TextFileStore
 import java.io.File
-import java.text.SimpleDateFormat
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -130,8 +133,8 @@ internal fun FileViewerScreen(
 
     val ready = load as? ViewerLoad.Ready
     val isTextKind = ready != null && ready.type.kind in TEXT_KINDS
-    // 路由决策抽至 ViewerRouting.kt 纯函数（M3 返工 A/B：可单测锁定；OFFICE 抽取成功
-    // 以只读文本承接，抽取失败/不承接格式落信息卡，任何格式不得让文件打不开 §6.1.4）
+    // 路由决策抽至 ViewerRouting.kt 纯函数（可单测锁定）：OFFICE 抽取成功
+    // 以只读文本承接；抽取失败/不承接格式落信息卡，任何格式不得让文件打不开。
     val markupKind = ready?.let { markupKindOf(it.type.kind, it.type.extension) }
     val bodyMode = resolveBodyMode(
         viewMode = viewMode,
@@ -511,7 +514,7 @@ internal fun FileViewerScreen(
                         sizeText = com.dshbox.app.util.formatFileSize(r.size),
                         permissionText = r.permissionText,
                         typeText = r.type.subType ?: r.type.kind.name,
-                        modifiedText = timeFmt.format(Date(r.lastModified)),
+                        modifiedText = timeFmt.format(Date(r.lastModified).toInstant()),
                         onExternalOpen = { showInfo = false; externalOpen() },
                         onExternalEdit = { showInfo = false; externalEdit() },
                         onShare = { showInfo = false; share() },
@@ -532,10 +535,10 @@ internal fun FileViewerScreen(
 
     // ---------------- 页面 ----------------
     // 返工：覆盖式二级页必须有衬底——此前根 Column 无背景，透明透出底层
-    //（文件列表/首页 DSH 背景），视觉表现为「PDF 显示在首页背景里」（缺陷 2）。
+    // （文件列表/首页 DSH 背景），视觉表现为「PDF 显示在首页背景里」（缺陷 2）。
     // 返工 #7：根级 clickable 空动作**吞噬点击**——覆盖页空白区若无 pointer 消费，
     // Compose 命中测试会继续下探到 FilesScreen 列表项 → 点文件内空白处跳转到别的文件。
-    //（indication=null 无涟漪；子级滚动/点按不受影响——tap 由上层消费后子级不再触发）
+    // （indication=null 无涟漪；子级滚动/点按不受影响——tap 由上层消费后子级不再触发）
     val rootInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Column(
         modifier = modifier
@@ -671,7 +674,7 @@ internal fun FileViewerScreen(
                     sizeText = if (f.size > 0) com.dshbox.app.util.formatFileSize(f.size) else stringResource(R.string.files_info_unknown),
                     permissionText = f.permissionText.ifEmpty { stringResource(R.string.files_info_unknown) },
                     typeText = stringResource(R.string.files_info_unknown),
-                    modifiedText = if (f.lastModified > 0) timeFmt.format(Date(f.lastModified)) else stringResource(R.string.files_info_unknown),
+                    modifiedText = if (f.lastModified > 0) timeFmt.format(Date(f.lastModified).toInstant()) else stringResource(R.string.files_info_unknown),
                     onExternalOpen = f.file?.let { file -> ({ externalOpenFile(file, f.layer) }) },
                     onExternalEdit = null,
                     onShare = null,
@@ -680,7 +683,7 @@ internal fun FileViewerScreen(
                     onOpenAsHex = null,
                 )
                 Text(
-                    text = f.message ?: stringResource(R.string.files_viewer_read_failed),
+                    text = f.message?.asString() ?: stringResource(R.string.files_viewer_read_failed),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -691,7 +694,7 @@ internal fun FileViewerScreen(
                 ) { Text(stringResource(R.string.files_viewer_retry)) }
             }
             ready != null && bodyMode == ViewerMode.INFO -> {
-                // 信息卡兜底（M3 起仅为兜底主视图）：不承接类型（音视频/7z/rar/纯压缩流）、
+                // 信息卡兜底：不承接类型（音视频/7z/rar/纯压缩流）、
                 // OFFICE 抽取失败/空文本、渲染器 onFallback 降级落点；全部出口保留（§6.3/§6.1.4）
                 val r = ready
                 // 返工 #5：OFFICE 未抽出文本时给解释（此前用户易误点「按文本打开」看 ZIP 字节乱码；
@@ -712,7 +715,7 @@ internal fun FileViewerScreen(
                     sizeText = com.dshbox.app.util.formatFileSize(r.size),
                     permissionText = r.permissionText,
                     typeText = r.type.subType ?: r.type.kind.name,
-                    modifiedText = timeFmt.format(Date(r.lastModified)),
+                    modifiedText = timeFmt.format(Date(r.lastModified).toInstant()),
                     onExternalOpen = { externalOpen() },
                     onExternalEdit = { externalEdit() },
                     onShare = { share() },
@@ -779,9 +782,12 @@ internal fun FileViewerScreen(
 
 private fun hasFullText(load: ViewerLoad): Boolean = (load as? ViewerLoad.Ready)?.fullBytes != null
 
-private val timeFmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+// 固定 Locale.US——文件时间戳保持 ISO 风格西文数字，
+    // 且不缓存系统 Locale（应用内切语言后仍按西文数字渲染）。
+    private val timeFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
+        .withZone(ZoneId.systemDefault())
 
-/** 查看模式枚举与路由决策已抽至 ViewerRouting.kt（M3 返工 A/B：纯 JVM 可单测）。 */
+/** 查看模式枚举与路由决策已抽至 ViewerRouting.kt。 */
 
 /** 编辑进入门禁链。 */
 private enum class EditGate { BIG_FILE, RISK, EXTERNAL_RISK }
@@ -800,7 +806,7 @@ private sealed interface ViewerLoad {
 
     /** 统一失败态（§6.1.3；file 非空 = 文件仍存在，出口提供导出/外部打开）。 */
     data class Failed(
-        val message: String?,
+        val message: UiText?,
         val file: File?,
         val layer: Layer,
         val size: Long,
@@ -841,7 +847,7 @@ private fun loadViewerFile(logicalPath: String, mapper: PathMapper, layerRoots: 
     val mtime = runCatching { physical.lastModified() }.getOrDefault(0L)
     if (!physical.isFile) {
         return ViewerLoad.Failed(
-            message = if (physical.isDirectory) "这是一个文件夹" else null,
+            message = if (physical.isDirectory) UiText.Res(R.string.viewer_is_folder) else null,
             file = physical.takeIf { it.isFile },
             layer = layer,
             size = size, lastModified = mtime, permissionText = perm,

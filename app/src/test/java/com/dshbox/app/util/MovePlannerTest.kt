@@ -11,7 +11,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * 1.2.0 §10.1：MovePlanner + layerOf 纯 JVM 单测。
+ * MovePlanner + layerOf 纯 JVM 单测。
  *
  * 覆盖：防环（自身/子孙）、无操作判定、冲突预演（文件/目录/互冲）、决策解析
  * （OVERWRITE/SKIP/RENAME 同名计数）、layerOf 全组合 + 层根 null 语义、
@@ -196,7 +196,7 @@ class MovePlannerTest {
         // 未决策时仍是冲突
         assertEquals(2, p.issues.size)
         // 决策后：文件 → OVERWRITE 替换；目录 → MERGE_DIR 合并
-        //（planner 产出 canonical 源路径，Windows 上与原始 File 不同形，按 canonical 比较）
+        // （planner 产出 canonical 源路径，Windows 上与原始 File 不同形，按 canonical 比较）
         val p2 = MovePlanner.planMove(
             MoveRequest(
                 sources = listOf(srcFile, srcDir),

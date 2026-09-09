@@ -15,15 +15,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
@@ -100,12 +103,16 @@ internal fun HexViewer(
             }
         }
         // ---- 三栏内容 ----
-        LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth()) {
-            items(rowCount, key = { it }) { row ->
-                val block = row / rowsPerBlock
-                val loaded = blocks[block]
-                val hexRow = loaded?.getOrNull(row % rowsPerBlock)
-                HexRowView(hexRow, offsetWidth)
+        // 十六进制区恒为 LTR（偏移/字节/ASCII 为方向敏感内容，
+        // RTL 下避免整体右对齐与栏序镜像造成误读）。
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                items(rowCount, key = { it }) { row ->
+                    val block = row / rowsPerBlock
+                    val loaded = blocks[block]
+                    val hexRow = loaded?.getOrNull(row % rowsPerBlock)
+                    HexRowView(hexRow, offsetWidth)
+                }
             }
         }
     }
@@ -122,7 +129,7 @@ private fun HexRowView(row: HexRow?, offsetWidth: Int) {
         horizontalArrangement = Arrangement.Start,
     ) {
         Text(
-            text = row?.offset?.let { String.format("%0${offsetWidth}X", it) } ?: " ".repeat(offsetWidth),
+            text = row?.offset?.let { String.format(java.util.Locale.US, "%0${offsetWidth}X", it) } ?: " ".repeat(offsetWidth),
             style = mono,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -1,5 +1,7 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import java.io.File
 
 /**
@@ -43,7 +45,7 @@ enum class IssueKind {
 data class MoveIssue(
     val source: File,
     val kind: IssueKind,
-    val message: String,
+    val message: UiText,
     /** CONFLICT_DIR_MERGE 时的子树合并冲突条目预演数；其余为 0。 */
     val conflictCount: Int = 0,
 )
@@ -99,7 +101,7 @@ object MovePlanner {
         val skipped = mutableListOf<File>()
 
         // 层根同样 canonical 化，保证与源/目标的前缀比较在同一形态下进行
-        //（Windows 短路径等环境下 canonical 与 absolute 可能不同形）。
+        // （Windows 短路径等环境下 canonical 与 absolute 可能不同形）。
         val roots = LayerRoots(
             sandboxRoot = request.roots.sandboxRoot.canonicalFile,
             workspaceRoot = request.roots.workspaceRoot.canonicalFile,
@@ -114,7 +116,7 @@ object MovePlanner {
             issues += MoveIssue(
                 source = request.targetDir,
                 kind = IssueKind.SYSTEM_DIR_FORBIDDEN,
-                message = "目标「${request.targetDir.name}」位于系统目录（proc/sys/dev/system/apex/tmp/.dshbox），不能作为移动目标",
+                message = UiText.Res(R.string.move_plan_target_system_dir, listOf(request.targetDir.name)),
             )
             return MovePlan(issues, risks, items, skipped)
         }
@@ -138,7 +140,7 @@ object MovePlanner {
                 issues += MoveIssue(
                     source = source,
                     kind = IssueKind.ILLEGAL_CYCLE,
-                    message = "目标文件夹位于「${srcCanon.name}」内部（或与其相同），移动会形成目录环并导致数据丢失",
+                    message = UiText.Res(R.string.move_plan_cycle, listOf(srcCanon.name)),
                 )
                 continue
             }
@@ -148,7 +150,7 @@ object MovePlanner {
                 issues += MoveIssue(
                     source = source,
                     kind = IssueKind.SYSTEM_DIR_FORBIDDEN,
-                    message = "「${srcCanon.name}」为系统目录（proc/sys/dev/system/apex/tmp/.dshbox），不能作为移动源",
+                    message = UiText.Res(R.string.move_plan_source_system_dir, listOf(srcCanon.name)),
                 )
                 continue
             }
@@ -159,7 +161,7 @@ object MovePlanner {
                 issues += MoveIssue(
                     source = source,
                     kind = IssueKind.NO_OP,
-                    message = "「${srcCanon.name}」已在该文件夹内",
+                    message = UiText.Res(R.string.move_plan_no_op, listOf(srcCanon.name)),
                 )
                 continue
             }
@@ -201,9 +203,9 @@ object MovePlanner {
                         source = source,
                         kind = kind,
                         message = if (bothDirs) {
-                            "目标位置已存在同名文件夹「${srcCanon.name}」，覆盖将合并两个文件夹的内容"
+                            UiText.Res(R.string.move_plan_conflict_dir_merge, listOf(srcCanon.name))
                         } else {
-                            "目标位置已存在同名项「${srcCanon.name}」"
+                            UiText.Res(R.string.move_plan_conflict_name, listOf(srcCanon.name))
                         },
                         conflictCount = if (bothDirs) countMergeConflicts(srcCanon, intended) else 0,
                     )

@@ -13,7 +13,7 @@
 | talloc（`libtalloc.so`） | 内存池（PRoot 依赖） | LGPL-3+ | 动态链接使用；源码见下方链接 |
 | zstd-jni（`libs/zstd-jni-*.jar` + `jniLibs/*/libzstd-jni-*.so`） | zstd 层解压（运行环境层 / DSH 层）及 tar.zst 压缩包条目枚举（1.2.0 M3 起） | BSD-3-Clause | 1.1.0 起随 APK 分发（凭 magic 识别，不依赖带扩展名） |
 | commons-compress（`org.apache.commons:commons-compress` 1.27.1） | 压缩包条目枚举/解压（ZIP 族、TAR 族、tar.gz/tar.bz2/tar.zst，1.2.0 M3 起） | Apache-2.0 | Gradle 依赖；随 APK 分发；POM 依赖全为 test/provided 作用域，无随包传递依赖；上游 https://commons.apache.org/proper/commons-compress/ |
-| AndroidX / Jetpack | Android 兼容层 | Apache-2.0 | Gradle 依赖 |
+| AndroidX / Jetpack（含 androidx.appcompat:appcompat 1.7.0，1.2.1 起用于应用内语言切换） | Android 兼容层 | Apache-2.0 | Gradle 依赖 |
 | Jetpack Compose / Material3 / material-icons | UI 框架与图标 | Apache-2.0 | Gradle 依赖 |
 | Kotlin stdlib / Coroutines | 语言运行时与异步 | Apache-2.0 | Gradle 依赖 |
 | Termux terminal-emulator（`terminal-emulator/` 模块） | 终端模拟器（VT100/xterm 解析 + pty JNI） | Apache-2.0 | 源码取自 termux/termux-app v0.118.0，未修改；源自 jackpal/Android-Terminal-Emulator |

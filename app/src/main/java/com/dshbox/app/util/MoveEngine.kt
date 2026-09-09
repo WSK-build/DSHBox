@@ -1,5 +1,7 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import java.io.File
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -14,7 +16,7 @@ import kotlinx.coroutines.ensureActive
  */
 
 /** 单项移动失败明细（路径 + 中文原因）。 */
-data class MoveFailure(val source: File, val message: String)
+data class MoveFailure(val source: File, val message: UiText)
 
 /**
  * 批量移动结果（1.2.0 §5.3.7）。取消不打断已完成项：
@@ -45,25 +47,25 @@ private class MoveProgress(val listener: ProgressListener?, val total: Long) {
     var inFlight: Long = 0L
     private var logicalDone: Long = 0L
 
-    fun report(stage: String) {
+    fun report(stage: UiText) {
         listener?.onProgress(minOf(done + inFlight, total), total, stage)
     }
 
     /** 单文件复制完成：把 in-flight 字节转为已累计。 */
-    fun finishFile(bytes: Long, stage: String) {
+    fun finishFile(bytes: Long, stage: UiText) {
         done += bytes
         inFlight = 0L
         report(stage)
     }
 
     /** 复制中的文件：更新 in-flight，进度条平滑推进。 */
-    fun copyInFlight(bytes: Long, stage: String) {
+    fun copyInFlight(bytes: Long, stage: UiText) {
         inFlight = bytes
         report(stage)
     }
 
     /** 一项完成（重命名路径无逐字节进度，按项大小补齐，保证整体单调到 total）。 */
-    fun advanceTo(itemSize: Long, stage: String) {
+    fun advanceTo(itemSize: Long, stage: UiText) {
         logicalDone += itemSize
         if (done < logicalDone) {
             done = logicalDone
@@ -72,6 +74,10 @@ private class MoveProgress(val listener: ProgressListener?, val total: Long) {
         }
     }
 }
+/** 从 FileOpException 提取 uiText，兜底走 raw(message) 或指定资源 ID。 */
+private fun FileOpException.asUiTextOr(defaultRes: Int): UiText =
+    uiText ?: message?.let { UiText.raw(it) } ?: UiText.Res(defaultRes)
+
 object MoveEngine {
 
 /**
@@ -117,11 +123,11 @@ suspend fun moveWithin(
             val source = task.source
             val dest = task.dest
             if (!source.exists()) {
-                failed += MoveFailure(source, "源不存在或已被删除")
+                failed += MoveFailure(source, UiText.Res(R.string.move_err_source_missing))
                 continue
             }
             val itemSize = sizes?.get(index) ?: 0L
-            progress.report("正在移动 ${source.name}")
+            progress.report(UiText.Res(R.string.move_progress_moving_name, listOf(source.name)))
             try {
                 when {
                     // 目录递归合并（§5.3.4）：绝不整体删除目标目录
@@ -140,16 +146,16 @@ suspend fun moveWithin(
                     }
                     task.existing == MoveExisting.FAIL && dest.exists() -> {
                         // 计划时无冲突、执行时目标仍被占用（并发写入等）：按失败处理，绝不静默覆盖
-                        failed += MoveFailure(source, "目标位置已存在同名项「${dest.name}」")
+                        failed += MoveFailure(source, UiText.Res(R.string.move_err_dest_exists, listOf(dest.name)))
                     }
                     else -> {
                         moveSingle(source, dest, temps, progress, forceCopyFallback)
                         moved++
                     }
                 }
-                progress.advanceTo(itemSize, "正在移动 ${source.name}")
+                progress.advanceTo(itemSize, UiText.Res(R.string.move_progress_moving_name, listOf(source.name)))
             } catch (e: FileOpException) {
-                failed += MoveFailure(source, e.message ?: "移动失败")
+                failed += MoveFailure(source, e.asUiTextOr(R.string.move_err_generic))
             }
         }
     } catch (e: kotlinx.coroutines.CancellationException) {
@@ -241,7 +247,7 @@ private suspend fun mergeTreeInternal(
     // 复查修正（可追溯性）：单个子项失败不再立即中断——继续其余子项（§5.3.7
     // 「单文件 IO 失败继续其余」同口径），结束时抛出带「已合并计数 + 首个失败子项」
     // 的异常，用户能看到哪些子项已过去、哪个失败，避免补移时重复/覆盖。
-    var firstFailure: String? = null
+    var firstFailure: UiText? = null
     src.listFiles()?.forEach { child ->
         currentCoroutineContext().ensureActive()
         val dest = File(destDir, child.name)
@@ -273,13 +279,23 @@ private suspend fun mergeTreeInternal(
                 }
             }
         } catch (e: FileOpException) {
-            if (firstFailure == null) firstFailure = "${child.name}：${e.message ?: "未知错误"}"
+            if (firstFailure == null) firstFailure = UiText.Concat(listOf(
+                UiText.raw(child.name),
+                UiText.Separator(": "),
+                e.uiText ?: (e.message?.let { UiText.raw(it) } ?: UiText.Res(R.string.error_unknown)),
+            ))
         }
     }
     if (firstFailure != null) {
         // 源目录保留（未成功子项仍在源中）；已合并子项留在目标中，可重新执行补移
+        val displayFailure = firstFailure ?: UiText.Res(R.string.error_unknown)
         throw FileOpException(
-            "已合并 ${stats.moved} 项后中断于「$firstFailure」；已合并内容保留在目标中，可重新执行补移剩余子项",
+            "Merged ${stats.moved} item(s) then interrupted at \"$displayFailure\"; merged content remains in target, re-execute to move remaining items",
+            uiText = UiText.Concat(listOf(
+                UiText.Res(R.string.move_err_merged_interrupted_1, listOf(stats.moved)),
+                displayFailure,
+                UiText.Res(R.string.move_err_merged_interrupted_2),
+            )),
         )
     }
     runCatching { src.deleteRecursively() }
@@ -303,7 +319,8 @@ private suspend fun moveSingle(
     val usable = dest.parentFile?.usableSpace ?: 0L
     if (need > 0 && usable < need) {
         throw FileOpException(
-            "目标分区空间不足：需要 ${formatFileSize(need)}，可用 ${formatFileSize(usable)}",
+            "Insufficient space on target partition: need ${formatFileSize(need)}, available ${formatFileSize(usable)}",
+            uiText = UiText.Res(R.string.move_err_insufficient_space, listOf(formatFileSize(need), formatFileSize(usable))),
         )
     }
     // 复制兜底：先复制到 .dsh-moving 中转位（校验 + 元数据同步），再改名就位，最后删源
@@ -317,12 +334,24 @@ private suspend fun moveSingle(
             throw e
         } catch (e: Exception) {
             runCatching { dest.deleteRecursively() }
-            throw FileOpException("复制就位失败：${dest.name}（${e.message ?: "未知错误"}）")
+            val detail = e.message?.let { UiText.raw(it) } ?: UiText.Res(R.string.error_unknown)
+            throw FileOpException(
+                "Copy-and-place failed: ${dest.name} (${e.message ?: "unknown error"})",
+                uiText = UiText.Concat(listOf(
+                    UiText.Res(R.string.move_err_copy_place_failed, listOf(dest.name)),
+                    UiText.Separator("（"),
+                    detail,
+                    UiText.Separator("）"),
+                )),
+            )
         }
         runCatching { temp.deleteRecursively() }
     }
     if (!runCatching { source.deleteRecursively() }.getOrDefault(false) && source.exists()) {
-        throw FileOpException("复制完成但删除源失败：${source.absolutePath}")
+        throw FileOpException(
+            "Copy completed but failed to delete source: ${source.absolutePath}",
+            uiText = UiText.Res(R.string.move_err_delete_source_failed, listOf(source.absolutePath)),
+        )
     }
 }
 
@@ -355,7 +384,11 @@ private suspend fun replaceViaTemp(
     if (!runCatching { deleteTarget(dest) }.getOrDefault(false)) {
         val preserved = if (stagedByRename) preserveOrRestore(temp, source, temps) else null
         throw FileOpException(
-            "无法删除旧目标 ${dest.name}" + preserved?.let { "；源数据已保全到 ${it.name}" }.orEmpty(),
+            "Cannot delete old target ${dest.name}" + preserved?.let { "; source data preserved to ${it.name}" }.orEmpty(),
+            uiText = UiText.Concat(buildList {
+                add(UiText.Res(R.string.move_err_delete_old_dest, listOf(dest.name)))
+                preserved?.let { add(UiText.Res(R.string.move_err_data_preserved, listOf(it.name))) }
+            }),
         )
     }
     // 阶段 3：中转位改名到位；失败 → 复制就位 → 均失败/取消时保全数据并清掉 dest 半成品。
@@ -370,9 +403,18 @@ private suspend fun replaceViaTemp(
         } catch (e: Exception) {
             runCatching { dest.deleteRecursively() }
             val preserved = if (stagedByRename) preserveOrRestore(temp, source, temps) else null
+            val detail = if (e is FileOpException) e.uiText else e.message?.let { UiText.raw(it) }
             throw FileOpException(
-                "替换「${dest.name}」失败：${e.message ?: "复制就位失败"}" +
-                    preserved?.let { "；源数据已保全到 ${it.name}" }.orEmpty(),
+                "Replace \"${dest.name}\" failed: ${e.message ?: "copy-and-place failed"}" +
+                    preserved?.let { "; source data preserved to ${it.name}" }.orEmpty(),
+                uiText = UiText.Concat(buildList {
+                    add(UiText.Res(R.string.move_err_replace_failed_no_detail, listOf(dest.name)))
+                    if (detail != null) {
+                        add(UiText.Separator("："))
+                        add(detail)
+                    }
+                    preserved?.let { add(UiText.Res(R.string.move_err_data_preserved, listOf(it.name))) }
+                }),
             )
         }
     }
@@ -450,13 +492,22 @@ private suspend fun copyTreeWithMeta(source: File, dest: File, progress: MovePro
                 java.nio.file.Files.readSymbolicLink(source.toPath()),
             )
         }.onFailure {
-            throw FileOpException("无法复制符号链接 ${source.name}（${it.message ?: "未知错误"}）")
+            val detail = it.message?.let { msg -> UiText.raw(msg) } ?: UiText.Res(R.string.error_unknown)
+            throw FileOpException(
+                "Cannot copy symlink ${source.name} (${it.message ?: "unknown error"})",
+                uiText = UiText.Concat(listOf(
+                    UiText.Res(R.string.move_err_symlink_copy_failed, listOf(source.name)),
+                    UiText.Separator("（"),
+                    detail,
+                    UiText.Separator("）"),
+                )),
+            )
         }
         return
     }
     if (source.isDirectory) {
         if (!dest.exists() && !dest.mkdirs()) {
-            throw FileOpException("无法创建目录 ${dest.name}")
+            throw FileOpException("Cannot create directory ${dest.name}", uiText = UiText.Res(R.string.move_err_mkdir_failed, listOf(dest.name)))
         }
         val children = source.listFiles()
         if (children != null) {
@@ -470,7 +521,7 @@ private suspend fun copyTreeWithMeta(source: File, dest: File, progress: MovePro
         dest.parentFile?.mkdirs()
         val expected = runCatching { source.length() }.getOrDefault(0L)
         var copied = 0L
-        val stage = "正在复制 ${source.name}"
+        val stage: UiText = UiText.Res(R.string.move_progress_copying_name, listOf(source.name))
         source.inputStream().use { ins ->
             dest.outputStream().use { out ->
                 val buffer = ByteArray(COPY_BUFFER)
@@ -486,7 +537,10 @@ private suspend fun copyTreeWithMeta(source: File, dest: File, progress: MovePro
         }
         progress?.copyInFlight(copied, stage)
         if (copied != expected) {
-            throw FileOpException("复制校验失败：${source.name}（预期 $expected 字节，实际 $copied 字节）")
+            throw FileOpException(
+                "Copy verification failed: ${source.name} (expected $expected bytes, actual $copied bytes)",
+                uiText = UiText.Res(R.string.move_err_copy_verify_failed, listOf(source.name, expected, copied)),
+            )
         }
         syncMetadata(source, dest)
         progress?.finishFile(copied, stage)

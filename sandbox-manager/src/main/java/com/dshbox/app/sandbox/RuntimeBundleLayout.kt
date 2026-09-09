@@ -1,7 +1,7 @@
 package com.dshbox.app.sandbox
 
 /**
- * Pure analysis of a runtime-bundle ZIP layout (1.1.0, M1/M2 — MODIFICATION_LOG.md).
+ * Pure analysis of a runtime-bundle ZIP layout (1.1.0, M1/M2 — ).
  *
  * Deliberately free of android.* imports so the ZIP-matching rules are unit-testable
  * on the JVM. Encodes the two import bugs fixed in 1.1.0:
@@ -17,14 +17,14 @@ object RuntimeBundleLayout {
 
     /**
      * Layer archive file name，例如 base.tar.zst —— 锚定匹配，`.sha256` 侧车永不命中。
-     * 1.1.0 (M12.4)：接受裸 `base.tar`（无压缩扩展），与解压器「按魔数识别压缩」的口径
+     * 接受裸 `base.tar`（无压缩扩展），与解压器「按魔数识别压缩」的口径
      * 对齐——压缩格式只看内容，文件名扩展不再是必需。
      */
     private val ARCHIVE_REGEX = Regex("^(base|node|android-side)\\.tar(\\.[A-Za-z0-9]+)?$")
 
     const val PROFILE_NAME = "runtime-profile.json"
 
-    /** 文件名若形如 <layer>.tar[.ext] 返回层名（base/node/android-side），否则 null。1.1.0 (M12.4)。 */
+    /** 文件名若形如 <layer>.tar[.ext] 返回层名（base/node/android-side），否则 null。1.1.0 。 */
     fun layerOfArchiveName(name: String): String? {
         val clean = name.replace('\\', '/').substringAfterLast('/')
         // 显式排除 .sha256 侧车——裸归档（base.tar）的侧车正是 base.tar.sha256，

@@ -6,7 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 1.2.0 复查修正回归：风险弹窗文案选择必须与入口筛选同源（Layer 判定）。
+ * 风险弹窗文案选择必须与入口筛选同源（Layer 判定）。
  * 此前移动文案用 entry.risk（名称口径），node/dsh 层内文件命中 NORMAL 落到
  * 错误兜底（显示 DSH 数据文案），恰在 R1 最高风险场景上张冠李戴。
  */

@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Regression tests for the 1.1.0 runtime-bundle ZIP layout analysis (M1/M2).
+ * Regression tests for the 1.1.0 runtime-bundle ZIP layout analysis .
  *
  * The M1 case reproduces the 1.0.0 fatal bug exactly: the official zip lists
  * `base.tar.zst` BEFORE `base.tar.zst.sha256`, and the old startsWith() matching
@@ -103,7 +103,7 @@ class RuntimeBundleLayoutTest {
 
     @Test
     fun bareTarWithoutExtensionIsAValidLayerArchive() {
-        // 1.1.0 (M12.4): 裸 base.tar（无压缩扩展）也是合法层归档——压缩格式按魔数识别。
+        // 裸 base.tar（无压缩扩展）也是合法层归档——压缩格式按魔数识别。
         val result = RuntimeBundleLayout.analyze(
             listOf("base.tar", "base.tar.sha256", "node.tar", "android-side.tar", "runtime-profile.json"),
         )

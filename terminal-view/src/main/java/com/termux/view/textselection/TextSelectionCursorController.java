@@ -168,7 +168,7 @@ public class TextSelectionCursorController implements CursorController {
             return;
         }
 
-        //noinspection NewApi
+        // noinspection NewApi
         mActionMode = terminalView.startActionMode(new ActionMode.Callback2() {
             @Override
             public boolean onCreateActionMode(ActionMode mode, Menu menu) {

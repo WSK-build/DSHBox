@@ -1,5 +1,7 @@
 package com.dshbox.app.util.viewer
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
@@ -83,7 +85,7 @@ class ArchiveBrowserTest {
     private fun entryOf(snapshot: ArchiveBrowser.Snapshot, path: String): ArchiveBrowser.Entry =
         snapshot.entries.first { it.path == path }
 
-    // ---------------- 端到端命名链（M3 返工 B 回归） ----------------
+    // ---------------- 端到端命名链 ----------------
     // 此前 formatOf 直测传 ("tar","tar.gz") 等理想参数、browse 直传 Format 枚举，
     // 「文件名 → classify → formatOf」真实链路无一例覆盖，.tar.gz/.tar.zst/.tar.bz2/
     // .tzst 四类主流命名全部落信息卡仍 147 例全绿——本组用例固化完整链路。
@@ -166,7 +168,9 @@ class ArchiveBrowserTest {
         f.writeBytes(ZSTD_MAGIC + ByteArray(32))
         val format = formatViaClassifier(f.name, FileTypeClassifier.readHead(f, 512))
         assertEquals(ArchiveBrowser.Format.TAR_ZST, format)
-        assertTrue(ArchiveBrowser.browse(f, format!!) is ArchiveBrowser.Result.Error)
+        val zstdResult = ArchiveBrowser.browse(f, format!!)
+        assertTrue(zstdResult is ArchiveBrowser.Result.Error)
+        assertEquals(R.string.archivebrowser_err_no_zstd_native, ((zstdResult as ArchiveBrowser.Result.Error).message as UiText.Res).id)
     }
 
     // ---------------- formatOf（纯函数） ----------------
@@ -252,7 +256,9 @@ class ArchiveBrowserTest {
         bad.writeBytes(bytes.copyOf(bytes.size / 2)) // 截断
         val result = ArchiveBrowser.browse(bad, ArchiveBrowser.Format.ZIP)
         assertTrue(result is ArchiveBrowser.Result.Error)
-        assertNotNull((result as ArchiveBrowser.Result.Error).message)
+        val error = result as ArchiveBrowser.Result.Error
+        assertTrue(error.message is UiText)
+        assertEquals(R.string.archivebrowser_err_open_failed, (error.message as UiText.Res).id)
     }
 
     @Test
@@ -415,11 +421,12 @@ class ArchiveBrowserTest {
     @Test
     fun tarZstConvergesToErrorWithoutNativeLib() {
         // JVM 测试环境（x86_64）无 zstd 原生库：UnsatisfiedLinkError 必须收敛为 Error
-        //（真机上若库存在但内容损坏同样收敛为 Error——两种路径均不崩）
+        // （真机上若库存在但内容损坏同样收敛为 Error——两种路径均不崩）
         val f = tmp.newFile("a.tar.zst")
         f.writeBytes(byteArrayOf(0x28, 0xB5.toByte(), 0x2F, 0xFD.toByte(), 1, 2, 3, 4))
         val result = ArchiveBrowser.browse(f, ArchiveBrowser.Format.TAR_ZST)
         assertTrue(result is ArchiveBrowser.Result.Error)
+        assertEquals(R.string.archivebrowser_err_no_zstd_native, ((result as ArchiveBrowser.Result.Error).message as UiText.Res).id)
         // 内容流同样不外抛
         assertEquals(null, ArchiveBrowser.openEntryStream(f, ArchiveBrowser.Format.TAR_ZST, "x.txt"))
     }
@@ -461,7 +468,7 @@ class ArchiveBrowserTest {
         assertEquals("", ArchiveBrowser.normalizeName("./"))
     }
     
-    // ---------------- 中文条目名（P2：GBK/UTF-8） ----------------
+    // ---------------- 中文条目名 ----------------
 
     @Test
     fun zipChineseNamesGbkDecoded() {

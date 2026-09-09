@@ -110,8 +110,8 @@ object FileTypeClassifier {
             startsAt(4, "ftyp") -> isoBmffBrand(head)?.let { Triple(it.first, it.second, Confidence.HIGH) }
             // ---- 文档 ----
             startsAt(0, "%PDF") -> Triple(FileKind.PDF, "pdf", Confidence.HIGH)
-            // ---- ZIP 族（二级按扩展名区分，§6.2）：OOXML 文档 → OFFICE（M3 抽文本），
-            //      jar/apk/aar/war/epub 应用容器与普通 zip → ARCHIVE（M3 ArchiveViewer 条目浏览）
+            // ---- ZIP 族（二级按扩展名区分，§6.2）：OOXML 文档 → OFFICE，
+            // jar/apk/aar/war/epub 应用容器与普通 zip → ARCHIVE
             starts(0x50, 0x4B) -> Triple(
                 if (ext in OOXML_EXT) FileKind.OFFICE else FileKind.ARCHIVE,
                 ext.ifEmpty { "zip" },
@@ -265,7 +265,7 @@ object FileTypeClassifier {
         "ts" to "javascript", "tsx" to "javascript",
         // java / kotlin（共用一套 C 系规则）
         "java" to "java", "kt" to "java", "kts" to "java",
-        // C 系其余文本（M2 纯文本编辑，高亮 1.2.x 评估扩展）
+        // C 系其余文本
         "c" to "java", "h" to "java", "cpp" to "java", "hpp" to "java", "cc" to "java",
     )
 

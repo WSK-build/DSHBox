@@ -26,7 +26,7 @@ command -v tar >/dev/null 2>&1 && ok "found: tar" || fatal "missing: tar"
 if command -v zstd >/dev/null 2>&1; then
     ok "found: zstd ($(zstd --version 2>/dev/null | head -1))"
 else
-    warn "zstd NOT found -> layers will pack as gzip per degrade policy (see CHANGELOG/Pack section)"
+    warn "zstd NOT found -> layers will pack as gzip per degrade policy"
 fi
 
 # Network is required for debootstrap/apt and the Node download.

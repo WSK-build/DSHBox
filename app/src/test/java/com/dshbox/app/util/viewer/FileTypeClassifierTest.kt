@@ -49,8 +49,8 @@ class FileTypeClassifierTest {
         assertEquals(FileKind.PDF, classify("a.pdf", *("%PDF-1.7".map { it.code }).toIntArray()).kind)
         val pk = intArrayOf(0x50, 0x4B, 0x03, 0x04)
         assertEquals(FileKind.ARCHIVE, classify("a.zip", *pk).kind)
-        // ZIP 族二级区分（§6.2/§6.3）：OOXML 文档 → OFFICE（M3 抽文本）；
-        // 返工修正 #2：jar/apk/aar/war/epub 应用容器归 ARCHIVE（M3 ArchiveViewer），不归 OFFICE
+        // ZIP 族二级区分（§6.2/§6.3）：OOXML 文档 → OFFICE；
+        // 返工修正 #2：jar/apk/aar/war/epub 应用容器归 ARCHIVE，不归 OFFICE
         assertEquals(FileKind.OFFICE, classify("a.docx", *pk).kind)
         assertEquals(FileKind.OFFICE, classify("a.xlsx", *pk).kind)
         assertEquals(FileKind.ARCHIVE, classify("a.apk", *pk).kind)

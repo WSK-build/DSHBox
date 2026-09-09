@@ -11,7 +11,9 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.net.Uri
+import android.os.LocaleList
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -27,6 +29,7 @@ import com.dshbox.app.common.Constants
 import com.dshbox.app.sandbox.BundledRuntimeInstaller
 import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.sandbox.SandboxState
+import com.dshbox.app.ui.theme.AppLocaleState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -92,6 +95,8 @@ class SandboxService : Service() {
                     stopSelf()
                 }
             }
+            // 语言切换后由 MainActivity.onResume 触发，通知按新语言重建。
+            ACTION_REFRESH_NOTIFICATION -> updateNotification()
         }
         return START_STICKY
     }
@@ -110,7 +115,7 @@ class SandboxService : Service() {
      * control to the user. The first-run marker is persisted only when BOTH
      * started successfully, so a failed first boot is retried on the next launch.
      *
-     * 1.1.0 (M12.1 P1③): the whole bootstrap runs inside [BackgroundOps.runTracked] —
+     * P1③): the whole bootstrap runs inside [BackgroundOps.runTracked] —
      * it writes cleanup targets (bundled-runtime-staging, cacheDir/dsh-bundled-*.tar,
      * dsh-staging via updateDsh), so the settings cleanup entry must stay disabled
      * until it finishes.
@@ -200,9 +205,9 @@ class SandboxService : Service() {
         // the actual compression from the stream magic, not the extension.
         val dshTarball = entries.firstOrNull { it.endsWith(".tar.zst") }
             ?: entries.firstOrNull { it.endsWith(".tar.gz") } ?: return
-        // 1.1.0 (M3): strip the build-side "-patched" marker from the derived version.
+        // strip the build-side "-patched" marker from the derived version.
         // The asset is named e.g. "0.1.1-rc.2-patched.tar.zst" but the RELEASE it packs is
-        // 0.1.1-rc.2. With the suffix left in, the arbitration below treats a legitimately
+        // With the suffix left in, the arbitration below treats a legitimately
         // offline-imported "0.1.1-rc.2" (or a version discovered as "unknown") as OLDER and
         // silently re-provisioned the bundled layer over it on every boot — offline imports
         // appeared to "not stick". Removing the marker makes the comparison exact; existing
@@ -259,7 +264,7 @@ class SandboxService : Service() {
         val result = sandboxManager.startDsh()
         if (result is AppResult.Failure) {
             Log.w(TAG, "startDsh: ${result.error.message}")
-            showToast(result.error.message)
+            showToast(userMessageOf(result.error))
         }
         return result
     }
@@ -268,10 +273,14 @@ class SandboxService : Service() {
         val result = sandboxManager.restartDsh()
         if (result is AppResult.Failure) {
             Log.w(TAG, "restartDsh: ${result.error.message}")
-            showToast(result.error.message)
+            showToast(userMessageOf(result.error))
         }
         return result
     }
+
+    /** Toast 优先展示可本地化 userMessage（按当前语言），回退 message。 */
+    private fun userMessageOf(error: com.dshbox.app.common.AppError): String =
+        error.userMessage?.asString(localizedContext()) ?: error.message
 
     private suspend fun stopDsh() {
         sandboxManager.stopDsh()
@@ -324,23 +333,37 @@ class SandboxService : Service() {
             true
         }
 
+    /**
+     * 按应用内所选语言本地化的 Context。Service 不走 AppCompatActivity
+     * 链路（API<33 不自动继承应用内语言覆盖），且 base context 在 attach 后无法更换，
+     * 因此每次构建通知时用当前语言镜像现取现包。
+     */
+    private fun localizedContext(): Context {
+        val tags = AppLocaleState.currentTag(applicationContext)
+        if (tags.isEmpty()) return this
+        val config = Configuration(resources.configuration)
+        config.setLocales(LocaleList.forLanguageTags(tags))
+        return createConfigurationContext(config)
+    }
+
     private fun buildNotification(): Notification {
+        val ctx = localizedContext()
         val sandboxState = sandboxManager.sandboxState.value
         val dshState = sandboxManager.dshState.value
 
         val sandboxText = when (sandboxState) {
-            SandboxState.RUNNING -> "沙箱在线"
-            SandboxState.STARTING, SandboxState.INITIALIZING -> "沙箱启动中"
-            SandboxState.STOPPED -> "沙箱已停止"
-            SandboxState.ERROR -> "沙箱异常"
-            else -> "沙箱…"
+            SandboxState.RUNNING -> ctx.getString(R.string.notify_sandbox_running)
+            SandboxState.STARTING, SandboxState.INITIALIZING -> ctx.getString(R.string.notify_sandbox_starting)
+            SandboxState.STOPPED -> ctx.getString(R.string.notify_sandbox_stopped)
+            SandboxState.ERROR -> ctx.getString(R.string.notify_sandbox_error)
+            else -> ctx.getString(R.string.notify_sandbox_other)
         }
         val dshText = when (dshState) {
-            DshState.READY -> "DSH 就绪"
-            DshState.RUNNING, DshState.STARTING -> "DSH 启动中"
-            DshState.STOPPED -> "DSH 已停止"
-            DshState.ERROR -> "DSH 异常"
-            else -> "DSH…"
+            DshState.READY -> ctx.getString(R.string.notify_dsh_ready)
+            DshState.RUNNING, DshState.STARTING -> ctx.getString(R.string.notify_dsh_starting)
+            DshState.STOPPED -> ctx.getString(R.string.notify_dsh_stopped)
+            DshState.ERROR -> ctx.getString(R.string.notify_dsh_error)
+            else -> ctx.getString(R.string.notify_dsh_other)
         }
         val contentTitle = "$sandboxText · $dshText"
         val contentText = Constants.DSH_BASE_URL
@@ -385,15 +408,17 @@ class SandboxService : Service() {
             .setColor(0xFF10A37F.toInt())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(0, "打开 DSH", openPending)
-            .addAction(0, "启动 DSH", startDshPending)
-            .addAction(0, "重启 DSH", restartDshPending)
-            .addAction(0, "停止沙箱", stopSandboxPending)
+            .addAction(0, ctx.getString(R.string.notify_action_open_dsh), openPending)
+            .addAction(0, ctx.getString(R.string.notify_action_start_dsh), startDshPending)
+            .addAction(0, ctx.getString(R.string.notify_action_restart_dsh), restartDshPending)
+            .addAction(0, ctx.getString(R.string.notify_action_stop_sandbox), stopSandboxPending)
             .build()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // 渠道名一经创建即冻结，本地化需换 CHANNEL_ID 导致老用户通知设置重置
+            // （1.2.1 决策：保留英文专名风格，不本地化）。
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "DSH Sandbox",
@@ -416,6 +441,7 @@ class SandboxService : Service() {
         const val ACTION_RESTART_DSH = "com.dshbox.app.action.RESTART_DSH"
         const val ACTION_STOP_DSH = "com.dshbox.app.action.STOP_DSH"
         const val ACTION_STOP_ALL = "com.dshbox.app.action.STOP_ALL"
+        const val ACTION_REFRESH_NOTIFICATION = "com.dshbox.app.action.REFRESH_NOTIFICATION"
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(
@@ -463,6 +489,13 @@ class SandboxService : Service() {
         fun stop(context: Context) {
             context.startService(
                 Intent(context, SandboxService::class.java).setAction(ACTION_STOP_ALL),
+            )
+        }
+
+        /** 语言切换后重建通知（服务已在前台，普通 startService 即可）。 */
+        fun refreshNotification(context: Context) {
+            context.startService(
+                Intent(context, SandboxService::class.java).setAction(ACTION_REFRESH_NOTIFICATION),
             )
         }
     }

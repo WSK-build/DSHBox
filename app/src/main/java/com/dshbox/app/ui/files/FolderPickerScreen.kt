@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -151,7 +152,7 @@ internal fun FolderPickerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(PageBg)
+            .background(PageBg())
             // 返工 #7：覆盖页吞噬点击——空白处不穿透到底层文件列表
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
@@ -170,14 +171,14 @@ internal fun FolderPickerScreen(
                     text = stringResource(R.string.files_picker_title),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
-                    color = TextPrimary,
+                    color = TextPrimary(),
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = stringResource(R.string.files_cancel),
-                        tint = TextSecondary,
+                        tint = TextSecondary(),
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -236,7 +237,7 @@ internal fun FolderPickerScreen(
                     Text(
                         text = stringResource(R.string.files_picker_empty),
                         fontSize = 13.sp,
-                        color = TextSecondary,
+                        color = TextSecondary(),
                     )
                 }
             } else {
@@ -263,15 +264,15 @@ internal fun FolderPickerScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(CardBg)
-                    .border(0.5.dp, DividerColor)
+                    .background(CardBg())
+                    .border(0.5.dp, DividerColor())
                     .padding(horizontal = 20.dp, vertical = 12.dp),
             ) {
                 pickerTargetHint(mapper, currentDir)?.let { hint ->
                     Text(
                         text = hint,
                         fontSize = 11.sp,
-                        color = TextHint,
+                        color = TextHint(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -305,7 +306,7 @@ internal fun FolderPickerScreen(
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(
-                            text = stringResource(R.string.files_picker_confirm, moveCount),
+                            text = pluralStringResource(R.plurals.files_picker_confirm, moveCount, moveCount),
                             color = PrimaryGreen,
                         )
                     }
@@ -346,7 +347,7 @@ internal fun FolderPickerScreen(
                             target.mkdirs()
                         }
                         created.onFailure {
-                            Toast.makeText(context, it.message ?: "创建失败", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, it.message ?: context.getString(R.string.files_create_failed), Toast.LENGTH_SHORT).show()
                         }
                         if (created.isSuccess) {
                             newFolderName = ""
@@ -381,7 +382,7 @@ internal fun FolderPickerScreen(
                         currentDir.name,
                     ),
                     fontSize = 14.sp,
-                    color = TextSecondary,
+                    color = TextSecondary(),
                 )
             },
             confirmButton = {
@@ -419,7 +420,7 @@ private fun PickerDirRow(
         Icon(
             imageVector = Icons.Filled.Folder,
             contentDescription = null,
-            tint = if (enabled) PrimaryGreen else TextHint,
+            tint = if (enabled) PrimaryGreen else TextHint(),
             modifier = Modifier.size(24.dp),
         )
         Spacer(Modifier.width(12.dp))
@@ -427,7 +428,7 @@ private fun PickerDirRow(
             Text(
                 text = name,
                 fontSize = 14.sp,
-                color = if (enabled) TextPrimary else TextHint,
+                color = if (enabled) TextPrimary() else TextHint(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -436,7 +437,7 @@ private fun PickerDirRow(
                 Text(
                     text = subtitle,
                     fontSize = 11.sp,
-                    color = TextHint,
+                    color = TextHint(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -446,7 +447,7 @@ private fun PickerDirRow(
     HorizontalDivider(
         modifier = Modifier.padding(start = 60.dp),
         thickness = 0.5.dp,
-        color = DividerColor,
+        color = DividerColor(),
     )
 }
 

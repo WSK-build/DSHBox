@@ -1,5 +1,7 @@
 package com.dshbox.app.util.viewer
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -86,6 +88,19 @@ class TextFileStoreTest {
         val loaded = TextFileStore.load(f)
         assertNotNull(loaded)
         assertFalse(stale.exists())
+    }
+
+    @Test
+    fun failedOutcomeHasUiTextReason() {
+        // 父路径是已存在「文件」时 mkdirs 必失败 → 稳定触发目录不可用分支：
+        // reason 应为 UiText.Res（。
+        val blocker = File(tempDir(), "blocker-${System.nanoTime()}.txt").apply { writeText("x") }
+        val badPath = File(blocker, "file.txt")
+        val outcome = TextFileStore.save(badPath, "data".toByteArray(), expected = null)
+        assertTrue("actual=$outcome", outcome is TextFileStore.SaveOutcome.Failed)
+        val failed = outcome as TextFileStore.SaveOutcome.Failed
+        assertTrue("reason should be UiText.Res", failed.reason is UiText.Res)
+        assertEquals(R.string.textstore_err_dir_unavailable, (failed.reason as UiText.Res).id)
     }
 
     private fun tempDir(): File {

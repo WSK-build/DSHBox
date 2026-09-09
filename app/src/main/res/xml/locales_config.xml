@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ 系统设置「应用语言」的可选语言白名单（联合国六语）。
+     与 values-* 资源目录保持一致：ar/en/es/fr/ru/zh。 -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="ar" />
+    <locale android:name="en" />
+    <locale android:name="es" />
+    <locale android:name="fr" />
+    <locale android:name="ru" />
+    <locale android:name="zh" />
+</locale-config>

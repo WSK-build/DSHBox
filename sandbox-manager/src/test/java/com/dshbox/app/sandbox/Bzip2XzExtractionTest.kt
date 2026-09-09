@@ -13,7 +13,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * 1.1.0 (M12.4): BundleManager.extractTarGz 按魔数支持 bzip2（BZh）与 xz
+ * BundleManager.extractTarGz 按魔数支持 bzip2（BZh）与 xz
  * （FD 37 7A 58 5A 00）——此前这两种压缩会误入 gzip 分支得到误导性报错。
  */
 class Bzip2XzExtractionTest {

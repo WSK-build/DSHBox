@@ -1329,7 +1329,7 @@ public final class TerminalView extends View {
                     // which checks with TerminalEmulator.shouldCursorBeVisible() to decide whether
                     // to draw the cursor or not
                     mCursorVisible = !mCursorVisible;
-                    //mClient.logVerbose(LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
+                    // mClient.logVerbose(LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
                     mEmulator.setCursorBlinkState(mCursorVisible);
                     invalidate();
                 }

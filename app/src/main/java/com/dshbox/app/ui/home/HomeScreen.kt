@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,8 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -46,13 +45,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dshbox.app.BuildConfig
 import com.dshbox.app.R
 import com.dshbox.app.common.Constants
 import com.dshbox.app.service.SandboxService
 import com.dshbox.app.ui.theme.AppIconsContentCopy
-import com.dshbox.app.ui.theme.AppIconsStop
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -280,44 +280,55 @@ private fun SandboxStatusCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                OutlinedButton(
-                    shape = MaterialTheme.shapes.medium,
-                    onClick = onStart,
+                // 通用短词三按钮（启动/重启/关闭），纯文字无图标。
+                StatusActionButton(
+                    label = stringResource(R.string.action_start),
                     enabled = !sandboxRunning,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.home_sandbox_start))
-                }
-                OutlinedButton(
-                    shape = MaterialTheme.shapes.medium,
+                    onClick = onStart,
+                )
+                StatusActionButton(
+                    label = stringResource(R.string.action_restart),
+                    enabled = sandboxRunning,
                     onClick = onRestart,
+                )
+                StatusActionButton(
+                    label = stringResource(R.string.action_stop),
                     enabled = sandboxRunning,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.home_sandbox_restart))
-                }
-                OutlinedButton(
-                    shape = MaterialTheme.shapes.medium,
                     onClick = onStop,
-                    enabled = sandboxRunning,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        imageVector = AppIconsStop,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.home_sandbox_stop))
-                }
+                )
             }
         }
+    }
+}
+
+/**
+ * 状态卡通用短词按钮（启动/重启/关闭）。图标区分语义；
+ * 文本限单行防溢出（六语翻译在窄按钮内不换行、不挤爆）。
+ * RowScope 扩展以使用等宽 weight 布局。
+ */
+@Composable
+private fun RowScope.StatusActionButton(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        shape = MaterialTheme.shapes.medium,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.weight(1f),
+    ) {
+        // 纯文字短词按钮（启动/重启/关闭）——去除图标，
+        // 文字铺满按钮宽度、居中；省略号仅在真正超出按钮宽度时出现。
+        // 文字短词语义自明，图标占位曾挤压文字（用户真机反馈）。
+        Text(
+            text = label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -407,7 +418,7 @@ private fun DshStatusCard(
                         ),
                     )
                     Text(
-                        // M12.3：与设置页「v1.1.0」写法统一。
+                        // 与设置页「v1.1.0」写法统一。
                         text = stringResource(R.string.home_version_format, "v${BuildConfig.VERSION_NAME}"),
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -419,42 +430,22 @@ private fun DshStatusCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                OutlinedButton(
-                    shape = MaterialTheme.shapes.medium,
-                    onClick = onStart,
+                // 通用短词三按钮（启动/重启/关闭），纯文字无图标。
+                StatusActionButton(
+                    label = stringResource(R.string.action_start),
                     enabled = sandboxRunning && !dshReady,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.home_dsh_start))
-                }
-                OutlinedButton(
-                    shape = MaterialTheme.shapes.medium,
-                    onClick = onRestart,
+                    onClick = onStart,
+                )
+                StatusActionButton(
+                    label = stringResource(R.string.action_restart),
                     enabled = dshReady || sandboxRunning,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.home_dsh_restart))
-                }
-                OutlinedButton(
-                    shape = MaterialTheme.shapes.medium,
-                    onClick = onStop,
+                    onClick = onRestart,
+                )
+                StatusActionButton(
+                    label = stringResource(R.string.action_stop),
                     enabled = dshReady || dshError,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        imageVector = AppIconsStop,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.home_dsh_stop))
-                }
+                    onClick = onStop,
+                )
             }
             if (!sandboxRunning) {
                 Text(

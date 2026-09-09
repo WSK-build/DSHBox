@@ -1,5 +1,7 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -11,7 +13,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * 1.2.0 §10.1：moveWithin 移动引擎 JVM 单测（临时目录构造树）。
+ * moveWithin 移动引擎 JVM 单测（临时目录构造树）。
  *
  * 覆盖：rename 路径与复制兜底路径（rwx 权限位含可执行位、lastModified 保留）、
  * OVERWRITE「先就位后替换」、目录递归合并不删目标、目标并发占用按失败、
@@ -184,7 +186,8 @@ class MoveWithinTest {
         val result = MoveEngine.moveWithin(listOf(MoveTask(ghost, File(target, "ghost.txt"))))
         assertEquals(0, result.moved)
         assertEquals(1, result.failed.size)
-        assertTrue(result.failed.single().message.contains("源不存在"))
+        val msg = result.failed.single().message
+        assertTrue(msg is UiText.Res && msg.id == R.string.move_err_source_missing)
     }
 
     // ---------- 取消（§5.3.5） ----------
@@ -203,7 +206,7 @@ class MoveWithinTest {
         val result = MoveEngine.moveWithin(
             tasks = listOf(MoveTask(dir1, File(target, "c1")), MoveTask(dir2, File(target, "c2"))),
             listener = ProgressListener { _, _, stage ->
-                if (stage.endsWith("c2")) throw CancellationException("user cancelled")
+                if (stage is UiText.Res && stage.args.any { it == "c2" }) throw CancellationException("user cancelled")
             },
             forceCopyFallback = true,
         )
@@ -333,9 +336,12 @@ class MoveWithinTest {
             deleteTarget = { false },
         )
         assertEquals(1, result.failed.size)
-        val message = result.failed.single().message
-        assertTrue("异常应含已合并计数", message.contains("已合并 1 项"))
-        assertTrue("异常应含首个失败子项路径", message.contains("clash.txt"))
+        val uiText = result.failed.single().message
+        // message 是 UiText.Concat: [Res(merged_interrupted_1, [1]), failureDetail, Res(merged_interrupted_2)]
+        assertTrue("异常应为 Concat", uiText is UiText.Concat)
+        val parts = (uiText as UiText.Concat).parts
+        assertTrue("第一段应为 move_err_merged_interrupted_1", parts[0] is UiText.Res && (parts[0] as UiText.Res).id == R.string.move_err_merged_interrupted_1)
+        assertTrue("最后一段应为 move_err_merged_interrupted_2", parts.last() is UiText.Res && (parts.last() as UiText.Res).id == R.string.move_err_merged_interrupted_2)
         // 兄弟子项已合并到目标
         assertEquals("good", File(destDir, "good.txt").readText())
         // 失败子项：目标保留旧内容、源保留原文件（可补移）
@@ -367,11 +373,13 @@ class MoveWithinTest {
             deleteTarget = { false },
         )
         assertEquals(1, result.failed.size)
-        val message = result.failed.single().message
+        val uiText = result.failed.single().message
+        // message 是 UiText.Concat: [Res(merged_interrupted_1, [2]), failureDetail, Res(merged_interrupted_2)]
+        assertTrue("异常应为 Concat", uiText is UiText.Concat)
+        val parts = (uiText as UiText.Concat).parts
+        val countPart = parts[0] as UiText.Res
         // 精确聚合计数：top.txt + sub/deep.txt = 2（MergeStats 跨层级共享）
-        assertTrue("聚合计数应跨层级精确：$message", message.contains("已合并 2 项"))
-        assertTrue("应指明失败发生在 sub 内：$message", message.contains("sub"))
-        assertTrue(message.contains("clash2.txt"))
+        assertTrue("聚合计数应跨层级精确", countPart.args.first() == 2)
         assertEquals("top", File(destDir, "top.txt").readText())
         assertEquals("deep", File(destDir, "sub/deep.txt").readText())
         assertEquals("src-clash2", File(srcDir, "sub/clash2.txt").readText())

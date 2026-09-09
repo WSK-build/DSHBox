@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +41,7 @@ import com.dshbox.app.ui.terminal.TerminalScreen
 import com.dshbox.app.ui.theme.AppIcons
 import com.dshbox.app.ui.webview.DshWebViewScreen
 import com.dshbox.app.service.SandboxService
+import com.dshbox.app.util.AppUpdater
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
@@ -63,6 +66,9 @@ fun MainScreen() {
     val bundledRuntimeAvailable = remember {
         BundledRuntimeInstaller(app, app.container.sandboxConfig).hasBundledBundle()
     }
+
+    // 启动静默检测：冷启动数秒后查询一次最新版本，有新版本则弹一次提示。
+    var autoUpdate by remember { mutableStateOf<AppUpdater.CheckResult?>(null) }
 
     val tabs = listOf(
         TabSpec(R.string.tab_home, AppIcons.Home),
@@ -98,6 +104,15 @@ fun MainScreen() {
         showLaunch = false
     }
 
+    // 启动静默更新检测：等首屏稳定后再发起，避免与冷启动抢资源；仅在有新版本时弹提示。
+    LaunchedEffect(Unit) {
+        delay(SPLASH_MIN_MILLIS + 4_000)
+        val result = AppUpdater.checkLatest()
+        if (result.isNewer && !AppUpdater.shouldSuppressAutoPrompt(app, result.latestTag)) {
+            autoUpdate = result
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         val splashVisible = showLaunch && dshState != DshState.READY
         val density = LocalDensity.current
@@ -123,7 +138,15 @@ fun MainScreen() {
                                 selected = selectedTab == index,
                                 onClick = { selectedTab = index },
                                 icon = { tab.icon.Content() },
-                                label = { Text(stringResource(tab.labelRes)) },
+                                label = {
+                                    // 页签标签限单行，长翻译（AR/RU/FR）不换行挤爆。
+                                    Text(
+                                        stringResource(tab.labelRes),
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        softWrap = false,
+                                    )
+                                },
                             )
                         }
                     }
@@ -149,6 +172,39 @@ fun MainScreen() {
 
         if (showLaunch && dshState != DshState.READY) {
             LaunchScreen()
+        }
+
+        autoUpdate?.let { result ->
+            val dialogContext = LocalContext.current
+            AlertDialog(
+                onDismissRequest = { autoUpdate = null },
+                title = { Text(stringResource(R.string.settings_check_update)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.settings_update_available_msg,
+                            result.latestTag.orEmpty(),
+                            result.currentVersion,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        autoUpdate = null
+                        AppUpdater.openSite(dialogContext)
+                    }) {
+                        Text(stringResource(R.string.settings_update_open_site))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        result.latestTag?.let { AppUpdater.ignoreVersion(dialogContext, it) }
+                        autoUpdate = null
+                    }) {
+                        Text(stringResource(R.string.settings_update_ignore))
+                    }
+                },
+            )
         }
     }
 }
@@ -217,7 +273,7 @@ private fun TabContent(
                 .zIndex(if (selectedTab == 4) 1f else 0f)
                 .alpha(if (selectedTab == 4) 1f else 0f)
                 .then(if (selectedTab == 4) Modifier else Modifier.keepAliveHidden()),
-            // 1.1.0 (M12)：设置页常驻组合（keepAlive），存储占用统计需要在切进
+            // 设置页常驻组合（keepAlive），存储占用统计需要在切进
             // 设置页时重新触发；dshActive 供 /tmp 智能清理判定使用。
             isActive = selectedTab == 4,
             sandboxRunning = sandboxRunning,

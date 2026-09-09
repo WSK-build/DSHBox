@@ -55,11 +55,12 @@ import com.dshbox.app.common.Versions
 import com.dshbox.app.runtime.DshOnlineInstallState
 import com.dshbox.app.runtime.DshSourceProbe
 import com.dshbox.app.sandbox.SandboxState
+import com.dshbox.app.ui.asString
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 1.1.0 (M8) — 更新 DSH（在线）新界面。
+ * 更新 DSH（在线）新界面。
  *
  * 进入即并行探测所有 npm 源（DshSources.ALL），逐个展示：源名称 / 元数据地址 /
  * dist-tags.latest 版本号 / 网络延迟 / 可达状态；比当前安装版本新的源会高亮。
@@ -112,7 +113,7 @@ fun DshUpdateScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // M12.6：左上角显式返回键（此前仅系统 BackHandler，无可见入口）。
+            // 左上角显式返回键（此前仅系统 BackHandler，无可见入口）。
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -218,7 +219,8 @@ fun DshUpdateScreen(
         val probe = probes[dialogSource.url]
         AlertDialog(
             onDismissRequest = { versionDialogSource = null },
-            title = { Text(stringResource(R.string.dsh_update_pick_version_title, dialogSource.name)) },
+            // dialogSource.name 为 UiText，需先解析为当前语言字符串。
+            title = { Text(stringResource(R.string.dsh_update_pick_version_title, dialogSource.name.asString())) },
             text = {
                 if (probe == null || probe.versions.isEmpty()) {
                     Text(stringResource(R.string.dsh_update_no_versions))
@@ -284,7 +286,7 @@ fun DshUpdateScreen(
         AlertDialog(
             onDismissRequest = { downgradeConfirm = null },
             title = { Text(stringResource(R.string.dsh_update_downgrade_title)) },
-            text = { Text(stringResource(R.string.dsh_update_downgrade_msg, version, source.name)) },
+            text = { Text(stringResource(R.string.dsh_update_downgrade_msg, version, source.name.asString())) },
             confirmButton = {
                 TextButton(onClick = {
                     runtimeUpdateManager.startDshInstall(source, version, allowDowngrade = true)
@@ -302,12 +304,13 @@ fun DshUpdateScreen(
     }
 }
 
-/** 版本号后的标记：latest / 比当前新 / 与当前一致 / 比当前旧。 */
+/** 版本号后的标记：latest / 比当前新 / 与当前一致 / 比当前旧（起资源化）。 */
+@Composable
 private fun versionBadgeSuffix(version: String, installed: String?): String = when {
     installed == null -> ""
-    Versions.compare(installed, version) < 0 -> "（比当前新）"
-    Versions.compare(installed, version) == 0 -> "（当前版本）"
-    else -> "（比当前旧）"
+    Versions.compare(installed, version) < 0 -> stringResource(R.string.dsh_update_version_newer)
+    Versions.compare(installed, version) == 0 -> stringResource(R.string.dsh_update_version_current)
+    else -> stringResource(R.string.dsh_update_version_older)
 }
 
 @Composable
@@ -344,7 +347,7 @@ private fun SourceRow(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = source.name,
+                        text = source.name.asString(),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = if (hasNewer) FontWeight.SemiBold else FontWeight.Normal,
                     )
@@ -366,7 +369,7 @@ private fun SourceRow(
                     }
                 }
                 Text(
-                    text = source.note,
+                    text = source.note.asString(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -375,7 +378,7 @@ private fun SourceRow(
                         if (it.reachable) {
                             stringResource(R.string.dsh_update_latest_version, it.latestVersion ?: "—")
                         } else {
-                            stringResource(R.string.dsh_update_unreachable, it.error ?: "")
+                            stringResource(R.string.dsh_update_unreachable, it.error?.asString().orEmpty())
                         }
                     } ?: stringResource(R.string.dsh_update_waiting),
                     style = MaterialTheme.typography.bodyMedium,
@@ -402,7 +405,7 @@ private fun InstallProgressView(
     onDone: () -> Unit,
 ) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    // 1.1.1 (M1)：去掉内层 verticalScroll —— 本视图直接位于更新页根
+    // 去掉内层 verticalScroll —— 本视图直接位于更新页根
     // Column(verticalScroll) 之内，嵌套滚动组件会被以无限最大高度约束测量，
     // 首次组合即抛 IllegalStateException（点「安装」后整个 app 闪退，真机
     // FATAL EXCEPTION: main 实证）。外层页面 Column 已可滚，日志区由固定
@@ -415,7 +418,7 @@ private fun InstallProgressView(
     ) {
         when {
             state.running -> {
-                // 1.1.1 (T1)：下载阶段展示「已用时」与保底提示（安装始终在后台
+                // 下载阶段展示「已用时」与保底提示（安装始终在后台
                 // scope 运行，离开本页不影响；本提示行不遮挡任何操作）。
                 var now by remember { mutableStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(state.startedAtMs) {
@@ -425,14 +428,21 @@ private fun InstallProgressView(
                     }
                 }
                 val elapsedSec = ((now - state.startedAtMs) / 1000).coerceAtLeast(0)
+                // 时长单位词资源化（%1$d h / 小时），按当前语言组句。
                 val elapsedText = buildString {
-                    if (elapsedSec >= 3600) append("${elapsedSec / 3600} 小时 ")
-                    if (elapsedSec >= 60) append("${(elapsedSec % 3600) / 60} 分 ")
-                    append("${elapsedSec % 60} 秒")
+                    if (elapsedSec >= 3600) {
+                        append(stringResource(R.string.duration_hours, (elapsedSec / 3600).toInt()))
+                        append(" ")
+                    }
+                    if (elapsedSec >= 60) {
+                        append(stringResource(R.string.duration_minutes, ((elapsedSec % 3600) / 60).toInt()))
+                        append(" ")
+                    }
+                    append(stringResource(R.string.duration_seconds, (elapsedSec % 60).toInt()))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(modifier = Modifier.height(20.dp).width(20.dp), strokeWidth = 2.dp)
-                    Text(text = state.stage, style = MaterialTheme.typography.bodyLarge)
+                    Text(text = state.stage.asString(), style = MaterialTheme.typography.bodyLarge)
                 }
                 Text(
                     text = stringResource(R.string.dsh_update_elapsed, elapsedText),
@@ -459,7 +469,8 @@ private fun InstallProgressView(
                 Text(
                     text = stringResource(
                         R.string.dsh_update_done_failed,
-                        state.result.error.message,
+                        // 领域层错误优先展示可本地化 userMessage。
+                        state.result.error.userMessage?.asString() ?: state.result.error.message,
                     ),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,

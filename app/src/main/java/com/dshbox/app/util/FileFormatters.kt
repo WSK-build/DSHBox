@@ -4,12 +4,15 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.File
+import java.util.Locale
 
 /** Formats a byte count as a human-readable size (e.g. "1.5 GB"). */
 fun formatFileSize(bytes: Long): String = when {
-    bytes >= 1L shl 30 -> String.format("%.1f GB", bytes.toDouble() / (1L shl 30))
-    bytes >= 1L shl 20 -> String.format("%.1f MB", bytes.toDouble() / (1L shl 20))
-    bytes >= 1L shl 10 -> String.format("%.1f KB", bytes.toDouble() / (1L shl 10))
+    // 固定 Locale.US——俄/法 locale 用逗号小数、阿语用阿拉伯-印度数字，
+    // 与 /§3.7「西文数字」决策冲突。
+    bytes >= 1L shl 30 -> String.format(Locale.US, "%.1f GB", bytes.toDouble() / (1L shl 30))
+    bytes >= 1L shl 20 -> String.format(Locale.US, "%.1f MB", bytes.toDouble() / (1L shl 20))
+    bytes >= 1L shl 10 -> String.format(Locale.US, "%.1f KB", bytes.toDouble() / (1L shl 10))
     else -> "$bytes B"
 }
 

@@ -1,5 +1,7 @@
 package com.dshbox.app.util.viewer
 
+import com.dshbox.app.R
+import com.dshbox.app.common.UiText
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -46,7 +48,7 @@ object TextFileStore {
          * [warning] 非空 = 内容已写入但元数据（rwx/时间戳）恢复未完全成功，
          * UI 必须把警告文案展示给用户（不得静默）。
          */
-        data class Success(val fingerprint: ContentFingerprint, val warning: String? = null) : SaveOutcome()
+        data class Success(val fingerprint: ContentFingerprint, val warning: UiText? = null) : SaveOutcome()
 
         /**
          * 外部已修改/已删除，**未写入**。[current] 为当前文件指纹（null = 文件已不存在）。
@@ -54,7 +56,7 @@ object TextFileStore {
          */
         data class ExternalChanged(val current: ContentFingerprint?) : SaveOutcome()
 
-        data class Failed(val message: String) : SaveOutcome()
+        data class Failed(val reason: UiText) : SaveOutcome()
     }
 
     /**
@@ -84,7 +86,7 @@ object TextFileStore {
         }
         val parent = file.parentFile
         if (parent != null && !parent.isDirectory && !parent.mkdirs() && !parent.isDirectory) {
-            return SaveOutcome.Failed("目录不可用：${parent.absolutePath}")
+            return SaveOutcome.Failed(UiText.Res(R.string.textstore_err_dir_unavailable, listOf(parent.absolutePath)))
         }
         val tmp = File(parent ?: File("."), file.name + TEMP_SUFFIX)
         val existed = file.isFile
@@ -101,7 +103,7 @@ object TextFileStore {
             // 替换：POSIX renameTo 可覆盖既有目标；失败（Windows 等）退化为先删后改名
             if (!tmp.renameTo(file)) {
                 if (file.exists() && !file.delete()) {
-                    return SaveOutcome.Failed("无法替换目标文件：${file.absolutePath}")
+                    return SaveOutcome.Failed(UiText.Res(R.string.textstore_err_replace_failed, listOf(file.absolutePath)))
                 }
                 if (!tmp.renameTo(file)) {
                     // 最后兜底：复制覆盖（非原子，仅极端场景）
@@ -111,14 +113,14 @@ object TextFileStore {
             }
         } catch (e: Exception) {
             runCatching { tmp.delete() }
-            return SaveOutcome.Failed(e.message ?: "写入失败")
+            return SaveOutcome.Failed(e.message?.let { UiText.raw(it) } ?: UiText.Res(R.string.textstore_err_write_failed))
         }
         // 元数据复制：rwx 权限位（rootfs 可执行位至关重要）+ lastModified。
         // 返工修正 #4：不再静默吞异常——逐项校验，File API 失败重试 NIO POSIX，
         // 仍未恢复的差异以警告透传（UI 必须展示）。
         val warning = restoreMetadata(file, existed, srcReadable, srcWritable, srcExecutable, srcMtime)
         val fingerprint = ContentFingerprint.of(file)
-            ?: return SaveOutcome.Failed("保存后校验失败：无法读取 ${file.name}")
+            ?: return SaveOutcome.Failed(UiText.Res(R.string.textstore_err_verify_failed, listOf(file.name)))
         return SaveOutcome.Success(fingerprint, warning)
     }
 
@@ -132,15 +134,15 @@ object TextFileStore {
         srcWritable: Boolean,
         srcExecutable: Boolean,
         srcMtime: Long,
-    ): String? {
+    ): UiText? {
         if (!existed) return null
-        val failures = mutableListOf<String>()
+        val failures = mutableListOf<UiText>()
         runCatching {
             file.setReadable(srcReadable)
             file.setWritable(srcWritable)
             file.setExecutable(srcExecutable)
             file.setLastModified(srcMtime)
-        }.onFailure { failures.add("元数据设置异常：${it.message ?: "未知错误"}") }
+        }.onFailure { failures.add(UiText.Res(R.string.textstore_warn_meta_generic, listOf(it.message ?: ""))) }
         // File API 校验失败 → NIO POSIX chmod 重试（JVM/Android API26+ 均可用；
         // 非 POSIX 文件系统该调用抛 UnsupportedOperationException，视为不可恢复）
         if (file.canRead() != srcReadable || file.canWrite() != srcWritable || file.canExecute() != srcExecutable) {
@@ -163,15 +165,21 @@ object TextFileStore {
                     perms.add(java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE)
                 }
                 Files.setPosixFilePermissions(file.toPath(), perms)
-            }.onFailure { failures.add("POSIX chmod 重试失败：${it.message ?: "未知错误"}") }
+            }.onFailure { failures.add(UiText.Res(R.string.textstore_warn_chmod_retry, listOf(it.message ?: ""))) }
         }
-        if (file.canRead() != srcReadable) failures.add("读权限未恢复")
-        if (file.canWrite() != srcWritable) failures.add("写权限未恢复")
+        if (file.canRead() != srcReadable) failures.add(UiText.Res(R.string.textstore_warn_read_perm))
+        if (file.canWrite() != srcWritable) failures.add(UiText.Res(R.string.textstore_warn_write_perm))
         if (file.canExecute() != srcExecutable) {
-            failures.add(if (srcExecutable) "可执行位未恢复（脚本可能无法执行，请手动 chmod +x）" else "可执行位未能去除")
+            failures.add(if (srcExecutable) UiText.Res(R.string.textstore_warn_exec_kept) else UiText.Res(R.string.textstore_warn_exec_not_removed))
         }
-        if (file.lastModified() != srcMtime) failures.add("修改时间未能还原")
-        return if (failures.isEmpty()) null else "已保存，但元数据恢复不完整：${failures.joinToString("；")}"
+        if (file.lastModified() != srcMtime) failures.add(UiText.Res(R.string.textstore_warn_mtime))
+        return if (failures.isEmpty()) null else UiText.Concat(buildList {
+            add(UiText.Res(R.string.textstore_warn_meta_prefix))
+            failures.forEachIndexed { i, u ->
+                add(UiText.Separator(if (i == 0) " " else "; "))
+                add(u)
+            }
+        })
     }
 
     /** 另存到 [target]（SAF「另存」路径落盘物理文件后调用；不做变更检测）。 */

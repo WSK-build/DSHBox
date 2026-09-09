@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sandbox_not_running_debian">Sandbox is not running. Start the Debian sandbox first.</string>
+    <string name="dsh_not_ready_timeout">DSH did not become ready within the time limit</string>
+    <string name="dsh_stopped_retry">DSH has been stopped. Try again later.</string>
+    <string name="dsh_ready_timeout">DSH readiness timed out</string>
+    <string name="bundle_empty">The archive contains no files</string>
+    <string name="bundle_unsafe_path_rel">The archive contains an illegal path (..); blocked: %1$s</string>
+    <string name="bundle_unsafe_path_escape">An archive path escapes the target directory; blocked: %1$s</string>
+    <string name="bundle_no_profile">The runtime bundle is missing runtime-profile.json (layer integrity cannot be verified; import refused)</string>
+    <string name="bundle_no_base_snapshot">The runtime bundle is missing the base layer (snapshot layout needs a base/ directory; layer-archive layout needs &lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_no_base">The runtime bundle is missing the base layer</string>
+    <string name="bundle_bad_profile">runtime-profile.json could not be parsed</string>
+    <string name="bundle_missing_layer">The runtime bundle is missing the %1$s layer archive (&lt;layer&gt;.tar[.zst/.gz/.bz2/.xz])</string>
+    <string name="bundle_sha_sidecar_mismatch">The .sha256 sidecar of layer %1$s disagrees with runtime-profile.json</string>
+    <string name="bundle_sha_mismatch">SHA-256 verification failed for layer %1$s</string>
+    <string name="npm_bad_registry">Invalid registry URL: %1$s</string>
+    <string name="npm_bad_version">Invalid version: %1$s</string>
+    <string name="npm_low_storage">Not enough storage (about 1 GB required, only %1$d MB free)</string>
+    <string name="npm_stage_starting_sandbox">Starting sandbox…</string>
+    <string name="npm_sandbox_start_failed">The sandbox failed to start; cannot run npm install</string>
+    <string name="npm_stage_pulling">Pulling @deepseek-ai/dsh %1$s from %2$s (with full dependencies; this takes a few minutes)…</string>
+    <string name="npm_install_failed">npm install failed: %1$s (see the logs)</string>
+    <string name="npm_verify_failed">The npm install result is missing @deepseek-ai/dsh/lib/bin.js; cannot continue</string>
+    <string name="npm_stage_packing">Packing the DSH layer…</string>
+    <string name="npm_pack_failed">Failed to pack the DSH layer: %1$s</string>
+    <string name="npm_pack_abnormal">Abnormal pack result; cannot continue</string>
+    <string name="npm_stage_installing">Installing DSH %1$s…</string>
+    <string name="npm_stage_done">Install complete</string>
+    <string name="dsh_bundle_invalid">The selected file is not a valid DSH layer package (missing node_modules/@deepseek-ai/dsh/lib/bin.js)</string>
+    <string name="dsh_install_failed">Failed to put the new DSH layer in place (both rename and copy failed)</string>
+</resources>

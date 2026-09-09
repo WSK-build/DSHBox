@@ -7,7 +7,7 @@ object Constants {
     /** WebView loads the DSH loopback URL. Both localhost and 127.0.0.1 are allowed by NSC. */
     const val DSH_BASE_URL = "http://$DSH_DEFAULT_HOST:$DSH_DEFAULT_PORT"
 
-    // 1.1.0：旧的 DSH_MIRRORS / DSH_LAYER_BASE_URL（预构建 dsh_layer.tar.zst 下载源）已废弃——
+    // 旧的 DSH_MIRRORS / DSH_LAYER_BASE_URL（预构建 dsh_layer.tar.zst 下载源）已废弃——
     // 该下载源从未存在，在线更新改为「探测 npm 源 + guest 内 npm 拉包」，
     // 见 common/DshSources.kt 与 SandboxManager.installDshFromNpm。
 

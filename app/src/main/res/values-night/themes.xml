@@ -1,5 +1,6 @@
 <resources>
-    <style name="Theme.DSHapp" parent="android:Theme.Material.NoActionBar">
+    <!-- 父主题改为 AppCompat（同 values/themes.xml，夜色调色板保留）。 -->
+    <style name="Theme.DSHapp" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">#212121</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
