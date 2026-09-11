@@ -214,12 +214,20 @@ internal fun prepareSettingsDocument(filesDir: File): String? {
         runCatching {
             file.parentFile?.mkdirs()
             file.writeText("")
-            // 与上游对齐：`prepareDocument()` 用 open(path, "wx", 0o600) 创建，
+            // 与上游对齐：上游 `prepareDocument()` 用 open(path, "wx", 0o600) 创建，
             // 而 Kotlin 的 writeText 权限受 umask 影响（通常 0644）。
-            // 文件本身位于 app 私有目录（其他应用不可读），差异的实际风险极低，
-            // 但按上游语义收紧无坏处——它可能含模型配置等敏感内容。
-            // `setReadable(true, ownerOnly=true)` 的语义是「仅属主可读」，
-            // 会自动拒绝 group/others，无需先调用 (false, false)。
+            //
+            // ⚠️ 收紧权限必须**先清后设**，两步都不能省：
+            // `File.setReadable(true, ownerOnly=true)` 的语义是「**为属主开启**读」，
+            // 它只会 OR 上 S_IRUSR，**不会**清除 group/other 位（JDK 的
+            // UnixFileSystem.setPermission 就是 `mode |= S_IRUSR`）。
+            // 因此单独调用它和 setWritable 对 0644 的文件**完全无效**——
+            // 这一处曾被误写成"会自动拒绝 group/others"，注释与行为不符，
+            // 由 CI 的 POSIX 断言抓出（Windows 跳过该断言，故本地未能发现）。
+            // 先 (false, false) 清掉全部读/写位，再 (true, true) 只给属主，
+            // 结果才是 0o600（可执行位自始至终未设置）。
+            file.setReadable(false, false)
+            file.setWritable(false, false)
             file.setReadable(true, true)
             file.setWritable(true, true)
         }

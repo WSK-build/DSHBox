@@ -87,7 +87,15 @@ class PrepareSettingsDocumentTest {
 
     /**
      * 创建出的文件权限应收紧到「仅属主可读写」（与上游 `0o600` 对齐）。
-     * POSIX 才有意义，Windows 跳过。
+     *
+     * Windows 不支持 POSIX 权限位，跳过；**其余平台必须能读到权限**——
+     * 早先这里写成「读不到就 return」，等于在 POSIX 上也可能静默通过。
+     *
+     * 本用例是真抓到过缺陷的：当时实现只调
+     * `setReadable(true, ownerOnly=true)` / `setWritable(true, true)`，
+     * 而 JDK 的语义是「**为属主开启**」，只 OR 上属主位、**不清 group/other**，
+     * 于是 0644 的文件原样保持 0644 —— 与注释声称的 0o600 不符。
+     * 因 Windows 跳过 POSIX 断言，本地一直没暴露，最终由 CI（Linux）抓出。
      */
     @Test
     fun createdFileIsOwnerOnly() {
@@ -96,9 +104,11 @@ class PrepareSettingsDocumentTest {
         val path = prepareSettingsDocument(filesDir)!!
         val file = File(path)
 
-        val perms = runCatching {
+        val perms = try {
             java.nio.file.Files.getPosixFilePermissions(file.toPath())
-        }.getOrNull() ?: return
+        } catch (e: UnsupportedOperationException) {
+            throw AssertionError("POSIX 平台上应能读取文件权限，读取失败说明测试环境异常", e)
+        }
 
         val group = perms.filter { it.name.startsWith("GROUP_") }
         val others = perms.filter { it.name.startsWith("OTHERS_") }
@@ -107,6 +117,19 @@ class PrepareSettingsDocumentTest {
         assertTrue("属主应可读: $perms", perms.any { it.name == "OWNER_READ" })
         assertTrue("属主应可写: $perms", perms.any { it.name == "OWNER_WRITE" })
         assertFalse("属主不应可执行: $perms", perms.any { it.name == "OWNER_EXECUTE" })
+
+        // 精确到位：就是 0o600（上面四条等价，这里再显式钉一次，变更时立刻可见）
+        val mode = java.nio.file.Files.getPosixFilePermissions(file.toPath())
+            .fold(0) { acc, p ->
+                val bit = when (p.name) {
+                    "OWNER_READ" -> 0x100; "OWNER_WRITE" -> 0x80; "OWNER_EXECUTE" -> 0x40
+                    "GROUP_READ" -> 0x20; "GROUP_WRITE" -> 0x10; "GROUP_EXECUTE" -> 0x8
+                    "OTHERS_READ" -> 0x4; "OTHERS_WRITE" -> 0x2; "OTHERS_EXECUTE" -> 0x1
+                    else -> 0
+                }
+                acc or bit
+            }
+        assertEquals("权限应精确为 0o600", 0x180, mode)
     }
 
     /** 路径常量必须落在工作区内（FileProvider 授权根 + 内置查看器可达）。 */
