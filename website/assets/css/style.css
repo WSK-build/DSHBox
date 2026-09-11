@@ -37,8 +37,17 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-snap-type: y proximity;
   -webkit-text-size-adjust: 100%;
+  /* 注意：这里**刻意不加** scroll-snap-type。
+     1.3.1 实测（手机视口 390×844，合成真实触摸手势，重复可复现）：
+       · scroll-snap-stop: always + snap-align: start
+         → 手指滑 100px，页面跳 545px（跨掉大半屏）——「一滑跨好几页」
+       · 改用 scroll-snap-type: y proximity（弱吸附）后：
+         → 拖动 85px 抬手后**被弹回原位**（位移全撤销）；
+           连程序化滚动 scrollTo(7388) 都被拉到 7255（差 133px）。
+     原因：本站区块高度为 1.0–2.4 屏，snap-align: start 会让吸附引擎
+     持续把位置拉回区块起点，形成"粘手/回弹"。
+     故**完全移除吸附**，改用视觉手段提供分节感（见下方 section rhythm）。 */
 }
 
 body {
@@ -465,18 +474,30 @@ html[lang="en"] .lang-zh { display: none !important; }
   50%      { transform: translateY(-9px); }
 }
 
-/* ---------- Full-page slide navigation ---------- */
+/* ---------- Section rhythm ----------
+   1.3.1 修订：本站原为「整页翻页」设计，实测在手机上体验很差（见 html 处注释），
+   现已完全移除滚动吸附。分节感改由这些视觉手段承担：
+     · 区块自身的内边距节奏（.section 88px / 移动端 60px）
+     · 交替背景与上下描边（.section-tinted）
+     · 右侧页码圆点：随滚动高亮当前区块，点击可平滑跳转
+   `data-snap` 属性保留在 HTML 上，作为「区块」的语义标记 —— 页码导航据此定位。 */
 
 [data-snap] {
-  min-height: 100vh;
-  min-height: 100svh;
   display: flex;
   flex-direction: column;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+  /* 供锚点/页码跳转使用：跳转后区块顶部与视口顶部对齐 */
+  scroll-margin-block-start: 0;
 }
-/* Vertically center the page content when it fits, flow naturally when taller */
-[data-snap] > .container { margin-block: auto; }
+
+[data-snap] > .container { margin-block: 0; }
+
+/* 首屏：只有 hero 需要「至少一屏」，且用 svh 规避移动端地址栏伸缩
+   导致的 100vh 偏大问题（100vh 会按地址栏收起时的最大高度计算） */
+[data-snap]#hero {
+  padding-block: 0;
+  min-height: 100svh;
+  justify-content: center;
+}
 
 /* Scroll hint at the bottom of the hero page */
 .scroll-hint {
@@ -938,6 +959,113 @@ html[lang="en"] .lang-zh { display: none !important; }
   transform: none;
 }
 
+/* ---------- What's new（最新版本变化） ----------
+   两个挂载点共用同一套样式：
+     · .whats-new--hero  首页 hero 下方的精简卡
+     · .whats-new--wide  下载区的完整卡（至多 5 条 + 完整说明链接）
+   内容由 main.js 从 GitHub Release 的说明正文自动填充；HTML 里的静态内容是
+   API 不可用时的兜底（也与禁用 JS 的场景兼容）。 */
+
+.whats-new {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+}
+
+/* 无内容可展示时整体隐藏，避免出现空白框 */
+.whats-new[data-state="empty"] { display: none; }
+
+.whats-new-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.whats-new-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.whats-new-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--green-strong);
+  background: var(--green-soft);
+  border: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+.whats-new-date {
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
+.whats-new-list {
+  margin: 0;
+  padding: 0 0 0 1.05em;
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.whats-new-list li + li { margin-top: 4px; }
+.whats-new-list strong { color: var(--ink); font-weight: 650; }
+.whats-new-list a {
+  color: var(--green-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.whats-new-list code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--green-soft);
+  color: var(--green-deep);
+}
+
+.whats-new-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--green-strong);
+}
+
+.whats-new-more:hover { color: var(--green-bright); }
+
+/* hero 内更紧凑，避免喧宾夺主 */
+.whats-new--hero { margin-top: 20px; max-width: 620px; padding: 14px 16px; }
+.whats-new--hero .whats-new-list { font-size: 0.88rem; }
+
+/* 下载区：宽卡风格，跟随 .download-card 的居中语境 */
+.whats-new--wide {
+  margin-top: 22px;
+  text-align: left;
+  background: var(--glass);
+}
+
+@media (max-width: 768px) {
+  .whats-new { padding: 14px; }
+  .whats-new-list { font-size: 0.9rem; }
+  .whats-new--hero { max-width: none; }
+}
+
 /* ---------- Reduced motion ---------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1003,7 +1131,18 @@ html[lang="en"] .lang-zh { display: none !important; }
   .hero-actions .button { flex: 1 1 100%; }
   .stats-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 20px; }
   .feature-grid { grid-template-columns: 1fr; }
-  .shot-grid { grid-template-columns: 1fr; max-width: 320px; margin-inline: auto; }
+  /* 截图区：手机上改**双列**小图（原为单列限宽 320px）。
+     图片是 1260×2800 的竖屏截图，单列时每张高约 711px、四张堆叠达 2844px
+     （整个区块 3.88 屏，是"页面像一长条"的主要来源）；
+     双列后每张约 171px 宽、高约 380px，区块高度约减为 1/3。 */
+  .shot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    max-width: none;
+    margin-inline: 0;
+  }
+  .shot-card { padding: 7px 7px 10px; }
+  .shot-card figcaption { margin-top: 8px; font-size: 0.82rem; }
   .flow { grid-template-columns: 1fr; }
   .req-grid { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr; gap: 26px; }

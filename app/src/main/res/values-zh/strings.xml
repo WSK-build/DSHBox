@@ -51,6 +51,16 @@
     <string name="diagnostics_log_title">运行日志</string>
     <string name="diagnostics_status_not_ready">未就绪</string>
     <string name="diagnostics_status_running">运行中</string>
+    <string name="diagnostics_webview_chromium">Chromium 主版本</string>
+    <string name="diagnostics_webview_detecting">检测中…</string>
+    <string name="diagnostics_webview_feature_unsupported">不支持（需 Chromium %1$s+）</string>
+    <string name="diagnostics_webview_features">CSS 支持</string>
+    <string name="diagnostics_webview_package">包名</string>
+    <string name="diagnostics_webview_probe_failed">探测失败——WebView 内核可能不可用或无响应</string>
+    <string name="diagnostics_webview_title">WebView 内核</string>
+    <string name="diagnostics_webview_ua">用户代理</string>
+    <string name="diagnostics_webview_unknown">未知</string>
+    <string name="diagnostics_webview_version">版本</string>
     <string name="dsh_update_back">返回设置</string>
     <string name="dsh_update_back_to_sources">返回源列表</string>
     <string name="dsh_update_cancel_install">取消安装</string>
@@ -370,6 +380,7 @@
     <string name="settings_appearance_light">浅色</string>
     <string name="settings_assemble_mobile_adapt">装配DSH移动端适配包</string>
     <string name="settings_assemble_mobile_adapt_failed">装配失败，已尝试回滚</string>
+    <string name="settings_assemble_mobile_adapt_auto_failed">已装配插件的自动更新失败。开关显示的是真实状态，打开即可重试。</string>
     <string name="settings_assemble_mobile_adapt_remove_failed">移除失败</string>
     <string name="settings_assemble_mobile_adapt_remove_success">已移除</string>
     <string name="settings_assemble_mobile_adapt_restart_hint">（重启 DSH 后生效）</string>
@@ -394,7 +405,7 @@
     <string name="settings_cleanup_scanning">正在扫描…</string>
     <string name="settings_cleanup_title">清理缓存与垃圾文件</string>
     <string name="settings_cleanup_warning">清理会删除临时文件与缓存，不会影响你的工作区文件、DSH 对话数据（user-data/.dsh）和运行环境本体。清理期间请勿关闭应用。</string>
-    <string name="settings_diagnostics">诊断</string>
+    <string name="settings_diagnostics">诊断与日志</string>
     <string name="settings_dsh_import_info_action">选择文件</string>
     <string name="settings_dsh_import_info_msg">请选择一个 DSH 层包（.tar.zst / .tar.gz / .tar，或 .zip 内含层包——zip 内允许一层目录前缀）。\n\n它必须包含：node_modules/@deepseek-ai/dsh（入口 lib/bin.js + 依赖）与 package.json；导入前会先解到暂存区做形态校验，不是 DSH 层包的文件会被拒绝且不影响现有 DSH。\n\n导入会替换 runtime-current/dsh（旧版入 previous/dsh，可回滚）；不影响 base/node/android-side 运行环境，也不影响 user-data/.dsh。</string>
     <string name="settings_dsh_import_info_title">更新 DSH（离线导入）</string>
@@ -424,6 +435,16 @@
     <string name="settings_section_dsh">DSH</string>
     <string name="settings_section_permissions">权限</string>
     <string name="settings_section_sandbox">沙盒</string>
+    <string name="settings_section_feedback">用户反馈</string>
+    <string name="settings_feedback_star">在 GitHub 上点个 Star 支持我们</string>
+    <string name="settings_feedback_star_title">给 DSHBox 点个 Star？</string>
+    <string name="settings_feedback_star_msg">DSHBox 是在业余时间开发和维护的。如果它帮到了你，在 GitHub 上点一颗 Star 就是很好的鼓励——也能让更多人发现这个项目。</string>
+    <string name="settings_feedback_star_action">去点 Star</string>
+    <string name="settings_feedback_issue">反馈问题或建议</string>
+    <string name="settings_feedback_issue_title">遇到问题了？</string>
+    <string name="settings_feedback_issue_msg">欢迎到 GitHub Issues 告诉我们——不管是 Bug、用着不顺手的地方，还是希望增加的功能。如果能附上复现步骤或截图，我们会更快定位。</string>
+    <string name="settings_feedback_issue_action">去提 Issue</string>
+    <string name="settings_feedback_later">稍后再说</string>
     <string name="settings_section_update">更新</string>
     <string name="settings_storage_cache">应用缓存</string>
     <string name="settings_storage_data">沙盒数据</string>
@@ -503,4 +524,13 @@
     <string name="webview_waiting_dsh">正在启动 DSH…</string>
     <string name="webview_waiting_hint">DSH 就绪后将自动加载页面</string>
     <string name="settings_update_ignore">忽略该版本</string>
+
+    <string name="webview_upload_sandbox_title">选择沙箱文件</string>
+    <string name="webview_upload_sandbox_hint">工作区即沙箱 /root/projects</string>
+    <string name="webview_upload_up">返回上级</string>
+    <string name="webview_upload_add">添加</string>
+    <string name="webview_upload_failed">无法读取所选文件</string>
+    <string name="webview_upload_partial_failed">%2$d 个文件中有 %1$d 个无法读取，已跳过</string>
+
+    <string name="webview_settings_doc_missing">未找到配置文件：user-data/.dsh/settings.yaml</string>
 </resources>

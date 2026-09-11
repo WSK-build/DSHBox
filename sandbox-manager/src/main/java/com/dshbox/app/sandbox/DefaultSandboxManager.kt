@@ -198,6 +198,7 @@ class DefaultSandboxManager(
                         workspaceBind = config.userDataDir.absolutePath,
                         nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
                         dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
+                        shimHostDir = linkShimHostDir(),
                     )
                     val prootEnv = buildProotEnv(runtimeDir, "dsh")
                     Log.i(TAG, "starting dsh proot")
@@ -908,6 +909,17 @@ class DefaultSandboxManager(
     private fun dshLayerDir(): File = File(runtimeCurrentDir(), "dsh")
 
     /**
+     * 宿主侧垫片目录，bind 到 guest `/opt/dshbox` 供 DSH 以 `--import` 预加载。
+     *
+     * 仅当垫片文件**确实存在**时返回路径：`--import` 指向不存在的文件会让 Node
+     * 直接报错退出，那会把「垫片缺失」放大成「DSH 起不来」。返回 null 时命令里
+     * 不带绑定与预加载，DSH 退化为上游原始行为（硬链接失败的老问题会复现，
+     * 但服务本身可启动）——这比彻底启动失败更可取。
+     */
+    private fun linkShimHostDir(): String? =
+        config.dshShimDir.absolutePath.takeIf { config.dshShimFile.isFile }
+
+    /**
      * Assembles the host-process env for a proot role by sourcing the layered
      * `.dshbox/env.d/<layer>.sh` fragments in profile assembly order (L0 base ->
      * L1 node -> L3 android-side) and substituting the runtime path placeholders.
@@ -1089,6 +1101,7 @@ class DefaultSandboxManager(
                 workspaceBind = config.userDataDir.absolutePath,
                 nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
                 dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
+                shimHostDir = linkShimHostDir(),
             )
             val prootEnv = buildProotEnv(runtimeDir, "dsh")
             dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv, onRawLine = ::ingestDshWebLaunchToken)

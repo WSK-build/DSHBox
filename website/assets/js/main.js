@@ -76,6 +76,8 @@
     Array.prototype.forEach.call(pressed, function (btn) {
       btn.setAttribute("aria-pressed", btn.getAttribute("data-lang-btn") === document.documentElement.lang ? "true" : "false");
     });
+    /* 日期按 locale 重渲染（Release 说明正文来自 GitHub，保持维护者原语言，不翻译） */
+    if (lastRelease) applyReleaseNotes(lastRelease);
     renderDynamic();
   }
 
@@ -120,13 +122,210 @@
       tag: release.tag_name,
       size: formatBytes(apk.size)
     };
+    lastRelease = release;
+    applyReleaseNotes(release);
     renderDynamic();
   }
 
   function applyFallback() {
     currentApkUrl = RELEASE_FALLBACK;
     releaseState = "fallback";
+    /* 保留 HTML 里的静态兜底文案，不覆盖 */
     renderDynamic();
+  }
+
+  /* ---------------------------------------------------------
+     2b. 「最新版本变化」板块（从 Release 说明自动生成）
+     ---------------------------------------------------------
+     数据源 = 同一个 GitHub Releases API 的 `body` 字段（Markdown）。
+     因此**无需手工维护**：发布新 Release 时把要点写进 Release 说明，
+     网站会自动更新（30 分钟缓存，见 CACHE_DURATION）。
+
+     解析策略 —— 按实测到的真实写法分两趟：
+
+       第一趟：**加粗标题 + 冒号说明** 的段落行
+               （如 `**多语言适配**：界面暂且支持六种语言…`）
+               ← 这是本项目 Release 说明的实际主结构，优先采用
+       第二趟：Markdown 要点行（`- ` / `* ` / `+ `）
+               ← 仅在上一趟没找到任何条目时启用（兼容另一种写法）
+
+     排除项：标题行（`#`）、表格行（`|`）、纯链接、图片、
+             git 自动生成的 "Full Changelog" 行。
+     解析不出任何条目时**隐藏板块**（不显示空框），保留 HTML 静态兜底。 */
+
+  var NOTES_FILES = Array.prototype.slice.call(
+    /* 注意用 aside[id^='whats-new'] 而非裸的 [id^='whats-new']：
+       板块内的标题元素 id 是 whats-new-*-title，也会被前缀选择器命中，
+       导致标题被当成板块误加 data-state="empty"（实测踩到）。 */
+    document.querySelectorAll("aside[id^='whats-new']")
+  );
+  var lastRelease = null;   /* 最近一次成功获取的 release（供语言切换时重渲染日期） */
+  var MAX_NOTES = 5;       /* 解析上限：下载区展示满这个数 */
+  var MAX_LEN = 160;       /* 单条正文解析上限（超出截断加省略号） */
+
+  /* 各板块的展示深度。
+     hero 是首屏里的精简卡，条目多了会把首页撑到两屏以上（手机 390×844 实测：
+     5 条满长时 hero 高 1958px ≈ 2.3 屏），所以只留 2 条、单条也收紧到 80 字；
+     下载区是「先看变化再下载」的完整语境，给满 5 条。
+     两处共用同一份解析结果，只是截取深度不同。 */
+  function sectionLimits(section) {
+    return section.classList.contains("whats-new--hero")
+      ? { notes: 2, len: 80 }
+      : { notes: MAX_NOTES, len: MAX_LEN };
+  }
+
+  /** 按板块长度上限重整单条（解析期已截过一次，这里可能截得更短）。 */
+  function reshapeNote(note, limit) {
+    if (!note.body || note.body.length <= limit) return note;
+    /* 去掉解析期已加的省略号，否则二次截断会留下「……」 */
+    var base = note.body.replace(/\u2026$/, "");
+    return { title: note.title, body: truncate(base, limit) };
+  }
+
+  /** 去掉行内 Markdown 记号，保留可读文本。 */
+  function stripMarkdown(text) {
+    return String(text)
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")        /* 图片 */
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")     /* 链接 → 文字 */
+      .replace(/`([^`]+)`/g, "$1")                 /* 行内代码 */
+      .replace(/\*\*([^*]+)\*\*/g, "$1")           /* 加粗 */
+      .replace(/(^|\s)\*([^*]+)\*/g, "$1$2")       /* 斜体 */
+      .replace(/~~([^~]+)~~/g, "$1")               /* 删除线 */
+      .replace(/^\s*#+\s*/, "")                    /* 行首标题记号 */
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function truncate(text, limit) {
+    if (text.length <= limit) return text;
+    return text.slice(0, limit - 1).replace(/[\s,;:，；：、-]+$/, "") + "\u2026";
+  }
+
+  /** 该行内容是否值得作为一条要点（排除元信息/自动 changelog/纯链接）。 */
+  function isUsefulNote(text) {
+    if (!text || text.length < 4) return false;
+    if (/^(full changelog|changelog|compare)\b/i.test(text)) return false;
+    if (/^https?:\/\//i.test(text)) return false;
+    return true;
+  }
+
+  /** 该行是否应整体跳过（标题/表格/分隔线/引用等结构行）。 */
+  function isStructuralLine(line) {
+    var s = line.trim();
+    if (!s) return true;
+    if (s.charAt(0) === "|") return true;                    /* 表格 */
+    if (/^#{1,6}\s/.test(s)) return true;                    /* 标题 */
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(s)) return true;       /* 分隔线 */
+    if (/^>\s?/.test(s)) return true;                        /* 引用 */
+    if (/^```/.test(s)) return true;                         /* 代码围栏 */
+    return false;
+  }
+
+  /**
+   * 从 Release 说明里抽取要点。
+   * @returns {Array<{title: string, body: string}>}
+   */
+  function parseReleaseNotes(body) {
+    if (!body) return [];
+    /* 兼容 CRLF 与偶发裸 CR（GitHub 返回的 body 实测为 CRLF） */
+    var lines = String(body).split(/\r\n|\r|\n/);
+    var bold = [];
+    var bullets = [];
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (isStructuralLine(line)) continue;
+
+      /* 第一趟素材：**标题**：说明 */
+      var mBold = line.match(/^\s*\*\*([^*]+)\*\*\s*[：:]\s*(.+)$/);
+      if (mBold) {
+        var bTitle = stripMarkdown(mBold[1]);
+        var bBody = stripMarkdown(mBold[2]);
+        if (bTitle && isUsefulNote(bBody)) {
+          bold.push({ title: bTitle, body: truncate(bBody, MAX_LEN) });
+          continue;
+        }
+      }
+
+      /* 第二趟素材：- 要点（含首段加粗标题的形态） */
+      var mBullet = line.match(/^\s*[-*+]\s+(.+)$/);
+      if (mBullet) {
+        var content = mBullet[1];
+        var inner = content.match(/\*\*([^*]+)\*\*/);
+        var title = inner ? stripMarkdown(inner[1]) : "";
+        var plain = stripMarkdown(content);
+        if (!isUsefulNote(plain)) continue;
+        var rest = plain;
+        if (title && plain.indexOf(title) === 0) {
+          rest = plain.slice(title.length).replace(/^[\s:：—\-·]+/, "");
+        }
+        bullets.push({
+          title: title,
+          body: truncate(rest || plain, MAX_LEN)
+        });
+      }
+    }
+
+    /* 优先用「加粗标题」结构；没有才退回要点列表 */
+    var chosen = bold.length ? bold : bullets;
+    return chosen.slice(0, MAX_NOTES);
+  }
+
+  /** 渲染一条要点（标题 + 正文；无标题时只渲染正文）。 */
+  function buildNoteItem(note) {
+    var li = document.createElement("li");
+    if (note.title) {
+      var strong = document.createElement("strong");
+      strong.textContent = note.title;
+      li.appendChild(strong);
+      if (note.body) li.appendChild(document.createTextNode(" — " + note.body));
+    } else {
+      li.textContent = note.body;
+    }
+    return li;
+  }
+
+  function applyReleaseNotes(release) {
+    var notes = parseReleaseNotes(release && release.body);
+    var tag = (release && release.tag_name) || "";
+    var dateText = "";
+    if (release && release.published_at) {
+      var d = new Date(release.published_at);
+      if (!isNaN(d.getTime())) {
+        var lang = document.documentElement.lang === "zh" ? "zh-CN" : "en-US";
+        dateText = d.toLocaleDateString(lang, { year: "numeric", month: "long", day: "numeric" });
+      }
+    }
+
+    NOTES_FILES.forEach(function (section) {
+      var list = section.querySelector("[data-release-list]");
+      var badge = section.querySelector("[data-release-tag]");
+      var dateEl = section.querySelector("[data-release-date]");
+      var link = section.querySelector("[data-release-link]");
+
+      if (badge && tag) badge.textContent = tag;
+      if (dateEl && dateText) {
+        dateEl.textContent = dateText;
+        dateEl.hidden = false;
+      }
+      if (link) {
+        link.href = release && release.html_url
+          ? release.html_url
+          : RELEASE_FALLBACK;
+      }
+
+      /* 解析不出要点 → 隐藏板块（保留 HTML 的静态兜底内容不被清空） */
+      if (!notes.length || !list) {
+        section.setAttribute("data-state", "empty");
+        return;
+      }
+      var limits = sectionLimits(section);
+      list.textContent = "";
+      notes.slice(0, limits.notes).forEach(function (note) {
+        list.appendChild(buildNoteItem(reshapeNote(note, limits.len)));
+      });
+      section.removeAttribute("data-state");
+    });
   }
 
   function renderDynamic() {
@@ -316,9 +515,11 @@
   }
 
   /* ---------------------------------------------------------
-     6. Full-page slide navigation + page dots
-     Desktop: one wheel tick smoothly flips to the next page.
-     Touch devices: native scrolling with CSS scroll-snap.
+     6. Section navigator (right-side page dots)
+     1.3.1：此处原为「整页翻页」——桌面按一次滚轮/PageDown 就翻到下一区块，
+     并配合 CSS 的 scroll-snap-stop:always 在手机上「一次手势前进一格」。
+     手机实测手指滑 100px、页面跳 545px，体验很差，故**整块移除翻页行为**，
+     只保留右侧圆点作为**锚点快速跳转**（点击平滑滚到对应区块，并随滚动高亮）。
      --------------------------------------------------------- */
 
   var snapPages = Array.prototype.slice.call(
@@ -332,7 +533,7 @@
 
   var pageDotsNav = null;
   var pageDotButtons = [];
-  var snapLockUntil = 0;
+  /* reducedMotion 已在第 5 节（滚动显现）定义，此处复用同一变量 */
 
   function refreshDotLabels() {
     if (!pageDotButtons || !pageDotButtons.length) return;
@@ -348,43 +549,25 @@
     });
   }
 
-  function snapPageTops() {
-    return snapPages.map(function (page) {
-      return page.getBoundingClientRect().top + window.scrollY;
-    });
-  }
-
+  /** 当前视口中心所在的区块索引（用于高亮圆点）。 */
   function currentSnapIndex() {
-    var tops = snapPageTops();
     var mid = window.scrollY + window.innerHeight / 2;
     var index = 0;
-    for (var i = 0; i < tops.length; i++) {
-      if (tops[i] <= mid + 1) index = i;
-    }
+    snapPages.forEach(function (page, i) {
+      var top = page.getBoundingClientRect().top + window.scrollY;
+      if (top <= mid + 1) index = i;
+    });
     return index;
   }
 
+  /** 平滑滚动到指定区块（仅锚点跳转，不再"翻页"）。 */
   function goToSnapPage(index) {
     index = Math.max(0, Math.min(snapPages.length - 1, index));
-    snapLockUntil = Date.now() + 900;
     snapPages[index].scrollIntoView({
       behavior: reducedMotion ? "auto" : "smooth",
       block: "start"
     });
     setActiveDot(index);
-  }
-
-  /* Returns true when the gesture was converted into a page flip. */
-  function snapAttempt(direction) {
-    var index = currentSnapIndex();
-    var rect = snapPages[index].getBoundingClientRect();
-    /* More of the current page is still off-screen — scroll natively. */
-    if (direction > 0 && rect.bottom > window.innerHeight + 2) return false;
-    if (direction < 0 && rect.top < -2) return false;
-    var target = index + direction;
-    if (target < 0 || target >= snapPages.length) return false;
-    goToSnapPage(target);
-    return true;
   }
 
   if (snapPages.length > 1) {
@@ -404,41 +587,29 @@
     refreshDotLabels();
     setActiveDot(currentSnapIndex());
 
-    var finePointer =
-      window.matchMedia && window.matchMedia("(pointer: fine)").matches;
+    /* 随滚动高亮当前区块（用 rAF 节流，避免滚动时频繁回调） */
+    var dotTick = false;
+    window.addEventListener(
+      "scroll",
+      function () {
+        if (dotTick) return;
+        dotTick = true;
+        window.requestAnimationFrame(function () {
+          setActiveDot(currentSnapIndex());
+          dotTick = false;
+        });
+      },
+      { passive: true }
+    );
 
-    if (finePointer && !reducedMotion) {
-      window.addEventListener(
-        "wheel",
-        function (event) {
-          if (event.ctrlKey || event.defaultPrevented) return;
-          if (siteNav && siteNav.classList.contains("is-open")) return;
-          var delta = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
-          if (Date.now() < snapLockUntil) {
-            /* Swallow inertia wheel events during a page transition. */
-            if (delta !== 0) event.preventDefault();
-            return;
-          }
-          if (Math.abs(delta) < 12) return;
-          if (snapAttempt(delta > 0 ? 1 : -1)) event.preventDefault();
-        },
-        { passive: false }
-      );
-
-      window.addEventListener("keydown", function (event) {
-        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-        var active = document.activeElement;
-        if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" ||
-            active.tagName === "SELECT" || active.isContentEditable)) return;
-        var target = null;
-        if (event.key === "PageDown") target = currentSnapIndex() + 1;
-        else if (event.key === "PageUp") target = currentSnapIndex() - 1;
-        else if (event.key === "Home") target = 0;
-        else if (event.key === "End") target = snapPages.length - 1;
-        if (target === null) return;
-        event.preventDefault();
-        goToSnapPage(target);
-      });
-    }
+    /* 键盘：Home/End 跳到首尾（保留无障碍能力，移除 PageUp/PageDown 的强制翻页） */
+    window.addEventListener("keydown", function (event) {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      var active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" || active.isContentEditable)) return;
+      if (event.key === "Home") goToSnapPage(0);
+      else if (event.key === "End") goToSnapPage(snapPages.length - 1);
+    });
   }
 })();

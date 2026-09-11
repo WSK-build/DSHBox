@@ -13,12 +13,9 @@ echo "Installing DeepSeek Harness ${DSH_VERSION} (pin exact version; do not use 
 npm install --prefix /opt/dshapp/runtime "npm:@deepseek-ai/dsh@${DSH_VERSION}" --registry "$DSH_NPM_REGISTRY"
 npm install --prefix /opt/dshapp/runtime "pnpm@latest" --registry "$DSH_NPM_REGISTRY" || true
 
-# Android compatibility: hard links are denied on app-data filesystems.
-if [ -f /opt/dshapp/patch_dsh_android.js ]; then
-  node /opt/dshapp/patch_dsh_android.js
-else
-  echo "Warning: patch_dsh_android.js not found; skipping Android hard-link compatibility patch"
-fi
+# Android 硬链接兼容：此前在此调用 patch_dsh_android.js 就地改写 DSH 的 JS 文件。
+# 1.3.1 起改为**运行期垫片**（app 启动 DSH 时以 --import 预加载 link-shim.mjs），
+# 因此这里不再改动 DSH 源码，安装出的层保持上游原样。
 
 echo "Verifying install:"
 ls -la /opt/dshapp/runtime/node_modules/@deepseek-ai/dsh || true

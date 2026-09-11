@@ -20,6 +20,12 @@ import java.io.File
  * On-device layout (assembled into the guest as the PRoot DSH layer):
  *   runtime-current/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js
  *   runtime-current/dsh/.dshbox/version
+ *
+ * **DSH 源码永不被改写**（1.3.1 起）：本类只做「解包 / 校验 / 原子换入 / 记录版本」。
+ * 曾经的 Android 硬链接兼容补丁会就地改写 DSH 的 JS 文件，但补丁锚点必须与上游
+ * 逐字节匹配，上游一重构就整块静默跳过；现在该职责已移交**运行期垫片**
+ * （启动时 `--import` 预加载，见 [SandboxProcessRunner.buildProotDshCommand]），
+ * 因此本类对任何版本的 DSH 都保持形态无关。
  */
 class DshLayer(
     private val runtimeDir: File,
@@ -30,83 +36,6 @@ class DshLayer(
         const val VERSION_FILE = ".dshbox/version"
         const val PROFILE_VERSION_FILE = "package.json"
         const val DSHPK_GUEST_PATH = "node_modules/@deepseek-ai/dsh/lib/bin.js"
-
-        /** Convert literal "\t" placeholders (raw strings) to real tabs so blocks match the bundled JS. */
-        private fun tabs(raw: String): String = raw.replace("\\t", "\t")
-
-        val SESSION_IMPORT_OLD =
-            """import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, truncate } from "node:fs/promises";"""
-        val SESSION_IMPORT_NEW =
-            """import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, truncate } from "node:fs/promises";"""
-        val SESSION_BLOCK_OLD = tabs("""\t\ttry {
-\t\t\tawait link(tmp, finalPath);
-\t\t\tlinked = true;
-\t\t} finally {
-\t\t\t/* v8 ignore next -- link failure is the TOCTOU/IO race guarded above; not reachable in test */
-\t\t\tif (!linked) await rm(tmp, { force: true });
-\t\t}""")
-        val SESSION_BLOCK_NEW = tabs("""\t\ttry {
-\t\t\tawait link(tmp, finalPath);
-\t\t\tlinked = true;
-\t\t} catch (error) {
-\t\t\t// Android app-data filesystems deny hard links. Fall back to rename:
-\t\t\t// rejectExistingLog already guarantees the target does not exist.
-\t\t\tif (error && (error.code === "EACCES" || error.code === "EPERM" || error.code === "ENOTSUP" || error.code === "ENOSYS")) {
-\t\t\t\tawait rename(tmp, finalPath);
-\t\t\t\tlinked = true;
-\t\t\t} else {
-\t\t\t\tthrow error;
-\t\t\t}
-\t\t} finally {
-\t\t\t/* v8 ignore next -- link failure is the TOCTOU/IO race guarded above; not reachable in test */
-\t\t\tif (!linked) await rm(tmp, { force: true });
-\t\t}""")
-
-        val FS_BLOCK_OLD = tabs("""\t\tif (createIfAbsent !== void 0) try {
-\t\t\tawait linkFile(tempPath, absolutePath);
-\t\t} catch (error) {
-\t\t\tawait throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);
-\t\t}""")
-        val FS_BLOCK_NEW = tabs("""\t\tif (createIfAbsent !== void 0) try {
-\t\t\tawait linkFile(tempPath, absolutePath);
-\t\t} catch (error) {
-\t\t\t// Android app-data filesystems deny hard links (fs-local). Fall back
-\t\t\t// to rename() when the target is still absent (no-replace intent
-\t\t\t// preserved); otherwise keep the guarded collision handling.
-\t\t\tif (error && (error.code === "EACCES" || error.code === "EPERM" || error.code === "ENOTSUP" || error.code === "ENOSYS")) {
-\t\t\t\tlet existing = null;
-\t\t\t\ttry {
-\t\t\t\t\texisting = await inspectPublicationTarget(absolutePath);
-\t\t\t\t} catch (inspectError) {
-\t\t\t\t\tif (!isENOENT(inspectError) && !isENOTDIR(inspectError)) throw inspectError;
-\t\t\t\t}
-\t\t\t\tif (existing === null) await rename(tempPath, absolutePath);
-\t\t\t\telse await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);
-\t\t\t} else {
-\t\t\t\tawait throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);
-\t\t\t}
-\t\t}""")
-
-        val ATT_BLOCK_OLD = tabs("""\t\ttry {
-\t\t\tawait link(temporary, target);
-\t\t} catch (error) {
-\t\t\t/* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
-\t\t\tif (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-\t\t\tif (digest\$1(new Uint8Array(await readFile(target))) !== sha256) throw new AttachmentError("Stored attachment failed integrity verification.", "ATTACHMENT_CORRUPT");
-\t\t}""")
-        val ATT_BLOCK_NEW = tabs("""\t\ttry {
-\t\t\tawait link(temporary, target);
-\t\t} catch (error) {
-\t\t\t// Android app-data filesystems deny hard links (attachment). Fall back to rename.
-\t\t\tif (error instanceof Error && "code" in error && (error.code === "EACCES" || error.code === "EPERM" || error.code === "ENOTSUP" || error.code === "ENOSYS")) {
-\t\t\t\tawait rename(temporary, target);
-\t\t\t} else if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) {
-\t\t\t\tthrow error;
-\t\t\t} else {
-\t\t\t\t/* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
-\t\t\t\tif (digest\$1(new Uint8Array(await readFile(target))) !== sha256) throw new AttachmentError("Stored attachment failed integrity verification.", "ATTACHMENT_CORRUPT");
-\t\t\t}
-\t\t}""")
     }
 
     /** The live DSH layer dir (bound into the guest at /opt/dshapp/runtime). */
@@ -206,12 +135,21 @@ class DshLayer(
                 }
                 staging.deleteRecursively()
             }
-            // Stage 3: Android compat (defense in depth) + version record.
-            // DSH publishes files via fs.link() which Android app-data filesystems
-            // deny (EACCES); apply the link()->rename() fallback to every layer
-            // (idempotent; covers online/npm-updated layers, not just the embedded
-            // baseline that is pre-patched at build time).
-            applyAndroidDshPatch(dsh)
+            // Stage 3: version record.
+            //
+            // Android 硬链接兼容**不在这里做**（1.3.1 起）：曾经的做法是改写 DSH 的
+            // JS 源码（link -> rename/copyFile），但补丁锚点必须与上游逐字节匹配，
+            // 上游每次重构（插入一个 import、拆分发布点）都会让整块补丁静默跳过。
+            // 现在改由**运行期垫片**承担：启动 DSH 时以 `--import` 预加载
+            // link-shim.mjs 替换 node:fs/promises 的 link，DSH 源码一个字节都不改。
+            // 见 SandboxProcessRunner.buildProotDshCommand / Constants.DSH_LINK_SHIM_GUEST_PATH。
+            //
+            // ⚠️ 垫片的已知限制（勿误以为全量兜底）：它**只替换异步的
+            // `node:fs/promises`.link**，不覆盖 `fs.linkSync` 与回调版 `fs.link`。
+            // 当前 DSH 的三条链路（会话/写工具/附件）均使用异步具名导入，故够用；
+            // 若上游改用同步版，会在真机上重新出现硬链接 EACCES 且**无任何告警**。
+            // 排查入口：在解出的层里 `grep -rn "linkSync" node_modules/@deepseek-ai/<包>/lib/`。
+            // 完整边界说明见 link-shim.mjs 顶部注释与 DSH_COMPAT_NOTES.md #1。
             val version = newVersion?.takeIf { it.isNotBlank() } ?: discovered ?: "unknown"
             runCatching {
                 val vf = File(dsh, VERSION_FILE)
@@ -228,59 +166,6 @@ class DshLayer(
         } finally {
             if (staging.exists()) staging.deleteRecursively()
         }
-    }
-
-    /**
-     * Post-extraction Android compatibility patch (mirrors runtime-bundle/scripts/patch_dsh_android.js).
-     * DSH publishes files with fs.link() which Android app-data filesystems deny (EACCES); this
-     * makes those paths fall back to rename(). Idempotent (marker-checked) + shape-skipping so a
-     * newer/older DSH is never broken. Applied to EVERY DSH layer (embedded baseline + online update)
-     * for defense in depth.
-     */
-    private fun applyAndroidDshPatch(dsh: File) {
-        val pkgDir = File(dsh, "node_modules/@deepseek-ai")
-        val appliedMarker = "Android app-data filesystems deny hard links"
-        // 1. dsh-session-persistence-jsonl — session publish via link().
-        patchJs(
-            File(pkgDir, "dsh-session-persistence-jsonl/lib/index.js"),
-            appliedMarker,
-            SESSION_IMPORT_OLD, SESSION_IMPORT_NEW, SESSION_BLOCK_OLD, SESSION_BLOCK_NEW,
-        )
-        // 2. dsh-fs-local — write-tool createIfAbsent via linkFile().
-        patchJs(File(pkgDir, "dsh-fs-local/lib/index.js"), appliedMarker, null, null, FS_BLOCK_OLD, FS_BLOCK_NEW)
-        // 3. dsh-attachment-local — attachment publish via link().
-        patchJs(File(pkgDir, "dsh-attachment-local/lib/index.js"), appliedMarker, null, null, ATT_BLOCK_OLD, ATT_BLOCK_NEW)
-    }
-
-    private fun patchJs(
-        file: File,
-        marker: String,
-        importOld: String?,
-        importNew: String?,
-        blockOld: String,
-        blockNew: String,
-    ) {
-        if (!file.isFile) return
-        runCatching {
-            var src = file.readText()
-            if (src.contains(marker)) {
-                Log.i(TAG, "android dsh patch already applied: ${file.name}")
-                return
-            }
-            if (importOld != null) {
-                if (!src.contains(importOld) || importNew == null) {
-                    Log.w(TAG, "android dsh patch skip (import shape): ${file.name}")
-                    return
-                }
-                src = src.replace(importOld, importNew)
-            }
-            if (!src.contains(blockOld)) {
-                Log.w(TAG, "android dsh patch skip (block shape): ${file.name}")
-                return
-            }
-            file.writeText(src.replace(blockOld, blockNew))
-            Log.i(TAG, "android dsh patch applied: ${file.name}")
-        }.onFailure { Log.w(TAG, "android dsh patch failed: ${file.name}: ${it.message}") }
     }
 
     private fun versionFromPackage(dshDirRoot: File): String? {

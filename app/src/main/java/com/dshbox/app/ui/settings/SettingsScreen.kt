@@ -25,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -133,6 +134,10 @@ fun SettingsScreen(
     }
     // 装配行动作占位：运行函数定义在本函数体更后处，用 var 引用、点击时取值。
     var assembleRowAction by remember { mutableStateOf<() -> Unit>({}) }
+
+    // 「用户反馈」两条入口的弹窗开关（见下方 SettingsSection）。
+    var showStarDialog by remember { mutableStateOf(false) }
+    var showIssueDialog by remember { mutableStateOf(false) }
 
     // 开关版)：仅首次（本地标记从未设置过）进入设置页时校准一次开关；
     // 此后开关状态完全由本地标记保持（装配/移除成功时翻转），不再反复查询。
@@ -381,6 +386,7 @@ fun SettingsScreen(
                     if (sandboxRunning) R.string.settings_sandbox_ready else R.string.settings_sandbox_not_ready,
                 ),
             )
+            SettingsDivider()
             // 存储占用拆为「沙盒数据 + 应用缓存」两行，系统分配块口径
             // （含 cacheDir——崩溃残留的导入暂存在这里，系统存储页也把它算在内），
             // 进设置页自动重算；两行均可点击手动强制刷新，行尾刷新图标作提示
@@ -395,6 +401,7 @@ fun SettingsScreen(
                 onClick = { rescanStorage(force = true) },
                 trailingIcon = { RefreshHintIcon() },
             )
+            SettingsDivider()
             SettingsRow(
                 title = stringResource(R.string.settings_storage_cache),
                 value = scan?.let { formatFileSize(it.cacheBytes) }
@@ -402,6 +409,7 @@ fun SettingsScreen(
                 onClick = { rescanStorage(force = true) },
                 trailingIcon = { RefreshHintIcon() },
             )
+            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.settings_cleanup_title),
                 onClick = {
@@ -425,14 +433,17 @@ fun SettingsScreen(
                     }
                 },
             )
+            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.settings_sandbox_start),
                 onClick = { SandboxService.startSandbox(context) },
             )
+            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.settings_sandbox_stop),
                 onClick = { SandboxService.stopSandbox(context) },
             )
+            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.settings_sandbox_restart),
                 onClick = { SandboxService.restartSandbox(context) },
@@ -446,6 +457,7 @@ fun SettingsScreen(
                 ),
                 value = Constants.DSH_BASE_URL,
             )
+            SettingsDivider()
             SettingsRow(
                 title = stringResource(R.string.settings_dsh_version),
                 value = dshVersion?.takeIf { it.isNotBlank() } ?: context.getString(R.string.settings_dsh_not_installed),
@@ -459,6 +471,7 @@ fun SettingsScreen(
                     modifier = Modifier.padding(vertical = 4.dp),
                 )
             }
+            SettingsDivider()
             // 更新 DSH（在线）——进入独立界面：并行探测各 npm 源
             // （版本号 + 延迟），选源选版本后在沙箱内用 npm 拉取 @deepseek-ai/dsh
             // 及完整依赖替换内置层（沿用官方构建方式）。
@@ -466,19 +479,23 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_dsh_update_online),
                 onClick = { showDshOnlineUpdate = true },
             )
+            SettingsDivider()
             // 更新 DSH（离线导入）——先弹"导入什么"说明，再选文件。
             SettingsActionRow(
                 title = stringResource(R.string.settings_dsh_update_offline),
                 onClick = { showDshOfflineInfo = true },
             )
+            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.home_dsh_start),
                 onClick = { SandboxService.startDsh(context) },
             )
+            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.home_dsh_restart),
                 onClick = { SandboxService.restartDsh(context) },
             )
+            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.home_dsh_stop),
                 onClick = { SandboxService.stopDsh(context) },
@@ -486,35 +503,59 @@ fun SettingsScreen(
         }
 
         // 装配 DSH 移动端适配包（cordis 插件，指令注入方式 B）——位于「外观」上方。
-        // 开关版)：无弹窗开关，进入设置页自动检测校准；切换中禁用防连点。
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(enabled = !assembleRunning && !assembleChecking) { assembleRowAction() }
-                .padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.settings_assemble_mobile_adapt),
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
+        // 开关版：无弹窗开关，进入设置页自动检测校准；切换中禁用防连点。
+        // 独立成卡与其余分区共用圆角描边；失败原因也放在同一张卡内——
+        // 错误属于这个开关，脱离卡片会让人误以为它在描述页面别处。
+        SettingsSection {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !assembleRunning && !assembleChecking) { assembleRowAction() }
+                    // 10dp（而非其它行的 14dp）：开关自身高度大于纯文本行，
+                    // 这样整行高度与 SettingsRow 对齐。
+                    .padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_assemble_mobile_adapt),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = assembleInstalled,
+                    enabled = !assembleRunning && !assembleChecking,
+                    onCheckedChange = { assembleRowAction() },
+                    // 打开=绿、关闭=灰白（覆盖 M3 默认主题色）。
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = Color(0xFF10A37F),
+                        uncheckedTrackColor = Color(0xFFD5D5D5),
+                        checkedThumbColor = Color.White,
+                        uncheckedThumbColor = Color(0xFF9E9E9E),
+                        checkedBorderColor = Color(0xFF10A37F),
+                        uncheckedBorderColor = Color(0xFFBDBDBD),
+                        disabledCheckedTrackColor = Color(0x6610A37F),
+                        disabledUncheckedTrackColor = Color(0xFFE3E3E3),
+                    ),
+                )
+            }
+
+            // 自动刷新失败的原因（由 bootstrap 写入偏好，见 SandboxService）。
+            // 启动阶段没有前台 UI 上下文、弹不了 Toast，所以在这里补偿展示 ——
+            // 否则用户只看到一个灰色开关，无从得知插件为何没生效。
+            // 刷新成功后该键会被清空，这里自动消失。
+            val assembleLastError = assemblePrefs.getString(
+                Constants.PREF_MOBILE_ADAPT_LAST_ERROR,
+                null,
             )
-            Switch(
-                checked = assembleInstalled,
-                enabled = !assembleRunning && !assembleChecking,
-                onCheckedChange = { assembleRowAction() },
-                // 打开=绿、关闭=灰白（覆盖 M3 默认主题色）。
-                colors = SwitchDefaults.colors(
-                    checkedTrackColor = Color(0xFF10A37F),
-                    uncheckedTrackColor = Color(0xFFD5D5D5),
-                    checkedThumbColor = Color.White,
-                    uncheckedThumbColor = Color(0xFF9E9E9E),
-                    checkedBorderColor = Color(0xFF10A37F),
-                    uncheckedBorderColor = Color(0xFFBDBDBD),
-                    disabledCheckedTrackColor = Color(0x6610A37F),
-                    disabledUncheckedTrackColor = Color(0xFFE3E3E3),
-                ),
-            )
+            if (!assembleInstalled && !assembleLastError.isNullOrBlank()) {
+                Text(
+                    text = stringResource(R.string.settings_assemble_mobile_adapt_auto_failed) +
+                        "\n" + assembleLastError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
         }
 
         SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
@@ -548,7 +589,11 @@ fun SettingsScreen(
             }
 
             // 语言选择器（联合国六语 + 跟随系统，默认跟随系统）。
-            Spacer(modifier = Modifier.height(8.dp))
+            // 用分隔线把「主题」按钮组与「语言」行切开，而不是只靠 16dp 留白——
+            // 三个按钮与下面一行在竖向上都是等宽块，光靠留白会被读成同一组。
+            // 按钮组自身没有行内边距，上下各补 10dp 才不会贴着线。
+            Spacer(modifier = Modifier.height(10.dp))
+            SettingsDivider()
             val currentLanguageLabel = when (val lang = AppLocaleState.current) {
                 AppLanguage.SYSTEM -> stringResource(R.string.settings_appearance_follow_system)
                 else -> lang.nativeName
@@ -567,10 +612,14 @@ fun SettingsScreen(
             )
         }
 
-        SettingsActionRow(
-            title = stringResource(R.string.settings_diagnostics),
-            onClick = { showDiagnostics = true },
-        )
+        // 「诊断与日志」独立成卡：它是页面上最后一条裸行，包进卡片后
+        // 设置页不再有脱离圆角描边的孤立入口。
+        SettingsSection {
+            SettingsActionRow(
+                title = stringResource(R.string.settings_diagnostics),
+                onClick = { showDiagnostics = true },
+            )
+        }
 
         SettingsSection(title = stringResource(R.string.settings_section_update)) {
             // Row 1：检查更新 App —— 联网查询 GitHub Releases 最新 tag，有新版本则弹窗引导去官网下载。
@@ -587,10 +636,27 @@ fun SettingsScreen(
                     }
                 },
             )
+            SettingsDivider()
             // Row 2：离线导入运行环境包 —— 先弹"重置虚拟系统/数据丢失"二次确认，再选包导入。
             SettingsActionRow(
                 title = stringResource(R.string.settings_import_update),
                 onClick = { showImportRuntimeWarn = true },
+            )
+        }
+
+        // 「用户反馈」：两条引导用户去 GitHub 的入口。
+        // 都**先弹窗说明再做跳转** —— 直接跳走会让用户措手不及（尤其中途操作时）；
+        // 弹窗也让我们有机会讲清"为什么值得点这一下"，比干跳更有效。
+        // 跳转失败（无浏览器）静默忽略：这是引导路径，不该弹错误或崩溃。
+        SettingsSection(title = stringResource(R.string.settings_section_feedback)) {
+            SettingsActionRow(
+                title = stringResource(R.string.settings_feedback_star),
+                onClick = { showStarDialog = true },
+            )
+            SettingsDivider()
+            SettingsActionRow(
+                title = stringResource(R.string.settings_feedback_issue),
+                onClick = { showIssueDialog = true },
             )
         }
 
@@ -640,6 +706,54 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showImportRuntimeWarn = false }) {
                     Text(stringResource(R.string.settings_cancel_action))
+                }
+            },
+        )
+    }
+
+    // ── 用户反馈：点 Star ──────────────────────────────────────
+    // 说明"为什么值得点"（业余维护、Star 也能带来曝光），而不是喊口号。
+    if (showStarDialog) {
+        AlertDialog(
+            onDismissRequest = { showStarDialog = false },
+            title = { Text(stringResource(R.string.settings_feedback_star_title)) },
+            text = { Text(stringResource(R.string.settings_feedback_star_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showStarDialog = false
+                    AppUpdater.openUrl(context, AppUpdater.REPO_URL)
+                }) {
+                    Text(stringResource(R.string.settings_feedback_star_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStarDialog = false }) {
+                    // 用「稍后再说」而非「取消」：非破坏性引导，措辞更柔和。
+                    Text(stringResource(R.string.settings_feedback_later))
+                }
+            },
+        )
+    }
+
+    // ── 用户反馈：提 Issue ───────────────────────────────────────
+    // 正文里主动给出"附上复现步骤/截图"的方法——降低提交门槛，
+    // 也让我们收到的反馈更好定位。
+    if (showIssueDialog) {
+        AlertDialog(
+            onDismissRequest = { showIssueDialog = false },
+            title = { Text(stringResource(R.string.settings_feedback_issue_title)) },
+            text = { Text(stringResource(R.string.settings_feedback_issue_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showIssueDialog = false
+                    AppUpdater.openUrl(context, AppUpdater.ISSUES_URL)
+                }) {
+                    Text(stringResource(R.string.settings_feedback_issue_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showIssueDialog = false }) {
+                    Text(stringResource(R.string.settings_feedback_later))
                 }
             },
         )
@@ -942,16 +1056,20 @@ private fun ThemeModeButton(
 
 @Composable
 private fun SettingsSection(
-    title: String,
+    title: String? = null,
     content: @Composable () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp),
-        )
+        // 标题可缺省：入口名本身已是完整描述时（诊断与日志、装配适配包），
+        // 再加分区标题只是重复；缺省后卡片仍与其余分区共用同一套圆角描边样式。
+        if (title != null) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
@@ -965,6 +1083,22 @@ private fun SettingsSection(
             }
         }
     }
+}
+
+/**
+ * 卡片内相邻行之间的分隔线。
+ *
+ * 多行卡片（沙盒 7 行、DSH 7 行）此前只靠行间留白区分，扫读时容易把两行看成一整块；
+ * 补一条细线后每行的归属明确——这是设置页的通行做法。
+ * 颜色用 outlineVariant（与卡片描边同源），不加粗、不缩进：线比边框更该退到后面，
+ * 缩进反而会在卡片内切出一条假的左边缘。
+ */
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
 }
 
 @Composable
@@ -1167,5 +1301,7 @@ private suspend fun installDshFromUri(
     }
 }
 
-/** 装配移动端适配包状态标记（1.1.1 T2，持久化于 user-data 之外的应用偏好）。 */
-private const val PREF_MOBILE_ADAPT_INSTALLED = "mobile_adapt_installed"
+/** 装配移动端适配包状态标记（1.1.1 T2，持久化于 user-data 之外的应用偏好）。
+ *  定义收敛到 [Constants.PREF_MOBILE_ADAPT_INSTALLED]——bootstrap 也读它，
+ *  用来决定是否把 profile 里的插件副本刷新为当前 APK 版本。 */
+private const val PREF_MOBILE_ADAPT_INSTALLED = Constants.PREF_MOBILE_ADAPT_INSTALLED

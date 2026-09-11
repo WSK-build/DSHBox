@@ -86,6 +86,11 @@ class SandboxProcessRunner(
     /**
      * Builds the PRoot command for DSH. The final command contains
      * [Constants.DSH_START_SCRIPT] so we can locate this PRoot tree at stop time.
+     *
+     * [shimHostDir] 是宿主侧存放 `link-shim.mjs` 的目录，绑定到 guest 的
+     * `/opt/dshbox` 后以 `--import` 预加载。**这是本项目唯一的 Android 兼容注入手段**：
+     * 它只在运行期替换 `node:fs/promises` 的 `link`，DSH 源码一个字节都不改。
+     * 传 null/空则不加绑定与预加载（测试或垫片缺失时退化为上游原始行为）。
      */
     fun buildProotDshCommand(
         prootBinary: String,
@@ -93,8 +98,9 @@ class SandboxProcessRunner(
         workspaceBind: String,
         nodeDir: String? = null,
         dshDir: String? = null,
+        shimHostDir: String? = null,
     ): List<String> = buildList {
-        addAll(layeredProotPrefix(prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir))
+        addAll(layeredProotPrefix(prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shimHostDir))
         add("--cwd=/root/projects")
         add("--kill-on-exit")
         add("/system/bin/sh"); add("-c")
@@ -105,7 +111,16 @@ class SandboxProcessRunner(
         // DSH server serves http://127.0.0.1:3080 for the app's WebView/health.
         // Constants.DSH_START_SCRIPT (/opt/dshapp/runtime) is the cmdline marker
         // stop() uses to locate this PRoot and SIGKILL its tree.
-        add("exec /usr/local/bin/node --expose-internals /opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile web")
+        //
+        // `--import` 预加载硬链接兼容垫片（见 SandboxProcessRunner.buildProotDshCommand
+        // 的 KDoc）：它必须先于 DSH 模块图求值，因此放在入口脚本之前。垫片缺失时
+        // Node 会直接报错退出——所以调用方只在确认垫片存在后才传入 shimHostDir。
+        val shim = if (!shimHostDir.isNullOrBlank()) {
+            " --import ${Constants.DSH_LINK_SHIM_GUEST_PATH}"
+        } else {
+            ""
+        }
+        add("exec /usr/local/bin/node --expose-internals$shim /opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile web")
     }
 
     /**
@@ -118,6 +133,10 @@ class SandboxProcessRunner(
      * --bind overlays the source directory over the destination (this is the
      * same mechanism the project already uses for user-data -> /root/projects,
      * so multi-layer assembly via bind is proven compatible).
+     *
+     * [shimHostDir]（可选）绑定到 guest `/opt/dshbox`，供 `--import` 预加载
+     * 硬链接兼容垫片。挂载点在 base rootfs 里无需预先存在——PRoot 会自行创建
+     * （与 /opt/dshapp/runtime、/root/projects 同理）。
      */
     private fun layeredProotPrefix(
         prootBinary: String,
@@ -125,6 +144,7 @@ class SandboxProcessRunner(
         workspaceBind: String,
         nodeDir: String?,
         dshDir: String?,
+        shimHostDir: String? = null,
     ): List<String> = buildList {
         add(prootBinary)
         add("--rootfs=$rootfsDir")
@@ -134,6 +154,7 @@ class SandboxProcessRunner(
         add("--bind=/dev")
         if (!nodeDir.isNullOrBlank()) add("--bind=$nodeDir:/usr/local")
         if (!dshDir.isNullOrBlank()) add("--bind=$dshDir:/opt/dshapp/runtime")
+        if (!shimHostDir.isNullOrBlank()) add("--bind=$shimHostDir:${Constants.DSH_LINK_SHIM_GUEST_DIR}")
         add("--bind=$workspaceBind:/root/projects")
     }
 
