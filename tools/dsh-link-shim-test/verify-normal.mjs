@@ -1,0 +1,12 @@
+import fsp, { link } from "node:fs/promises";
+import { writeFile, stat, mkdtemp } from "node:fs/promises";
+import path from "node:path"; import os from "node:os";
+const d = await mkdtemp(path.join(os.tmpdir(), "shimok-"));
+const a = path.join(d, "src"), b = path.join(d, "dst");
+await writeFile(a, "X");
+await link(a, b);
+const [sa, sb] = await Promise.all([stat(a), stat(b)]);
+console.log("=== 正常路径（link 可用）===");
+console.log("  同一 inode（真硬链接）:", sa.ino === sb.ino, "ino=" + sa.ino);
+console.log("  源文件保留:", (await fsp.readFile(a, "utf8")) === "X");
+console.log("  垫片是否误改行为:", sa.ino === sb.ino ? "否 ✓" : "是 ✗");

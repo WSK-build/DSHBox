@@ -1,0 +1,188 @@
+<!doctype html>
+<!--
+  M17 回归夹具：验证「上传来源菜单挂在回形针、而非 + 命令按钮」。
+
+  背景（真机实测根因）：M5 把上传菜单挂在了 composer 的「+」按钮上
+  （`button[aria-haspopup="listbox"]`）——那是 dsh 的**斜杠命令面板**入口。
+  结果点「+」弹出的是上传菜单，命令面板被顶掉。
+
+  修正后：菜单挂**回形针**（`aria-label = t("file.attach")` 即「添加附件」），
+  「+」完全不碰。
+
+  本夹具构造 dsh 真实的 DOM 结构（来自 dsh-client-ui-conversation 源码），
+  加载**真实的** plugin/lib/client.js，断言：
+    A. 点「+」→ 不弹上传菜单、且 + 的 click 不被吞（命令面板不受影响）
+    B. 点回形针 → 弹出上传菜单、原生 fileInput.click() 未被触发
+    C. 回形针菜单里选「沙箱」→ input.accept = 哨兵，且 click 恰好一次
+    D. 点回形针内联 svg（触摸常落在图标上）同样能弹出菜单
+    E. 手机路径 → accept 被清空
+
+  用法：cd source && python -m http.server 8793
+       浏览器开 http://127.0.0.1:8793/tools/webview_upload_accept_test.html
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>DSHBox 回形针上传菜单回归夹具</title>
+<style>
+  body { font: 13px/1.6 monospace; padding: 16px; }
+  #log div { white-space: pre-wrap; }
+  .pass { color: #0a0; }
+  .fail { color: #c00; font-weight: bold; }
+  #summary { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div id="summary">running…</div>
+<div id="log"></div>
+
+<!-- dsh 真实 DOM 结构（按 dsh-client-ui-conversation/lib/client.js 还原）：
+     div.tools > [ button(+ 命令) , Tooltip>button(回形针) , input[type=file] ] -->
+<div class="FDk7aW_frame" data-composer-card>
+  <div class="InputBar_module_css_default_tools" id="tools">
+    <button id="cmdBtn" type="button" class="InputBar_module_css_default_add"
+            aria-label="指令" aria-haspopup="listbox" aria-expanded="false">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 3v10M3 8h10"/></svg>
+    </button>
+    <span class="Tooltip_wrap">
+      <button id="attachBtn" type="button" class="InputBar_module_css_default_add"
+              aria-label="添加附件">
+        <svg id="clipIcon" viewBox="0 0 16 16" width="14" height="14"><path d="M4 8l4-4 4 4"/></svg>
+      </button>
+    </span>
+    <input type="file" id="fileInput" multiple hidden>
+  </div>
+</div>
+
+<script>
+window.__results = [];
+function check(name, cond, detail) {
+  window.__results.push({ name: name, pass: !!cond, detail: detail || "" });
+}
+window.__captured = null;
+window.__ModuleLoader__ = { load: function (def) { window.__captured = def; } };
+window.__pluginLoaded = new Promise(function (resolve, reject) {
+  var s = document.createElement("script");
+  s.src = "../app/src/main/assets/plugins/dsh-mobile-adapt/plugin/lib/client.js?t=" + Date.now();
+  s.onload = function () { resolve(); };
+  s.onerror = function () { reject(new Error("plugin load failed")); };
+  document.head.appendChild(s);
+});
+</script>
+
+<script>
+(function () {
+  var cmdBtn = document.getElementById("cmdBtn");
+  var attachBtn = document.getElementById("attachBtn");
+  var clipIcon = document.getElementById("clipIcon");
+  var input = document.getElementById("fileInput");
+
+  var inputClicks = 0;
+  var nativeSeenAccept = [];
+  var cmdClicks = 0;
+  var realClick = HTMLInputElement.prototype.click;
+  input.click = function () {
+    inputClicks++;
+    var ret = realClick.apply(this, arguments);
+    nativeSeenAccept.push(input.getAttribute("accept"));
+    return ret;
+  };
+
+  // dsh 自己的 handler：+ 打开命令面板；回形针触发 file input
+  cmdBtn.addEventListener("click", function () { cmdClicks++; });
+  attachBtn.addEventListener("click", function () { input.click(); });
+
+  function fire(el, type) {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+  }
+  function pointerdown(el) {
+    el.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, pointerType: "touch",
+    }));
+  }
+  function tapRow(source) {
+    var row = document.querySelector('#dsh-upload-menu button[data-source="' + source + '"]');
+    if (!row) return false;
+    pointerdown(row);
+    return true;
+  }
+  function menuPresent() { return !!document.getElementById("dsh-upload-menu"); }
+
+  function report() {
+    var log = document.getElementById("log");
+    var failed = 0;
+    window.__results.forEach(function (r) {
+      var d = document.createElement("div");
+      d.className = r.pass ? "pass" : "fail";
+      d.textContent = (r.pass ? "PASS  " : "FAIL  ") + r.name + (r.detail ? "   [" + r.detail + "]" : "");
+      log.appendChild(d);
+      if (!r.pass) failed++;
+    });
+    var s = document.getElementById("summary");
+    var n = window.__results.length;
+    s.textContent = failed === 0 ? "ALL PASS (" + n + "/" + n + ")" : "FAILED " + failed + " / " + n;
+    s.className = failed === 0 ? "pass" : "fail";
+  }
+
+  function run() {
+    var def = window.__captured;
+    check("插件已注册", !!def && typeof def.factory === "function");
+    if (!def) { report(); return; }
+    var plugin = def.factory(function () { return {}; });
+    plugin.apply({ layout: { toggleSidebar: function () {} }, slots: {} });
+
+    // ---------- A. 「+」不得触发上传菜单，命令面板不受影响 ----------
+    cmdClicks = 0;
+    pointerdown(cmdBtn);
+    check("A1 点「+」不弹上传菜单", !menuPresent());
+    fire(cmdBtn, "click");
+    check("A2 「+」的 click 未被吞（命令面板可开）", cmdClicks === 1, "cmdClicks=" + cmdClicks);
+
+    // ---------- B. 点回形针 → 弹菜单，且不直接触发 input.click() ----------
+    inputClicks = 0;
+    pointerdown(attachBtn);
+    check("B1 点回形针弹出上传菜单", menuPresent());
+    check("B2 未直接触发 input.click()（交给菜单决定来源）", inputClicks === 0, "clicks=" + inputClicks);
+    fire(attachBtn, "click");
+    check("B3 回形针 click 被吞（不弹系统选择器）", inputClicks === 0, "clicks=" + inputClicks);
+
+    // ---------- C. 菜单选「沙箱」→ accept=哨兵，click 恰好一次 ----------
+    var tapped = tapRow("sandbox");
+    check("C1 菜单含沙箱行", tapped);
+    check("C2 沙箱路径触发 input.click() 恰好一次", inputClicks === 1, "clicks=" + inputClicks);
+    check("C3 原生读到 accept = 哨兵",
+          nativeSeenAccept[0] === "application/x-dshbox-sandbox-upload",
+          "accept=" + nativeSeenAccept[0]);
+    fire(input, "change");   // 复位
+
+    // ---------- D. 触摸落在内联 svg 上也要能开菜单 ----------
+    inputClicks = 0;
+    var m = document.getElementById("dsh-upload-menu");
+    if (m) m.parentNode.removeChild(m);
+    window.__captured.factory(function () { return {}; }).apply({ layout: { toggleSidebar: function () {} }, slots: {} });
+    pointerdown(clipIcon);
+    check("D1 点回形针内联 svg 也能弹菜单", menuPresent());
+
+    // ---------- E. 手机路径 → accept 清空 ----------
+    input.setAttribute("accept", "application/x-dshbox-sandbox-upload");
+    inputClicks = 0; nativeSeenAccept = [];
+    tapRow("phone");
+    check("E1 手机路径触发 input.click() 恰好一次", inputClicks === 1, "clicks=" + inputClicks);
+    check("E2 手机路径原生读到「无 accept」", nativeSeenAccept[0] === null, "accept=" + nativeSeenAccept[0]);
+
+    report();
+  }
+
+  window.__pluginLoaded.then(function () {
+    try { run(); } catch (e) {
+      check("夹具异常: " + e.message, false, String(e));
+      report();
+    }
+  }, function (err) {
+    check("插件加载失败: " + err.message, false, "");
+    report();
+  });
+})();
+</script>
+</body>
+</html>

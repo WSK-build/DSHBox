@@ -1,0 +1,159 @@
+<!doctype html>
+<!--
+  M17 回归夹具：右栏（rightbarCol）在移动端适配插件下**必须仍可被 dsh 打开**。
+
+  背景（真机实测根因）：插件的 MOBILE_CSS 曾对右栏写
+    [class*="detailsCol"], [class*="rightbarCol"] { display: none !important; }
+  而 dsh 的右栏是「零宽网格项」——CSS 为
+    .rightbarCol { min-width:0; position:relative; overflow:visible }
+  面板贴着列的右缘**悬挂到中栏之上**，列宽为 0 是设计如此。
+  整列 display:none 会把面板一起干掉 → 用户点「打开右侧栏」没有任何反应。
+
+  本夹具用**真实的 dsh 布局结构/CSS**（摘自 dsh-client-ui-layout 0.1.5-rc.2 的
+  AppFrame.module.css），加载**真实的**插件，断言：
+    A. 插件加载后 rightbarCol 未被 display:none（面板可见）
+    B. 右栏面板在「轨道宽 0」时仍能悬挂可见（贴右缘、位于中栏之上）
+    C. 右栏仍在第 3 条网格轨道上（没被挤到第 1 条看不见的位置）
+    D. 中栏仍吃满剩余宽度（对话区不受影响）
+
+  用法：cd source && python -m http.server 8794
+       浏览器开 http://127.0.0.1:8794/tools/rightbar_layout_test.html
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>DSHBox 右栏布局回归夹具</title>
+<style>
+  body { font: 13px/1.6 monospace; margin: 0; padding: 16px; }
+  #log div { white-space: pre-wrap; }
+  .pass { color: #0a0a; }
+  .fail { color: #c00; font-weight: bold; }
+  #summary { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+
+  /* —— 以下为 dsh 真实 AppFrame 布局（摘自 0.1.5-rc.2，哈希前缀 pI_x6G_ 真实）—— */
+  #stage { position: relative; width: 390px; height: 600px; border: 1px solid #999; margin-bottom: 12px; }
+  .pI_x6G_frame {
+    background: #fff; height: 100%;
+    transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+    grid-template-rows: 100%; display: grid; position: relative; overflow: hidden;
+    /* dsh 默认：三列，右栏轨道由占用方决定（此处模拟"已展开"，给 0 宽以还原悬挂场景） */
+    grid-template-columns: 240px minmax(0, 1fr) 0px;
+  }
+  .pI_x6G_sidebarCol { background: #f0f0f0; border-right: .5px solid #ccc; min-width: 0; overflow: hidden; }
+  .pI_x6G_centerCol { flex-direction: column; min-width: 0; display: flex; overflow: hidden; }
+  .pI_x6G_rightbarCol { min-width: 0; position: relative; overflow: visible; }
+  .pI_x6G_handle { cursor: col-resize; z-index: 11; width: 8px; margin-left: -4px; position: absolute; top: 0; bottom: 0; }
+
+  /* 右栏占用面板：贴列右缘悬挂到中栏之上（这是 dsh 的设计） */
+  .rbPanel {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 320px;
+    background: #eef6ff; border-left: 1px solid #8ab; z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div id="summary">running…</div>
+<div id="stage">
+  <div class="pI_x6G_frame" id="frame">
+    <div class="pI_x6G_sidebarCol" id="sidebar">侧栏</div>
+    <div class="pI_x6G_centerCol" id="center">对话区</div>
+    <div class="pI_x6G_rightbarCol" id="rightbar" data-rightbar-col>
+      <div class="rbPanel" id="rbPanel">文件预览面板</div>
+    </div>
+    <div class="pI_x6G_handle"></div>
+  </div>
+</div>
+<div id="log"></div>
+
+<script>
+window.__results = [];
+function check(name, cond, detail) {
+  window.__results.push({ name: name, pass: !!cond, detail: detail || "" });
+}
+window.__captured = null;
+window.__ModuleLoader__ = { load: function (def) { window.__captured = def; } };
+window.__pluginLoaded = new Promise(function (resolve, reject) {
+  var s = document.createElement("script");
+  s.src = "../app/src/main/assets/plugins/dsh-mobile-adapt/plugin/lib/client.js?t=" + Date.now();
+  s.onload = function () { resolve(); };
+  s.onerror = function () { reject(new Error("plugin load failed")); };
+  document.head.appendChild(s);
+});
+
+// 视口固定到手机宽度，让 @media (max-width:1024px) 生效
+function report() {
+  var log = document.getElementById("log");
+  var failed = 0;
+  window.__results.forEach(function (r) {
+    var d = document.createElement("div");
+    d.className = r.pass ? "pass" : "fail";
+    d.textContent = (r.pass ? "PASS  " : "FAIL  ") + r.name + (r.detail ? "   [" + r.detail + "]" : "");
+    log.appendChild(d);
+    if (!r.pass) failed++;
+  });
+  var s = document.getElementById("summary");
+  var n = window.__results.length;
+  s.textContent = failed === 0 ? "ALL PASS (" + n + "/" + n + ")" : "FAILED " + failed + " / " + n;
+  s.className = failed === 0 ? "pass" : "fail";
+}
+
+window.__pluginLoaded.then(function () {
+  try {
+    var def = window.__captured;
+    check("插件已注册", !!def && typeof def.factory === "function");
+    if (!def) { report(); return; }
+    // apply 会注入 MOBILE_CSS（插件自带 <style>），并启动各类观察器
+    def.factory(function () { return {}; }).apply({ layout: { toggleSidebar: function () {} }, slots: {} });
+
+    var frame = document.getElementById("frame");
+    var rightbar = document.getElementById("rightbar");
+    var center = document.getElementById("center");
+    var panel = document.getElementById("rbPanel");
+
+    var rbCs = getComputedStyle(rightbar);
+    var centerCs = getComputedStyle(center);
+    var panelCs = getComputedStyle(panel);
+    var frameCs = getComputedStyle(frame);
+
+    // A. 右栏不得被 display:none 干掉
+    check("A1 右栏未被 display:none（可被 dsh 打开）",
+          rbCs.display !== "none", "display=" + rbCs.display);
+    check("A2 右栏面板可见", panelCs.display !== "none" && panelCs.visibility !== "hidden",
+          "display=" + panelCs.display + " visibility=" + panelCs.visibility);
+
+    // B. 悬挂可见性：面板有实际尺寸，且贴在右栏右缘（位于中栏之上）
+    var pr = panel.getBoundingClientRect();
+    var cr = center.getBoundingClientRect();
+    var fr = frame.getBoundingClientRect();
+    check("B1 悬挂面板有实际尺寸", pr.width > 0 && pr.height > 0,
+          Math.round(pr.width) + "x" + Math.round(pr.height));
+    check("B2 面板贴右栏右缘（悬挂到中栏之上）", pr.right >= fr.right - 2,
+          "panel.right=" + Math.round(pr.right) + " frame.right=" + Math.round(fr.right));
+    check("B3 面板与中栏有重叠（说明确实悬挂在上面）",
+          pr.left < cr.right, "panel.left=" + Math.round(pr.left) + " center.right=" + Math.round(cr.right));
+
+    // C. 右栏仍在第 3 条网格轨道（没被自动放置挤到第 1 条）
+    var cols = frameCs.gridTemplateColumns.split(" ").filter(function (x) { return x; });
+    check("C1 网格仍是三轨", cols.length === 3, "cols=" + cols.join("|"));
+    // rightbar 的 x 应 >= center 的 x（即位于最右列），而非贴左
+    var rr = rightbar.getBoundingClientRect();
+    check("C2 右栏位于最右列（未被挤到第 1 轨）", rr.left >= cr.left - 1,
+          "rightbar.left=" + Math.round(rr.left) + " center.left=" + Math.round(cr.left));
+
+    // D. 中栏仍吃满剩余宽度（侧栏轨道被压成 0 后）
+    check("D1 侧栏轨道已被压成 0", Math.abs(parseFloat(cols[0])) < 1.5, "col0=" + cols[0]);
+    check("D2 中栏宽度接近视口宽（对话区满宽）", cr.width > 300,
+          "center.width=" + Math.round(cr.width));
+
+    report();
+  } catch (e) {
+    check("夹具异常: " + e.message, false, String(e));
+    report();
+  }
+}, function (err) {
+  check("插件加载失败: " + err.message, false, "");
+  report();
+});
+</script>
+</body>
+</html>

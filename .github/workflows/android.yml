@@ -34,9 +34,20 @@ jobs:
       - name: Grant execute permission to scripts
         run: chmod +x gradlew tools/*.sh runtime-bundle/scripts/*.sh runtime-bundle/build_rootfs.sh
 
+      # 需要 python3 跑隐私审计
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       # 1.2.1 (P6)：多语言资源键位/占位符 parity + 源码硬编码 CJK 扫描
       - name: Run i18n consistency check
         run: bash tools/i18n_check.sh
+
+      # v1.3.1：阻断「本机路径/用户名/凭据」随仓库公开
+      # （实测踩到 docs/BUILD_RUNBOOK.md 带着开发机 JDK 路径并已公开）
+      - name: Run privacy audit
+        run: python3 tools/privacy_audit.py
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace

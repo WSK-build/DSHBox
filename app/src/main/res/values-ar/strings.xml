@@ -101,6 +101,16 @@
     <string name="diagnostics_log_title">سجلات التشغيل</string>
     <string name="diagnostics_status_not_ready">غير جاهز</string>
     <string name="diagnostics_status_running">قيد التشغيل</string>
+    <string name="diagnostics_webview_chromium">إصدار Chromium الرئيسي</string>
+    <string name="diagnostics_webview_detecting">جارٍ الاكتشاف…</string>
+    <string name="diagnostics_webview_feature_unsupported">غير مدعوم (يتطلب Chromium %1$s+)</string>
+    <string name="diagnostics_webview_features">دعم CSS</string>
+    <string name="diagnostics_webview_package">الحزمة</string>
+    <string name="diagnostics_webview_probe_failed">فشل الفحص — قد يكون محرك WebView غير متاح أو لا يستجيب</string>
+    <string name="diagnostics_webview_title">محرك WebView</string>
+    <string name="diagnostics_webview_ua">وكيل المستخدم</string>
+    <string name="diagnostics_webview_unknown">غير معروف</string>
+    <string name="diagnostics_webview_version">الإصدار</string>
     <string name="dsh_update_back">العودة إلى الإعدادات</string>
     <string name="dsh_update_back_to_sources">العودة إلى المصادر</string>
     <string name="dsh_update_cancel_install">إلغاء التثبيت</string>
@@ -420,6 +430,7 @@
     <string name="settings_appearance_light">فاتح</string>
     <string name="settings_assemble_mobile_adapt">تجميع حزمة تكيّف DSH للجوال</string>
     <string name="settings_assemble_mobile_adapt_failed">فشل التجميع، جرى التراجع</string>
+    <string name="settings_assemble_mobile_adapt_auto_failed">فشل التحديث التلقائي للإضافة المجمّعة. يُظهر المفتاح الحالة الفعلية؛ شغّله لإعادة المحاولة.</string>
     <string name="settings_assemble_mobile_adapt_remove_failed">فشلت الإزالة</string>
     <string name="settings_assemble_mobile_adapt_remove_success">تمت الإزالة</string>
     <string name="settings_assemble_mobile_adapt_restart_hint">(يُفعَّل بعد إعادة تشغيل DSH)</string>
@@ -444,7 +455,7 @@
     <string name="settings_cleanup_scanning">جارٍ الفحص…</string>
     <string name="settings_cleanup_title">تنظيف ذاكرة التخزين المؤقت &amp; الملفات غير المرغوب فيها</string>
     <string name="settings_cleanup_warning">يزيل التنظيف الملفات المؤقتة وذاكرة التخزين المؤقت. لا يتأثر ملفات مساحة عملك وبيانات محادثات DSH (user-data/.dsh) وبيئة التشغيل نفسها. أبقِ التطبيق مفتوحاً أثناء التنظيف.</string>
-    <string name="settings_diagnostics">التشخيصات</string>
+    <string name="settings_diagnostics">التشخيص والسجلات</string>
     <string name="settings_dsh_import_info_action">اختيار ملف</string>
     <string name="settings_dsh_import_info_msg">اختر حزمة طبقة DSH (.tar.zst / .tar.gz / .tar، أو .zip تحتوي على طبقة واحدة — يُسمح ببادئة دليل علوية واحدة).\n\nيجب أن تحتوي على: node_modules/@deepseek-ai/dsh (نقطة الدخول lib/bin.js + التبعيات) و package.json. تُفك الحزمة إلى منطقة مؤقتة وتُفحص أولاً؛ تُرفض الملفات غير التابعة لـ DSH ولا يتأثر DSH الحالي.\n\nيُستبدل الاستيراد runtime-current/dsh (تُنشَأ نسخة احتياطية من الطبقة القديمة في previous/dsh للاسترداد)؛ لا يتأثر بيئة التشغيل base/node/android-side ولا user-data/.dsh.</string>
     <string name="settings_dsh_import_info_title">تحديث DSH (استيراد غير متصل)</string>
@@ -474,6 +485,16 @@
     <string name="settings_section_dsh">DSH</string>
     <string name="settings_section_permissions">الصلاحيات</string>
     <string name="settings_section_sandbox">الصندوق الرملي</string>
+    <string name="settings_section_feedback">الملاحظات</string>
+    <string name="settings_feedback_star">ضع نجمة على GitHub لدعمنا</string>
+    <string name="settings_feedback_star_title">هل تمنح DSHBox نجمة؟</string>
+    <string name="settings_feedback_star_msg">يُطوَّر DSHBox ويُصان في أوقات الفراغ. إن كان مفيدًا لك، فنجمة على GitHub لفتة تشجيع جميلة — وتساعد أيضًا المزيد من الناس على اكتشاف المشروع.</string>
+    <string name="settings_feedback_star_action">اذهب لوضع النجمة</string>
+    <string name="settings_feedback_issue">أبلغ عن مشكلة أو اقتراح</string>
+    <string name="settings_feedback_issue_title">هل واجهت مشكلة؟</string>
+    <string name="settings_feedback_issue_msg">أخبرنا عبر GitHub Issues — سواء كان خطأً برمجيًا، أو تجربة غير سلسة، أو ميزة تتمناها. وإرفاق خطوات إعادة الإنتاج أو لقطة شاشة يساعدنا على تحديد المشكلة أسرع.</string>
+    <string name="settings_feedback_issue_action">افتح Issue</string>
+    <string name="settings_feedback_later">لاحقًا</string>
     <string name="settings_section_update">التحديث</string>
     <string name="settings_storage_cache">ذاكرة التخزين المؤقت للتطبيق</string>
     <string name="settings_storage_data">بيانات الصندوق الرملي</string>
@@ -553,4 +574,13 @@
     <string name="webview_waiting_dsh">جارٍ تشغيل DSH…</string>
     <string name="webview_waiting_hint">سيتم تحميل الصفحة تلقائياً عند جاهزية DSH</string>
     <string name="settings_update_ignore">تجاهل هذا الإصدار</string>
+
+    <string name="webview_upload_sandbox_title">اختر ملفات البيئة المعزولة</string>
+    <string name="webview_upload_sandbox_hint">مساحة العمل = ‏/root/projects في البيئة المعزولة</string>
+    <string name="webview_upload_up">مستوى أعلى</string>
+    <string name="webview_upload_add">إضافة</string>
+    <string name="webview_upload_failed">تعذّر قراءة الملفات المحددة</string>
+    <string name="webview_upload_partial_failed">تعذّرت قراءة %1$d من أصل %2$d ملفًا وتم تخطّيها</string>
+
+    <string name="webview_settings_doc_missing">ملف الإعدادات غير موجود: user-data/.dsh/settings.yaml</string>
 </resources>

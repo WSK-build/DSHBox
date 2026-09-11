@@ -27,4 +27,17 @@ data class SandboxConfig(
      * 随「应用缓存」类别可一键清理。未提供 cacheDir 时兜底到 appFilesDir（测试）。
      */
     val npmCacheDir: File = File(appCacheDir ?: appFilesDir, "npm-cache")
+
+    /**
+     * 宿主侧存放「Android 硬链接兼容垫片」的目录，启动 DSH 时 bind 到 guest 的
+     * `/opt/dshbox`（见 [com.dshbox.app.common.Constants.DSH_LINK_SHIM_GUEST_DIR]）。
+     *
+     * 独立于 DSH 层：垫片随 APK 发布、在**运行期**注入，因此无论 DSH 来自内置基线、
+     * 在线 npm 更新还是离线导入，都无需重新打补丁，也绝不改写 DSH 源码。
+     * 放在 appFilesDir 下而非 user-data，避免进入用户可见的工作区与备份范围。
+     */
+    val dshShimDir: File = File(appFilesDir, "dshbox")
+
+    /** 垫片文件名（宿主侧与 guest 侧同名；与 [dshShimDir] 组合出 `--import` 目标）。 */
+    val dshShimFile: File = File(dshShimDir, "link-shim.mjs")
 }

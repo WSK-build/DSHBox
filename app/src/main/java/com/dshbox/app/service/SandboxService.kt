@@ -123,6 +123,7 @@ class SandboxService : Service() {
     private suspend fun bootstrap() = BackgroundOps.runTracked {
         sandboxManager.initialize()
         provisionMobileAdaptPlugin()
+        provisionDshLinkShim()
         val container = (application as DshApp).container
         when (val bundled = BundledRuntimeInstaller(applicationContext, container.sandboxConfig).installIfAbsent()) {
             is AppResult.Success -> if (bundled.value) Log.i(TAG, "bootstrap: bundled runtime installed")
@@ -136,6 +137,9 @@ class SandboxService : Service() {
         }
         if (sandboxManager.isRuntimeInstalled()) {
             provisionBundledDsh()
+            // 已装配过移动端适配插件的话，把 profile 里的副本刷新为本次 APK 内的版本。
+            // 必须在 startDsh 之前：刷新后当次启动即加载新插件，用户无需手动移除再装配。
+            refreshAssembledMobileAdaptPlugin()
             val firstRun = !prefs.getBoolean(Constants.PREF_FIRST_RUN_COMPLETED, false)
             if (firstRun) {
                 Log.i(TAG, "bootstrap: first run, starting sandbox and dsh")
@@ -171,6 +175,169 @@ class SandboxService : Service() {
             Log.i(TAG, "bootstrap: mobile-adapt plugin staged to ${stageDir.absolutePath}")
         } catch (t: Throwable) {
             Log.w(TAG, "bootstrap: provision mobile-adapt plugin failed: ${t.message}")
+        }
+    }
+
+    /**
+     * 若用户**已经装配过**移动端适配插件，则把 profile 里的副本刷新为 APK 内的当前版本。
+     *
+     * ## 为什么需要它
+     *
+     * `install.sh` 把插件复制进 `profiles/web/node_modules/@local/dsh-mobile-adapt` 后
+     * **不会自动跟随 APK 升级**：用户在 v1.3.0 装配一次，之后装上 v1.3.1 的 APK，
+     * profile 里仍是旧副本，页面上跑的就是旧逻辑——表现为「app 里改了插件行为，
+     * 真机上毫无变化，除非手动移除再装配一次」。
+     *
+     * ## 设计：只刷新「已装配」的，不擅自装配
+     *
+     * - **未装配**（profile 里没有该插件）：什么都不做。装配与否是用户的显式选择
+     *   （设置页开关），app 不替用户决定是否往他的 DSH profile 里塞插件。
+     * - **已装配**：把最新副本覆盖进去（等价于用户手动点一次「装配」）。
+     *
+     * ## 两道前置判断（在一次 guest 命令内完成，绝不强行覆盖）
+     *
+     * 两条判断**合并为单次 `runGuestCommand`**：每次调用都要 spawn 一个 proot 进程，
+     * 拆成两条会让"插件已是最新"这个最常见的路径也付两次 spawn。
+     * 合并用输出标记区分三种状态（不能用 `&&` 串联——两条判断的失败去向相反，详见下方）。
+     *
+     * 1. `probeReady` —— profile 里**确实已有**该插件（`profile` 目录不存在 = DSH 从没跑过，
+     *    此时不该凭空塞插件）**且** staged 的 `install.sh` 已就位（assets 复制成功）。
+     * 2. `probeUpToDate` —— 关键文件**内容一致**且 bundle 已注册。
+     *    一致则**跳过安装**：省掉每次启动的解包/写盘/改 JSON，也**避免覆盖用户
+     *    对 profile 内插件的手动修改**（用户可能自己调过插件）。
+     *
+     * ## 失败必须让用户可感知（不能只写日志）
+     *
+     * `install.sh` 依赖 guest 内的 `python3`（用于改 `package.json`）；若 python3 缺失、
+     * 或 profile 结构变化导致脚本失败，**仅记日志会让设置页仍显示绿色「已装配」**，
+     * 用户以为装好了、实际跑的是旧插件——这正是旧的手动装配踩过的坑。
+     * 因此失败时把 [Constants.PREF_MOBILE_ADAPT_INSTALLED] **回退为 false**：
+     * 设置页据此显示为「未装配」，用户可手动重装并看到失败原因。
+     *
+     * 用 guest 命令而非宿主文件直写：profile 目录的属主/权限在 guest 视角下才正确，
+     * 且与用户手动装配（同一个 install.sh）走完全相同的代码路径，行为一致。
+     *
+     * 刷新后需要重启 DSH 才生效——本方法由 bootstrap 在 DSH 启动**之前**调用，
+     * 因此当次启动即加载新插件，无需用户再手动重启。
+     */
+    private suspend fun refreshAssembledMobileAdaptPlugin() {
+        val prefs = applicationContext.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
+        // 仅当用户装配过（本地标记为 true）才尝试。标记由设置页在装配/移除成功时翻转；
+        // 首次进入设置页会用 guest 查询校准一次（见 SettingsScreen）。
+        if (!prefs.getBoolean(Constants.PREF_MOBILE_ADAPT_INSTALLED, false)) {
+            Log.i(TAG, "bootstrap: mobile-adapt not assembled by user; skipping refresh")
+            return
+        }
+        val profile = "/root/projects/.dsh/profiles/web"
+        val pluginDir = "$profile/node_modules/@local/dsh-mobile-adapt"
+        val stage = "/root/projects/.dsh/mobile-adapt"
+        val stagePlugin = "$stage/plugin"
+
+        // ── 探测：判断 1 + 判断 2 合并为**一次** guest 命令 ────────────────────
+        // 每次 runGuestCommand 都会 spawn 一个 proot 进程，启动期成本可观；
+        // 原先拆成两条命令 → 插件已是最新时也要付两次 spawn。合并后只剩一次。
+        //
+        // ⚠️ 不能简单用 `A && B` 串联：两条判断的**失败去向相反** ——
+        //   判断 1 不成立（未装配）→ 必须**跳过且不安装**（不擅自往用户 profile 塞插件）；
+        //   判断 2 不成立（非最新）→ 必须**继续安装**。
+        // 由于 runGuestCommand 只把退出码折叠成 Success/Failure（拿不到具体码值），
+        // 这里靠脚本**输出标记**区分三种状态，由 Kotlin 侧分派。
+        //
+        // 判断 1：**确实已装配**才刷新 —— 两个条件都必须是"文件系统事实"，
+        // 不能只信本地偏好标记（标记可能与实际脱节）。
+        //   • `test -d $pluginDir`  —— profile 里有该插件目录。
+        //     **这一条同时覆盖三种"不该刷新"的情形**：
+        //       ① profile 目录不存在 = DSH 从没跑过 → 跳过（不凭空塞插件）；
+        //       ② profile 存在但插件不在 = 用户没装配过 或 手动卸过 → 跳过；
+        //       ③ 用户手动删过插件目录 → 跳过。
+        //   • `test -f $stage/install.sh` —— staged 插件已就位（provision 阶段成功）。
+        //     缺了说明 APK 资产复制失败，装也装不成，直接跳过。
+
+        // 判断 2：内容一致 + bundle 已注册 → 已是最新，直接跳过（省 I/O、不覆盖用户手改）。
+        // 指纹 = 关键文件内容串联后的 sha256（只用 coreutils：test/cat/sha256sum/grep，
+        // 不依赖 diff/awk —— guest 里一定可用）。详见 [MobileAdaptProbe]。
+        //
+        // 脚本拼接与标记解析收敛在 [MobileAdaptProbe]（纯函数、有单测）：
+        // 手工拼接的字符串少一个 `&&` 就会静默改变判定语义，编译器看不出来，
+        // 故把这段提出来由单测锁住。
+        val probeScript = MobileAdaptProbe.buildScript(
+            pluginDir = pluginDir,
+            stageInstall = "$stage/install.sh",
+            stagePlugin = stagePlugin,
+            profilePackageJson = "$profile/package.json",
+        )
+
+        // 输出行由后台读流线程回调（见 SandboxProcessRunner），用 AtomicReference 承接，
+        // 避免跨线程可见性问题。
+        val probeOutcome = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        sandboxManager.runGuestCommand(probeScript, onLine = { line ->
+            MobileAdaptProbe.markerFrom(line)?.let { probeOutcome.set(it) }
+        })
+        when (probeOutcome.get()) {
+            MobileAdaptProbe.MARKER_UP_TO_DATE -> {
+                Log.i(TAG, "bootstrap: mobile-adapt already up to date; skipping refresh")
+                return
+            }
+            MobileAdaptProbe.MARKER_NEEDS_INSTALL -> {
+                // 落到下方安装流程。
+            }
+            else -> {
+                // NOT_READY（未装配 / staged 缺失），或**根本没拿到标记**
+                // （proot spawn 失败、guest 异常、脚本被中断）。信息不足时一律不动
+                // 用户的 profile —— 宁可下次启动再试，也不擅自装配。
+                Log.i(TAG, "bootstrap: mobile-adapt not assembled in profile (or stage missing); skipping refresh")
+                return
+            }
+        }
+
+        val res = sandboxManager.runGuestCommand("bash $stage/install.sh $profile", onLine = {})
+        when (res) {
+            is AppResult.Success -> {
+                Log.i(TAG, "bootstrap: mobile-adapt plugin refreshed to bundled version")
+                prefs.edit().remove(Constants.PREF_MOBILE_ADAPT_LAST_ERROR).apply()
+            }
+            is AppResult.Failure -> {
+                Log.w(TAG, "bootstrap: mobile-adapt refresh failed: ${res.error.message}")
+                // 回退「已装配」标记：避免设置页继续显示绿色已装配而实际跑的是旧插件。
+                // 用户下次进入设置页会看到「未装配」，可手动重装并看到失败提示。
+                prefs.edit()
+                    .putBoolean(Constants.PREF_MOBILE_ADAPT_INSTALLED, false)
+                    .putString(
+                        Constants.PREF_MOBILE_ADAPT_LAST_ERROR,
+                        // 此处拿不到前台 UI 上下文，无法弹 Toast；
+                        // 把原因写进偏好，由设置页读取展示（见 SettingsScreen）。
+                        res.error.message.ifBlank { res.error.code },
+                    )
+                    .apply()
+                Log.w(TAG, "bootstrap: cleared assembled flag so the UI reflects the failed refresh")
+            }
+        }
+    }
+
+    /**
+     * Stage the APK-bundled **Android hard-link compatibility shim** into the
+     * host directory that is bound to the guest's `/opt/dshbox` and preloaded
+     * via `node --import` when DSH starts (see SandboxProcessRunner).
+     *
+     * This replaces the old approach of REWRITING DSH's JS files at install time:
+     * the shim only swaps `node:fs/promises`'s `link` at RUNTIME, so no DSH source
+     * byte is ever modified and there is nothing to re-anchor when upstream
+     * refactors its internals.
+     *
+     * Overwritten on every boot so an updated APK always ships the current shim.
+     */
+    private suspend fun provisionDshLinkShim() = withContext(Dispatchers.IO) {
+        val config = (application as DshApp).container.sandboxConfig
+        try {
+            config.dshShimDir.mkdirs()
+            applicationContext.assets.open("dshbox/link-shim.mjs").use { input ->
+                config.dshShimFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            Log.i(TAG, "bootstrap: dsh link shim staged to ${config.dshShimFile.absolutePath}")
+        } catch (t: Throwable) {
+            // 垫片缺失只会让硬链接兼容失效（DSH 仍可启动，见 linkShimHostDir 的说明），
+            // 不该阻断 bootstrap，因此这里只记录。
+            Log.w(TAG, "bootstrap: provision dsh link shim failed: ${t.message}")
         }
     }
 

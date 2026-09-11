@@ -1,32 +1,34 @@
 # 运行环境 bundle 构建 + 真机安装 · 执行手册（阶段 A→D）
 
-> 本文档是**你（用户）在 WSL2/Linux 与真机上执行**的全部步骤；我在沙箱内无法执行 WSL2（E_ACCESS_DENIED）或真机测试，故只产出脚本+清单，由你实际运行并反馈结果。
+> 本文档描述**在 WSL2/Linux 与真机上**构建运行环境并验证的步骤。
 >
 > 目标：在 WSL2 构建「base/node/android-side」三层 bundle（无 DSH），在 Windows 用 `build_apk.sh`/Gradle 内嵌 → 产出自包含 APK → 真机覆盖安装验证。
+>
+> 路径一律用 `<项目根>` 表示源码所在目录；请按自己的实际位置替换。
 
 ---
 
 ## 0. 材料核对
-- 项目源码在 Windows：`$PROJECT_ROOT\modified_source`。
-- 我构建的代码已全绿（阶段 A→D），关键脚本：
+- 项目源码在 Windows：`<项目根>`。
+- 关键脚本：
   - `tools/pipeline_dryrun.sh`（预检）
   - `tools/build_arm64_runtime_bundle.sh`（调度器）
   - `runtime-bundle/build_base.sh / build_node.sh / build_android_side.sh`
   - `tools/pack_runtime.sh`、`runtime-bundle/scripts/gen_profile.sh`
-- 最终 release APK：`$PROJECT_ROOT\apk_output\dshapp-phaseD-final-release.apk`（**尚未内嵌运行环境**——需先构建 bundle 再做第 ② 步内嵌）。
+- release APK 产出在 `app/build/outputs/apk/release/`（构建阶段见第 ② 步）。
 
 ---
 
 ## ① WSL2 内构建分层 bundle
 
-### 1.1 拷贝源码到 Linux 文件系统（建议，避免 /mnt/d 挂载性能/权限问题）
+### 1.1 拷贝源码到 Linux 文件系统（建议，避免 /mnt 挂载性能/权限问题）
 在 WSL2 内：
 ```bash
 mkdir -p ~/dshbuild
-cp -r /mnt/d/PROJECT/opencode/modified_source ~/dshbuild/   # 若项目挂在 /mnt/d
-cd ~/dshbuild/modified_source
+cp -r <项目根> ~/dshbuild/          # 若项目挂在 /mnt/<盘符> 下
+cd ~/dshbuild
 ```
-> 若你已把源码放在 Linux 侧，跳到 1.2 并 `cd` 到对应目录。
+> 若源码已在 Linux 侧，跳到 1.2 并 `cd` 到对应目录。
 
 ### 1.2 安装构建前置
 ```bash
@@ -57,9 +59,9 @@ runtime-profile.json
 
 ### 1.5 把产物回拷到 Windows
 ```bash
-# 在 WSL2 内：
-mkdir -p /mnt/d/PROJECT/opencode/modified_source/dist
-cp build/dist/* /mnt/d/PROJECT/opencode/modified_source/dist/
+# 在 WSL2 内（把 <项目根> 换成 Windows 侧的源码目录在 WSL 下的挂载路径）：
+mkdir -p <项目根>/dist
+cp build/dist/* <项目根>/dist/
 ```
 > 这样 `build_apk.sh`（Windows）能检测到 `dist/runtime-profile.json + base.tar.*` 并**按分层嵌入**。
 
@@ -68,28 +70,28 @@ cp build/dist/* /mnt/d/PROJECT/opencode/modified_source/dist/
 ## ② Windows 内嵌 bundle（选择一种方式）
 
 ### 方式 A：`build_apk.sh`（推荐，自动检测分层/单体）
-在 Windows PowerShell：
+在 Windows PowerShell（`JAVA_HOME` 指向本机 JDK 21；不指定则用环境里已有的）：
 ```powershell
-$env:JAVA_HOME="D:\Software\STM32CubeMX\jre"
-# build_apk.sh 会读取 modified_source\dist；有 runtime-profile.json 则分层嵌入，否则回退单体
-$PROJECT_ROOT\modified_source\tools\build_apk.sh
+$env:JAVA_HOME="<JDK21 路径>"
+# build_apk.sh 会读取 dist/；有 runtime-profile.json 则分层嵌入，否则回退单体
+<项目根>\tools\build_apk.sh
 ```
 
 ### 方式 B：直接 `assembleRelease`（分层 assets 会被 Gradle 打包进 APK 的 assets/runtime）
-把 `dist/` 里的 `runtime-profile.json + base/node/android-side.tar.gz + .sha256` 放到
-`modified_source/app/src/main/assets/runtime/`，然后：
+把 `dist/` 里的 `runtime-profile.json + base/node/android-side.tar.zst + .sha256` 放到
+`app/src/main/assets/runtime/`，然后：
 ```powershell
-$env:JAVA_HOME="D:\Software\STM32CubeMX\jre"
-cmd /c "set JAVA_HOME=D:\Software\STM32CubeMX\jre&& $PROJECT_ROOT\modified_source\gradlew.bat -p $PROJECT_ROOT\modified_source --offline -Dorg.gradle.vfs.watch=false -Dorg.gradle.workers.max=4 -Pkotlin.compiler.execution.strategy=in-process :app:assembleRelease"
+$env:JAVA_HOME="<JDK21 路径>"
+cmd /c "set JAVA_HOME=<JDK21 路径>&& <项目根>\gradlew.bat -p <项目根> --offline -Dorg.gradle.vfs.watch=false -Dorg.gradle.workers.max=4 -Pkotlin.compiler.execution.strategy=in-process :app:assembleRelease"
 ```
 产出 `app\build\outputs\apk\release\app-release.apk`。
-> 若你要的 DSH 也随包走，把 `assets/dsh/<version>.tar.gz(+.sha256)` 一并放入 `app/src/main/assets/dsh/`，`SandboxService.provisionBundledDsh()` 会在首启自动装配。
+> 若你要的 DSH 也随包走，把 `assets/dsh/<version>.tar.zst(+.sha256)` 一并放入 `app/src/main/assets/dsh/`，`SandboxService.provisionBundledDsh()` 会在首启自动装配。
 
 验证签名：
 ```powershell
-$env:JAVA_HOME="D:\Software\STM32CubeMX\jre"
-& "$HOME\AppData\Local\Android\Sdk\build-tools\36.0.0\apksigner.bat" verify --print-certs "app\build\outputs\apk\release\app-release.apk"
-# 应显示 CN=DSHapp Dev
+$env:JAVA_HOME="<JDK21 路径>"
+& "<Android SDK>\build-tools\36.0.0\apksigner.bat" verify --print-certs "app\build\outputs\apk\release\app-release.apk"
+# 应显示 CN=DSHapp Dev（自建开发签名；见 tools/create_keystore.sh）
 ```
 
 ---

@@ -81,6 +81,16 @@
     <string name="diagnostics_log_title">Журналы выполнения</string>
     <string name="diagnostics_status_not_ready">Не готов</string>
     <string name="diagnostics_status_running">Работает</string>
+    <string name="diagnostics_webview_chromium">Основная версия Chromium</string>
+    <string name="diagnostics_webview_detecting">Определение…</string>
+    <string name="diagnostics_webview_feature_unsupported">Не поддерживается (требуется Chromium %1$s+)</string>
+    <string name="diagnostics_webview_features">Поддержка CSS</string>
+    <string name="diagnostics_webview_package">Пакет</string>
+    <string name="diagnostics_webview_probe_failed">Проверка не удалась — движок WebView может быть недоступен или не отвечать</string>
+    <string name="diagnostics_webview_title">Движок WebView</string>
+    <string name="diagnostics_webview_ua">Агент пользователя</string>
+    <string name="diagnostics_webview_unknown">Неизвестно</string>
+    <string name="diagnostics_webview_version">Версия</string>
     <string name="dsh_update_back">Вернуться к настройкам</string>
     <string name="dsh_update_back_to_sources">Вернуться к списку реестров</string>
     <string name="dsh_update_cancel_install">Отменить установку</string>
@@ -400,6 +410,7 @@
     <string name="settings_appearance_light">Светлая</string>
     <string name="settings_assemble_mobile_adapt">Собрать пакет мобильной адаптации DSH</string>
     <string name="settings_assemble_mobile_adapt_failed">Ошибка сборки, откат выполнен</string>
+    <string name="settings_assemble_mobile_adapt_auto_failed">Не удалось автоматически обновить собранный модуль. Переключатель показывает фактическое состояние; включите его, чтобы повторить.</string>
     <string name="settings_assemble_mobile_adapt_remove_failed">Не удалось удалить</string>
     <string name="settings_assemble_mobile_adapt_remove_success">Удалено</string>
     <string name="settings_assemble_mobile_adapt_restart_hint">(Вступит в силу после перезапуска DSH)</string>
@@ -424,7 +435,7 @@
     <string name="settings_cleanup_scanning">Сканирование…</string>
     <string name="settings_cleanup_title">Очистить кэш &amp; мусорные файлы</string>
     <string name="settings_cleanup_warning">Очистка удаляет временные файлы и кэш. Файлы рабочей области, данные бесед DSH (user-data/.dsh) и среда выполнения не затрагиваются. Не закрывайте приложение во время очистки.</string>
-    <string name="settings_diagnostics">Диагностика</string>
+    <string name="settings_diagnostics">Диагностика и журналы</string>
     <string name="settings_dsh_import_info_action">Выбрать файл</string>
     <string name="settings_dsh_import_info_msg">Выберите пакет слоя DSH (.tar.zst / .tar.gz / .tar или .zip, содержащий пакет — допускается один уровень каталога внутри).\n\nПакет должен содержать: node_modules/@deepseek-ai/dsh (точка входа lib/bin.js + зависимости) и package.json. Пакет распаковывается во временную область и проверяется перед установкой; файлы, не являющиеся пакетом DSH, отклоняются, а текущий DSH остаётся нетронутым.\n\nИмпорт заменяет runtime-current/dsh (старый слой сохраняется в previous/dsh для отката); базовая среда выполнения (base/node/android-side) и user-data/.dsh не затрагиваются.</string>
     <string name="settings_dsh_import_info_title">Обновить DSH (офлайн-импорт)</string>
@@ -454,6 +465,16 @@
     <string name="settings_section_dsh">DSH</string>
     <string name="settings_section_permissions">Разрешения</string>
     <string name="settings_section_sandbox">Песочница</string>
+    <string name="settings_section_feedback">Обратная связь</string>
+    <string name="settings_feedback_star">Поставьте нам звезду на GitHub</string>
+    <string name="settings_feedback_star_title">Поставите DSHBox звезду?</string>
+    <string name="settings_feedback_star_msg">DSHBox разрабатывается и поддерживается в свободное время. Если он оказался полезен, звезда на GitHub — приятная поддержка, и она помогает другим узнать о проекте.</string>
+    <string name="settings_feedback_star_action">Перейти к звезде</string>
+    <string name="settings_feedback_issue">Сообщить о проблеме или идее</string>
+    <string name="settings_feedback_issue_title">Что-то не так?</string>
+    <string name="settings_feedback_issue_msg">Напишите в GitHub Issues: об ошибке, неудобном месте или функции, которой не хватает. Шаги воспроизведения или скриншот помогут разобраться быстрее.</string>
+    <string name="settings_feedback_issue_action">Открыть issue</string>
+    <string name="settings_feedback_later">Позже</string>
     <string name="settings_section_update">Обновление</string>
     <string name="settings_storage_cache">Кэш приложения</string>
     <string name="settings_storage_data">Данные песочницы</string>
@@ -533,4 +554,13 @@
     <string name="webview_waiting_dsh">Запуск DSH…</string>
     <string name="webview_waiting_hint">Страница загрузится автоматически, когда DSH будет готов</string>
     <string name="settings_update_ignore">Игнорировать эту версию</string>
+
+    <string name="webview_upload_sandbox_title">Выбор файлов из песочницы</string>
+    <string name="webview_upload_sandbox_hint">Рабочая область = /root/projects песочницы</string>
+    <string name="webview_upload_up">На уровень выше</string>
+    <string name="webview_upload_add">Добавить</string>
+    <string name="webview_upload_failed">Не удалось прочитать выбранные файлы</string>
+    <string name="webview_upload_partial_failed">Не удалось прочитать %1$d из %2$d файлов; они пропущены</string>
+
+    <string name="webview_settings_doc_missing">Файл конфигурации не найден: user-data/.dsh/settings.yaml</string>
 </resources>

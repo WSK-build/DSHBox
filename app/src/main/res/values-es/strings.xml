@@ -71,6 +71,16 @@
     <string name="diagnostics_log_title">Registros de ejecución</string>
     <string name="diagnostics_status_not_ready">No disponible</string>
     <string name="diagnostics_status_running">En ejecución</string>
+    <string name="diagnostics_webview_chromium">Versión principal de Chromium</string>
+    <string name="diagnostics_webview_detecting">Detectando…</string>
+    <string name="diagnostics_webview_feature_unsupported">No compatible (requiere Chromium %1$s+)</string>
+    <string name="diagnostics_webview_features">Compatibilidad con CSS</string>
+    <string name="diagnostics_webview_package">Paquete</string>
+    <string name="diagnostics_webview_probe_failed">Falló la detección: el motor WebView puede no estar disponible o no responder</string>
+    <string name="diagnostics_webview_title">Motor WebView</string>
+    <string name="diagnostics_webview_ua">Agente de usuario</string>
+    <string name="diagnostics_webview_unknown">Desconocido</string>
+    <string name="diagnostics_webview_version">Versión</string>
     <string name="dsh_update_back">Volver a ajustes</string>
     <string name="dsh_update_back_to_sources">Volver a registros</string>
     <string name="dsh_update_cancel_install">Cancelar instalación</string>
@@ -390,6 +400,7 @@
     <string name="settings_appearance_light">Claro</string>
     <string name="settings_assemble_mobile_adapt">Ensamblar paquete de adaptación móvil de DSH</string>
     <string name="settings_assemble_mobile_adapt_failed">Error al ensamblar, revertido</string>
+    <string name="settings_assemble_mobile_adapt_auto_failed">Falló la actualización automática del complemento ensamblado. El interruptor muestra el estado real; actívalo para reintentar.</string>
     <string name="settings_assemble_mobile_adapt_remove_failed">Error al eliminar</string>
     <string name="settings_assemble_mobile_adapt_remove_success">Eliminado</string>
     <string name="settings_assemble_mobile_adapt_restart_hint">(Surte efecto después de reiniciar DSH)</string>
@@ -414,7 +425,7 @@
     <string name="settings_cleanup_scanning">Escaneando…</string>
     <string name="settings_cleanup_title">Limpiar caché &amp; archivos innecesarios</string>
     <string name="settings_cleanup_warning">La limpieza elimina archivos temporales y cachés. Tus archivos del espacio de trabajo, los datos de conversación de DSH (user-data/.dsh) y el propio entorno de ejecución no se modifican. Mantén la aplicación abierta durante la limpieza.</string>
-    <string name="settings_diagnostics">Diagnósticos</string>
+    <string name="settings_diagnostics">Diagnóstico y registros</string>
     <string name="settings_dsh_import_info_action">Elegir archivo</string>
     <string name="settings_dsh_import_info_msg">Selecciona un paquete de capa de DSH (.tar.zst / .tar.gz / .tar, o un .zip que contenga uno — se permite un único prefijo de directorio de nivel superior).\n\nDebe contener: node_modules/@deepseek-ai/dsh (entrada lib/bin.js + dependencias) y package.json. El paquete se desempaqueta en un área de preparación y se valida primero; los archivos que no sean de DSH se rechazan y el DSH existente no se modifica.\n\nLa importación reemplaza runtime-current/dsh (la capa anterior se guarda en previous/dsh para reversión); el entorno de ejecución base/node/android-side y user-data/.dsh no se ven afectados.</string>
     <string name="settings_dsh_import_info_title">Actualizar DSH (importación sin conexión)</string>
@@ -444,6 +455,16 @@
     <string name="settings_section_dsh">DSH</string>
     <string name="settings_section_permissions">Permisos</string>
     <string name="settings_section_sandbox">Entorno aislado</string>
+    <string name="settings_section_feedback">Comentarios</string>
+    <string name="settings_feedback_star">Danos una estrella en GitHub</string>
+    <string name="settings_feedback_star_title">¿Le das una estrella a DSHBox?</string>
+    <string name="settings_feedback_star_msg">DSHBox se desarrolla y mantiene en el tiempo libre. Si te ha sido útil, una estrella en GitHub es una buena forma de apoyarlo, y además ayuda a que más gente descubra el proyecto.</string>
+    <string name="settings_feedback_star_action">Ir a dar estrella</string>
+    <string name="settings_feedback_issue">Informa de un problema o una idea</string>
+    <string name="settings_feedback_issue_title">¿Algo no va bien?</string>
+    <string name="settings_feedback_issue_msg">Cuéntanoslo en GitHub Issues: errores, detalles que resultan incómodos o funciones que te gustaría ver. Incluir los pasos para reproducirlo o una captura nos ayuda a localizarlo antes.</string>
+    <string name="settings_feedback_issue_action">Abrir un issue</string>
+    <string name="settings_feedback_later">Quizá más tarde</string>
     <string name="settings_section_update">Actualización</string>
     <string name="settings_storage_cache">Caché de la aplicación</string>
     <string name="settings_storage_data">Datos del entorno aislado</string>
@@ -523,4 +544,13 @@
     <string name="webview_waiting_dsh">Iniciando DSH…</string>
     <string name="webview_waiting_hint">La página se cargará automáticamente cuando DSH esté listo</string>
     <string name="settings_update_ignore">Ignorar esta versión</string>
+
+    <string name="webview_upload_sandbox_title">Seleccionar archivos del sandbox</string>
+    <string name="webview_upload_sandbox_hint">Espacio de trabajo = /root/projects del sandbox</string>
+    <string name="webview_upload_up">Subir un nivel</string>
+    <string name="webview_upload_add">Añadir</string>
+    <string name="webview_upload_failed">No se pudieron leer los archivos seleccionados</string>
+    <string name="webview_upload_partial_failed">No se pudieron leer %1$d de %2$d archivo(s); se omitieron</string>
+
+    <string name="webview_settings_doc_missing">Archivo de configuración no encontrado: user-data/.dsh/settings.yaml</string>
 </resources>

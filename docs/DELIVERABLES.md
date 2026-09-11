@@ -1,7 +1,7 @@
 # DSHapp 运行环境重构 · 交付清单（阶段 A→D + zstd 补）
 
 > 本文档汇总最终交付物：release APK 路径、层版本矩阵、源码备份、CHANGELOG 记录、风险/降级说明。
-> 按 `RUNTIME_ARCH_RESTRUCTURE_PLAN.md` 执行；范围仅 `$PROJECT_ROOT\modified_source`；保护 `user-data/.dsh`；bundle 不含 DSH。
+> 按 `RUNTIME_ARCH_RESTRUCTURE_PLAN.md` 执行；范围仅本项目源码目录；保护 `user-data/.dsh`；bundle 不含 DSH。
 
 ---
 
@@ -41,7 +41,7 @@
 
 ---
 
-## 四、CHANGELOG 记录（`modified_source/CHANGELOG.md` 顶部，倒序）
+## 四、CHANGELOG 记录（`CHANGELOG.md` 顶部，倒序）
 - `2026-08-23 阶段D补 · zstd 全链路启用 + 自包含 release APK`
 - `2026-08-22 阶段D · 宿主侧原生工具链与构建管线`
 - `2026-08-22 阶段C · 运行环境完整性检测与保护`

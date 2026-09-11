@@ -35,6 +35,12 @@ object AppUpdater {
     /** 官网首页（含下载入口） */
     const val SITE_URL = "https://wsk-build.github.io/DSHBox/"
 
+    /** GitHub 仓库首页（右上角可点 Star）——设置页「用户反馈」用。 */
+    const val REPO_URL = "https://github.com/WSK-build/DSHBox"
+
+    /** GitHub Issues 列表（提 Bug / 建议）——设置页「用户反馈」用。 */
+    const val ISSUES_URL = "$REPO_URL/issues"
+
     private const val API_URL = "https://api.github.com/repos/WSK-build/DSHBox/releases/latest"
     private const val CONNECT_TIMEOUT_MS = 8_000
     private const val READ_TIMEOUT_MS = 8_000
@@ -81,6 +87,20 @@ object AppUpdater {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SITE_URL)))
         } catch (_: Exception) {
             // 设备上没有可用浏览器时静默失败。
+        }
+    }
+
+    /**
+     * 打开系统浏览器到任意 [url]（设置页「用户反馈」的两条入口用）。
+     *
+     * 与 [openSite] 同一范式：无可用浏览器时**静默失败**——
+     * 这只是"鼓励用户去支持项目"的引导路径，失败不该弹错误或崩溃。
+     */
+    fun openUrl(context: Context, url: String) {
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: Exception) {
+            // 无可用浏览器：静默忽略（非关键路径）。
         }
     }
 

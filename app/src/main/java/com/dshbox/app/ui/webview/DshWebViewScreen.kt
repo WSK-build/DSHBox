@@ -3,17 +3,25 @@ package com.dshbox.app.ui.webview
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.net.Uri
+import android.util.Log
 import android.view.ViewGroup
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebChromeClient.FileChooserParams
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -69,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -76,7 +85,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.dshbox.app.BuildConfig
 import com.dshbox.app.R
+import com.dshbox.app.common.LogRedactor
 import com.dshbox.app.sandbox.DshState
+import java.io.File
 import kotlin.math.roundToInt
 
 /**
@@ -103,7 +114,126 @@ import kotlin.math.roundToInt
 /** 移动 UA（固定） */
 private const val MOBILE_UA =
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+
+/**
+ * 上传来源哨兵 MIME —— 网页端与原生之间的唯一可用通道。
+ *
+ * 本 WebView **没有** `addJavascriptInterface` 桥，JS 无法直接调用原生；
+ * 但 `<input type="file">` 的 `accept` 属性会经 `FileChooserParams.getAcceptTypes()`
+ * 原样送到 `onShowFileChooser`。因此约定：
+ *  - accept 含本哨兵值 → 打开 app 内置的**沙箱文件**选择器；
+ *  - 其它（含无 accept）→ 走系统 `ACTION_GET_CONTENT`（手机文件）。
+ *
+ * 必须与 `assets/plugins/dsh-mobile-adapt/plugin/lib/client.js` 的
+ * `UPLOAD_SENTINEL` 保持一致。
+ */
+internal const val SANDBOX_UPLOAD_SENTINEL = "application/x-dshbox-sandbox-upload"
+
+/** 附件上传来源。 */
+internal enum class UploadSource { PHONE, SANDBOX }
+
+/**
+ * 一次 `onShowFileChooser` 请求的快照。
+ *
+ * `FileChooserParams` 只在回调栈内可靠，因此立即取出所需字段
+ * （含系统选择器 Intent），回调结束后不再持有它。
+ */
+internal class FileChooserRequest(
+    val source: UploadSource,
+    val multiple: Boolean,
+    val systemIntent: Intent?,
+)
+
+/**
+ * 网页端 → 原生的自定义 scheme 通道（1.3.1 M6）。
+ *
+ * 本 WebView **没有 `addJavascriptInterface`**，插件无法直接调用原生；
+ * 但主框架导航一定会经过 `shouldOverrideUrlLoading`，于是约定一个
+ * 只在 app 内部流通的 scheme，由 `shouldOverrideUrlLoading` 拦截后处理。
+ * 相比加 JS 桥：无需暴露任何 Java 对象、无需额外攻击面，且可精确白名单。
+ *
+ * 已知动作：
+ *  - `dshbox://open-settings-document` —— 用内置查看器打开 DSH 配置文件
+ *    （见 [SETTINGS_DOCUMENT_RELATIVE_PATH]）。
+ */
+internal const val DSHBOX_SCHEME = "dshbox"
+internal const val DSHBOX_ACTION_SETTINGS_DOCUMENT = "open-settings-document"
+
+/**
+ * DSH 配置文件相对 `filesDir` 的位置。
+ *
+ * 依据（两条都是实测）：
+ *  1. `DefaultSandboxManager.kt:965` 给 DSH 的 PRoot role 显式设了
+ *     `DSH_HOME = /root/projects/.dsh`；
+ *  2. `SandboxFiles.kt:16` PRoot 参数 `--bind=user-data:/root/projects`
+ *     → guest `/root/projects` 就是宿主 `filesDir/user-data`。
+ *
+ * 而上游 `@deepseek-ai/dsh-settings-file` 的配置文档路径是
+ * `<DSH_HOME>/settings.yaml`（源码：`resolve(config.path ??
+ * join(resolveDshHome(config.dshHome), "settings.yaml"))`）。
+ *
+ * 因此物理路径 = `filesDir/user-data/.dsh/settings.yaml` —— 落在工作区内，
+ * 既可被内置查看器直接读，也在 FileProvider 的 `user_data` 授权根之下。
+ */
+internal const val SETTINGS_DOCUMENT_RELATIVE_PATH = "user-data/.dsh/settings.yaml"
+
+/**
+ * 清除页面内**全部** `<input type="file">` 的 `accept` 属性（1.3.1 M27 的第二道防线）。
+ *
+ * 提到顶层常量是为了可单测：这段 JS 用 `querySelectorAll` 全量遍历而非只取第一个，
+ * 且**必须** `try/catch` 包住（页面可能已开始跳转/销毁，`evaluateJavascript`
+ * 抛错会打断调用方）。两处约定都由 [ClearUploadAcceptScriptTest] 断言。
+ *
+ * 用 `removeAttribute` 而不是 `accept = ''`：空串属性仍会被 `hasAttribute` 判为存在，
+ * 某些实现据此走「有 accept 即按类型过滤」的分支，等于没清。
+ */
+internal const val CLEAR_UPLOAD_ACCEPT_JS: String =
+    "(function(){try{" +
+        "var els=document.querySelectorAll('input[type=\"file\"]');" +
+        "for(var i=0;i<els.length;i++)els[i].removeAttribute('accept');" +
+        "}catch(e){}})()"
+
+/**
+ * 解析 DSH 配置文件路径，必要时**按上游语义把它物化出来**。
+ *
+ * 上游 `openSettingsDocument()` 的第一步是 `settings.prepareDocument()`
+ * （`dsh-api-settings-controller/lib/index.js:485`）：`mkdir -p` 后以 `"wx"`
+ * 独占建一个**空文件**（file mode 0600 / dir 0700），然后才把路径交给外部编辑器。
+ * 而插件在 `pointerdown` 阶段就拦掉了整个调用（改走 `dshbox://`），所以这一步
+ * 在上游永远不会发生 —— 原生侧必须自己补齐，否则全新安装（或从未写过设置的设备）
+ * 点「打开配置文件」只会得到「未找到配置文件」，功能看起来就是坏的。
+ *
+ * 已存在则**原样保留**（绝不覆盖用户配置，也不动权限位）。
+ *
+ * @return 可用于内置查看器的绝对路径；创建失败/路径不可用时返回 null。
+ */
+internal fun prepareSettingsDocument(filesDir: File): String? {
+    val file = File(filesDir, SETTINGS_DOCUMENT_RELATIVE_PATH)
+    if (!file.isFile) {
+        runCatching {
+            file.parentFile?.mkdirs()
+            file.writeText("")
+            // 与上游对齐：上游 `prepareDocument()` 用 open(path, "wx", 0o600) 创建，
+            // 而 Kotlin 的 writeText 权限受 umask 影响（通常 0644）。
+            //
+            // ⚠️ 收紧权限必须**先清后设**，两步都不能省：
+            // `File.setReadable(true, ownerOnly=true)` 的语义是「**为属主开启**读」，
+            // 它只会 OR 上 S_IRUSR，**不会**清除 group/other 位（JDK 的
+            // UnixFileSystem.setPermission 就是 `mode |= S_IRUSR`）。
+            // 因此单独调用它和 setWritable 对 0644 的文件**完全无效**——
+            // 这一处曾被误写成"会自动拒绝 group/others"，注释与行为不符，
+            // 由 CI 的 POSIX 断言抓出（Windows 跳过该断言，故本地未能发现）。
+            // 先 (false, false) 清掉全部读/写位，再 (true, true) 只给属主，
+            // 结果才是 0o600（可执行位自始至终未设置）。
+            file.setReadable(false, false)
+            file.setWritable(false, false)
+            file.setReadable(true, true)
+            file.setWritable(true, true)
+        }
+    }
+    return file.absolutePath.takeIf { file.isFile }
+}
 
 /**
  * 原生 WebView 容器：FrameLayout + WebView + 键盘自适应。
@@ -124,9 +254,80 @@ internal class DshWebContainer(
     private val onPageStarted: () -> Unit,
     private val onPageFinished: () -> Unit,
     private val onError: (String) -> Unit,
+    /**
+     * 网页端发起文件选择请求。首个参数是**发起请求的容器自身**：选择器是异步的，
+     * 结果可能在该容器离开 Compose 树之后才回来，调用方需要知道「该回填给谁」，
+     * 而不能依赖「当前活着的容器」这一共享状态。
+     */
+    private val onFileChooserRequest: (DshWebContainer, FileChooserRequest) -> Unit,
+    private val onDshboxScheme: (Uri) -> Unit,
 ) : FrameLayout(context) {
 
     val webView: WebView = WebView(context)
+
+    /**
+     * 页面 `<input type="file">` 当前挂起的回调。
+     * WebView 要求它「恰好被调用一次」（传 null 表示取消），否则该 input 会被
+     * 永久锁死（后续点击不再弹选择器）——因此任何新请求到达前都必须先把旧的
+     * 以 null 结清；容器销毁时同理。
+     */
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    /**
+     * 把选择器结果回填给 WebView（[uris] 为 null 表示用户取消）。
+     *
+     * 包 `runCatching`：结果可能晚于容器销毁才回来，此时底层 WebView 已 destroy，
+     * 回填本身可能抛异常——但那已经是收尾阶段，不该把异常抛回 ActivityResult 回调。
+     *
+     * 回填后**显式清理 `<input>` 的 accept 属性**（见 [clearUploadAccept]）。
+     */
+    fun submitFileChooserResult(uris: Array<Uri>?) {
+        val callback = filePathCallback ?: return
+        filePathCallback = null
+        runCatching { callback.onReceiveValue(uris) }
+        clearUploadAccept()
+    }
+
+    /**
+     * 清掉网页端隐藏 `<input type="file">` 上的 accept 残留。
+     *
+     * ## 为什么需要它（1.3.1 复查）
+     *
+     * 上传来源靠 input 的 `accept` 哨兵值传给原生。网页端插件已在三条路径复位
+     * （change / cancel / 捕获阶段 click 守卫），但**沙箱路径是例外**：
+     * 沙箱选择器是 app 自绘的 Compose 对话框，不经过系统文件选择器，
+     * `<input>` 的 value 从未改变 → **不触发 change**，哨兵值会一直留在元素上。
+     *
+     * 危害场景（插件侧守卫已能兜住，但那是"第二道防线"）：
+     * 用户走 dsh 自有上传入口时，若守卫因 DOM 结构变化而失效，
+     * 残留的哨兵会把系统选择器误判成沙箱上传。
+     * 这里在**结果回填的确切时刻**主动复位，与插件侧守卫形成双保险。
+     *
+     * 实现说明：清除页面内**全部** `<input type="file">` 的 `accept` 属性
+     * （`querySelectorAll` 全量遍历，而非只取第一个）。多 input 的页面上，
+     * 任何一个残留都可能污染后续判定，全清最省心，也免去"该清哪一个"的取舍。
+     *
+     * 仍是**尽量而为**：这只是一次即时快照——此调用之后新插入的 input 不在覆盖范围内，
+     * 且 `evaluateJavascript` 在页面跳转/销毁时可能不执行。插件侧的守卫才是主防线，
+     * 这里是与它互补的第二道防线。
+     */
+    private fun clearUploadAccept() {
+        runCatching {
+            webView.evaluateJavascript(CLEAR_UPLOAD_ACCEPT_JS, null)
+        }
+    }
+
+    /**
+     * 以「取消」结清仍然挂起的回调。
+     *
+     * 容器销毁时调用：WebView 要求回调**恰好被调用一次**，遗留未结清会让该
+     * `<input type="file">` 永久锁死（后续点击再也不弹选择器）。
+     */
+    fun releasePendingResult() {
+        val callback = filePathCallback ?: return
+        filePathCallback = null
+        runCatching { callback.onReceiveValue(null) }
+    }
 
     init {
         // ── WebView 基础配置 ──────────────────────────────
@@ -163,7 +364,16 @@ internal class DshWebContainer(
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,
-            ): Boolean = false
+            ): Boolean {
+                // 1.3.1 M6：内部 scheme 通道（插件 → 原生）。命中即消费，
+                //    绝不让 WebView 真的去加载它（否则会 ERR_UNKNOWN_URL_SCHEME）。
+                val url = request.url ?: return false
+                if (url.scheme.equals(DSHBOX_SCHEME, ignoreCase = true)) {
+                    onDshboxScheme(url)
+                    return true
+                }
+                return false
+            }
 
             override fun onPageStarted(
                 view: WebView?,
@@ -214,10 +424,79 @@ internal class DshWebContainer(
             false
         }
 
-        // ── WebChromeClient：进度 ────────────────────────
+        // ── WebChromeClient：进度 + 文件选择 ───────────────
+        // onShowFileChooser：WebView 默认**不会**处理 <input type="file">，必须由
+        // 宿主 Activity 起选择器并把结果回填。DSH 网页端的图片/附件上传入口
+        // 就是 <input type="file">，此前无此覆写 → 点击「上传」无任何反应。
+        //
+        // 1.3.1 M5：改为**按来源分流** —— 网页端「+」菜单通过给隐藏 input 打
+        // accept 哨兵值指定来源，这里据此决定开「手机文件（系统选择器）」还是
+        // 「沙箱文件（app 内置选择器）」。
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 onProgress(newProgress)
+            }
+
+            /**
+             * 把网页端 console 的 warn/error 转发到 logcat。
+             *
+             * 排障必需：DSH 前端把「文件资源服务不可用」这类故障只写在浏览器 console，
+             * 页面不抛异常、宿主进程无感知——没有这条转发，release 包上此类问题只能靠猜。
+             * 仅记录 warn/error（info/log 噪音太大），内容走统一打码。
+             */
+            override fun onConsoleMessage(msg: android.webkit.ConsoleMessage?): Boolean {
+                msg ?: return false
+                val level = msg.messageLevel()
+                if (level == android.webkit.ConsoleMessage.MessageLevel.ERROR ||
+                    level == android.webkit.ConsoleMessage.MessageLevel.WARNING
+                ) {
+                    Log.w(
+                        "DshWebConsole",
+                        "[$level] ${LogRedactor.redact(msg.message())} (${msg.sourceId()}:${msg.lineNumber()})",
+                    )
+                }
+                return true
+            }
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?,
+            ): Boolean {
+                if (filePathCallback == null || fileChooserParams == null) return false
+                // 结清上一次未决回调，防 input 被锁死。
+                this@DshWebContainer.filePathCallback?.onReceiveValue(null)
+                this@DshWebContainer.filePathCallback = filePathCallback
+                val accepts = fileChooserParams.acceptTypes ?: emptyArray()
+                val wantsSandbox = accepts.any {
+                    it.equals(SANDBOX_UPLOAD_SENTINEL, ignoreCase = true)
+                }
+                val multiple = fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE
+                return try {
+                    if (wantsSandbox) {
+                        // 沙箱侧由 Compose 弹内置选择器，结果经 submitFileChooserResult 回填。
+                        onFileChooserRequest(
+                            this@DshWebContainer,
+                            FileChooserRequest(UploadSource.SANDBOX, multiple, null),
+                        )
+                    } else {
+                        onFileChooserRequest(
+                            this@DshWebContainer,
+                            FileChooserRequest(
+                                UploadSource.PHONE,
+                                multiple,
+                                fileChooserParams.createIntent(),
+                            ),
+                        )
+                    }
+                    true
+                } catch (t: Throwable) {
+                    // 无法起选择器（无可用 Activity 等）：立即以取消结清，返回 false
+                    // 让 WebView 走默认失败路径，而不是把回调永久悬空。
+                    this@DshWebContainer.filePathCallback = null
+                    filePathCallback.onReceiveValue(null)
+                    false
+                }
             }
         }
 
@@ -313,8 +592,50 @@ fun DshWebViewScreen(
         .container.sandboxManager.dshLaunchToken.collectAsState()
 
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var webContainer by remember { mutableStateOf<DshWebContainer?>(null) }
     var loadProgress by remember { mutableIntStateOf(0) }
     var pageError by remember { mutableStateOf<String?>(null) }
+
+    // 系统文件选择器 —— DSH 网页端 <input type="file"> 的回填通道。
+    // 用与 Activity 生命周期绑定的 ActivityResult 契约：结果经 ActivityResultRegistry
+    // 投递，无需在 MainActivity 手写 onActivityResult，也不会因配置变更丢失注册。
+    //
+    // 发起请求的容器单独留引用（[chooserOwner]）：选择器是异步的，结果可能在
+    // 容器已从 Compose 树摘除（乃至 `webContainer` 已被 ON_DESTROY 置空）之后才回来。
+    // 只认 `webContainer` 会让这种晚到的结果被 `?.` 静默丢弃，发起请求的那个
+    // `filePathCallback` 就此永远收不到值。因此结果一律投递给**发起者**。
+    val chooserOwner = remember { mutableStateOf<DshWebContainer?>(null) }
+
+    val fileChooserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val owner = chooserOwner.value
+        chooserOwner.value = null
+        // parseResult 在用户取消时返回 null，恰好等价于「以取消结清回调」。
+        val uris = FileChooserParams.parseResult(result.resultCode, result.data)
+        // 优先投递给发起者；发起者已不可达时退回当前容器（同样是 null 才是真丢弃）。
+        (owner ?: webContainer)?.submitFileChooserResult(uris)
+    }
+
+    // 沙箱文件选择请求（非 null = 内置选择器已打开）。
+    var sandboxPick by remember { mutableStateOf<Boolean?>(null) }
+
+    // 内置文件查看器当前打开的「逻辑路径」（非 null = 查看器已打开）。
+    var viewerPath by remember { mutableStateOf<String?>(null) }
+
+    // 内置查看器需要的路径映射/层判定根（与文件页同一套规则，见 SandboxFiles.kt）。
+    val viewerMapper = remember {
+        val base = File(context.filesDir, "runtime/runtime-current/base").takeIf { it.isDirectory }
+            ?: File(context.filesDir, "runtime/runtime-current/debian")
+        val workspace = File(context.filesDir, "user-data")
+        com.dshbox.app.util.PathMapper(
+            sandboxRoot = base,
+            workspaceRoot = workspace,
+            nodeLayer = File(context.filesDir, "runtime/runtime-current/node").takeIf { it.isDirectory },
+            dshLayer = File(context.filesDir, "runtime/runtime-current/dsh").takeIf { it.isDirectory },
+        )
+    }
+    val viewerLayerRoots = remember { com.dshbox.app.util.LayerRoots(viewerMapper) }
 
     // ── 交互状态 ──────────────────────────────────────────
     var panelVisible by remember { mutableStateOf(false) }
@@ -352,12 +673,16 @@ fun DshWebViewScreen(
                     wv.resumeTimers()
                 }
                 Lifecycle.Event.ON_DESTROY -> {
+                    // 先结清挂起的选择器回调：WebView 要求它恰好被调用一次，
+                    // 未结清会让该 <input type="file"> 永久锁死。
+                    webContainer?.releasePendingResult()
                     wv.stopLoading()
                     wv.loadUrl("about:blank")
                     wv.clearHistory()
                     (wv.parent as? ViewGroup)?.removeView(wv)
                     wv.destroy()
                     webView = null
+                    webContainer = null
                 }
                 else -> Unit
             }
@@ -407,8 +732,44 @@ fun DshWebViewScreen(
                         onError = {
                             pageError = it.ifEmpty { context.getString(R.string.webview_load_failed) }
                         },
+                        onFileChooserRequest = { owner, request ->
+                            // 记录发起者，供异步结果回填（见 chooserOwner 注释）。
+                            chooserOwner.value = owner
+                            when (request.source) {
+                                UploadSource.PHONE -> {
+                                    val intent = request.systemIntent
+                                    if (intent != null) {
+                                        fileChooserLauncher.launch(intent)
+                                    } else {
+                                        chooserOwner.value = null
+                                        owner.submitFileChooserResult(null)
+                                    }
+                                }
+                                UploadSource.SANDBOX -> sandboxPick = request.multiple
+                            }
+                        },
+                        onDshboxScheme = { url ->
+                            when (url.host?.lowercase()) {
+                                DSHBOX_ACTION_SETTINGS_DOCUMENT -> {
+                                    // 补齐上游 prepareDocument()（插件拦截后它不会执行）：
+                                    // 文件缺失时按上游语义建一个空文件再打开。
+                                    val path = prepareSettingsDocument(context.filesDir)
+                                    if (path != null) {
+                                        viewerPath = path
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webview_settings_doc_missing),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                }
+                                else -> Unit
+                            }
+                        },
                     ).also { container ->
                         webView = container.webView
+                        webContainer = container
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -561,6 +922,48 @@ fun DshWebViewScreen(
                         }
                     }
                 }
+            }
+
+            // ── 沙箱文件选择器（上传来源 = 沙箱时由网页端触发）──
+            // 与网页端「+」菜单的 accept 哨兵值配套：原生侧唯一需要新增的 UI。
+            val pickMultiple = sandboxPick
+            if (pickMultiple != null) {
+                SandboxFilePickerDialog(
+                    multiple = pickMultiple,
+                    onDismiss = {
+                        sandboxPick = null
+                        // 以取消结清回调，否则 input 会被 WebView 永久锁死。
+                        val owner = chooserOwner.value
+                        chooserOwner.value = null
+                        (owner ?: webContainer)?.submitFileChooserResult(null)
+                    },
+                    onConfirm = { uris ->
+                        sandboxPick = null
+                        val owner = chooserOwner.value
+                        chooserOwner.value = null
+                        (owner ?: webContainer)?.submitFileChooserResult(uris)
+                    },
+                )
+            }
+
+            // ── 内置文件查看器（网页端 dshbox:// 通道唤起）──────────
+            // 典型用途：「打开配置文件」——DSH 原生走宿主的 OS 默认应用打开，
+            // 而宿主跑在 PRoot 里（无 xdg-open / 无默认应用），必然失败并弹
+            // 「无法打开配置文件」。这里改为用 app 自带查看器打开，
+            // 且查看器内置 YAML 高亮（util/viewer/highlight），完全不依赖外部 app。
+            val path = viewerPath
+            if (path != null) {
+                com.dshbox.app.ui.files.viewer.FileViewerScreen(
+                    logicalPath = path,
+                    mapper = viewerMapper,
+                    layerRoots = viewerLayerRoots,
+                    sandboxRunning = sandboxRunning,
+                    onDismiss = { viewerPath = null },
+                    onRequestRefresh = { /* 查看器关闭后无需刷新 WebView */ },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(50f),
+                )
             }
         }
     }

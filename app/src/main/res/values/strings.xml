@@ -61,6 +61,16 @@
     <string name="diagnostics_log_title">Run logs</string>
     <string name="diagnostics_status_not_ready">Not ready</string>
     <string name="diagnostics_status_running">Running</string>
+    <string name="diagnostics_webview_chromium">Chromium major</string>
+    <string name="diagnostics_webview_detecting">Detecting…</string>
+    <string name="diagnostics_webview_feature_unsupported">Unsupported (needs Chromium %1$s+)</string>
+    <string name="diagnostics_webview_features">CSS support</string>
+    <string name="diagnostics_webview_package">Package</string>
+    <string name="diagnostics_webview_probe_failed">Probe failed — the WebView engine may be unavailable or unresponsive</string>
+    <string name="diagnostics_webview_title">WebView engine</string>
+    <string name="diagnostics_webview_ua">User agent</string>
+    <string name="diagnostics_webview_unknown">Unknown</string>
+    <string name="diagnostics_webview_version">Version</string>
     <string name="dsh_update_back">Back to settings</string>
     <string name="dsh_update_back_to_sources">Back to registries</string>
     <string name="dsh_update_cancel_install">Cancel install</string>
@@ -380,6 +390,7 @@
     <string name="settings_appearance_light">Light</string>
     <string name="settings_assemble_mobile_adapt">Assemble DSH mobile adaptation pack</string>
     <string name="settings_assemble_mobile_adapt_failed">Assemble failed, rolled back</string>
+    <string name="settings_assemble_mobile_adapt_auto_failed">Auto-update of the assembled plugin failed. The switch shows the current real state; turn it on to retry.</string>
     <string name="settings_assemble_mobile_adapt_remove_failed">Remove failed</string>
     <string name="settings_assemble_mobile_adapt_remove_success">Removed</string>
     <string name="settings_assemble_mobile_adapt_restart_hint">(Takes effect after DSH restarts)</string>
@@ -404,7 +415,7 @@
     <string name="settings_cleanup_scanning">Scanning…</string>
     <string name="settings_cleanup_title">Clean cache &amp; junk files</string>
     <string name="settings_cleanup_warning">Cleaning removes temp files and caches. Your workspace files, DSH conversation data (user-data/.dsh) and the runtime itself are never touched. Keep the app open during cleanup.</string>
-    <string name="settings_diagnostics">Diagnostics</string>
+    <string name="settings_diagnostics">Diagnostics &amp; Logs</string>
     <string name="settings_dsh_import_info_action">Choose file</string>
     <string name="settings_dsh_import_info_msg">Select a DSH layer package (.tar.zst / .tar.gz / .tar, or a .zip containing one — a single top-level directory prefix is allowed).\n\nIt must contain: node_modules/@deepseek-ai/dsh (entry lib/bin.js + dependencies) and package.json. The package is unpacked to a staging area and validated first; non-DSH files are rejected and the existing DSH stays untouched.\n\nImport replaces runtime-current/dsh (the old layer is backed up to previous/dsh for rollback); the base/node/android-side runtime and user-data/.dsh are not affected.</string>
     <string name="settings_dsh_import_info_title">Update DSH (offline import)</string>
@@ -434,6 +445,16 @@
     <string name="settings_section_dsh">DSH</string>
     <string name="settings_section_permissions">Permissions</string>
     <string name="settings_section_sandbox">Sandbox</string>
+    <string name="settings_section_feedback">Feedback</string>
+    <string name="settings_feedback_star">Star us on GitHub</string>
+    <string name="settings_feedback_star_title">Give DSHBox a star?</string>
+    <string name="settings_feedback_star_msg">DSHBox is built and maintained in spare time. If it has been useful to you, a star on GitHub is a great way to show support — it also helps more people discover the project.</string>
+    <string name="settings_feedback_star_action">Star on GitHub</string>
+    <string name="settings_feedback_issue">Report a problem or idea</string>
+    <string name="settings_feedback_issue_title">Something wrong?</string>
+    <string name="settings_feedback_issue_msg">Tell us on GitHub Issues — whether it is a bug, something that feels awkward, or a feature you would like to see. Steps to reproduce or a screenshot help us pin it down faster.</string>
+    <string name="settings_feedback_issue_action">Open an issue</string>
+    <string name="settings_feedback_later">Maybe later</string>
     <string name="settings_section_update">Update</string>
     <string name="settings_storage_cache">App cache</string>
     <string name="settings_storage_data">Sandbox data</string>
@@ -513,4 +534,13 @@
     <string name="webview_waiting_dsh">Starting DSH…</string>
     <string name="webview_waiting_hint">The page will load automatically once DSH is ready</string>
     <string name="settings_update_ignore">Ignore this version</string>
+
+    <string name="webview_upload_sandbox_title">Select sandbox files</string>
+    <string name="webview_upload_sandbox_hint">Workspace = the sandbox /root/projects</string>
+    <string name="webview_upload_up">Up one level</string>
+    <string name="webview_upload_add">Add</string>
+    <string name="webview_upload_failed">Could not read the selected file(s)</string>
+    <string name="webview_upload_partial_failed">%1$d of %2$d file(s) could not be read and were skipped</string>
+
+    <string name="webview_settings_doc_missing">Configuration file not found: user-data/.dsh/settings.yaml</string>
 </resources>

@@ -1,0 +1,191 @@
+<!doctype html>
+<!--
+  M22 回归夹具：WebView 旧内核对「非标准 scheme」的 URL 解析兼容补丁。
+
+  背景（真机两机对照实测）：
+    手机 V2282A  WebView 126 →  new URL('dsh-resource://file/x').hostname === ''
+    平板 iPA2575 WebView 138 →  new URL('dsh-resource://file/x').hostname === 'file'
+
+  而 dsh 的 `protocolOf()` 用 hostname 取协议名：
+    const u = new URL(address);
+    if (u.protocol !== 'dsh-resource:') return undefined;
+    return u.hostname === '' ? undefined : u.hostname.toLowerCase();
+  旧内核下 hostname 为空 → 取不到 'file' → provider 匹配失败
+  → 预览渲染「文件资源服务不可用」。
+
+  本夹具分两段验证：
+    A. **模拟旧内核**（用 stub 复刻 126 的解析行为）→ 断言补丁把它修正为可解析；
+    B. **真实内核**（Chromium，等价于新内核）→ 断言补丁为 no-op（不改变任何行为）。
+
+  用法：cd source && python -m http.server 8796
+       浏览器开 http://127.0.0.1:8796/tools/webview_url_compat_test.html
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>DSHBox WebView URL 兼容补丁夹具</title>
+<style>
+  body { font: 13px/1.6 monospace; padding: 16px; }
+  #log div { white-space: pre-wrap; }
+  .pass { color: #0a0; }
+  .fail { color: #c00; font-weight: bold; }
+  h2 { font-size: 15px; margin: 18px 0 6px; }
+  #summary { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div id="summary">running…</div>
+<div id="log"></div>
+
+<script>
+window.__results = [];
+function check(name, cond, detail) {
+  window.__results.push({ name: name, pass: !!cond, detail: detail || "" });
+}
+
+/**
+ * 复刻旧内核（WebView 126）的行为：非「特殊 scheme」的 URL，
+ * `//` 之后的 authority 被整体并入 pathname，hostname/host 恒为空。
+ * 特殊 scheme（http/https/ws/wss/ftp/file）行为不变。
+ *
+ * 注意：**不能靠「原生解析结果」来判定**——本夹具运行在新内核上，
+ * 原生解析本来就是对的，据此分支会导致 stub 复刻不出旧行为（实测踩过）。
+ * 因此这里直接按 scheme 分类硬编码旧行为。
+ */
+function makeBrokenURL(NativeURL) {
+  var SPECIAL = { 'http:': 1, 'https:': 1, 'ws:': 1, 'wss:': 1, 'ftp:': 1, 'file:': 1 };
+  function BrokenURL(input, base) {
+    var u = arguments.length > 1 ? new NativeURL(input, base) : new NativeURL(input);
+    if (SPECIAL[u.protocol]) return u;
+    // 由**新内核的解析结果**反推旧内核形态：把 origin/host 并回 pathname，
+    // 并抹掉 host。这样 stub 的对外表现与 WebView 126 一致。
+    var host = '';
+    var path = '//' + (u.hostname || '') + (u.pathname === '/' && !u.hostname ? '' : u.pathname);
+    if (!u.hostname) path = u.pathname || '';
+    return new Proxy(u, {
+      get: function (t, p) {
+        if (p === 'hostname' || p === 'host') return host;
+        if (p === 'pathname') return path;
+        var v = t[p];
+        return typeof v === 'function' ? v.bind(t) : v;
+      }
+    });
+  }
+  Object.getOwnPropertyNames(NativeURL).forEach(function (k) {
+    if (k === 'prototype' || k === 'length' || k === 'name') return;
+    try { BrokenURL[k] = NativeURL[k]; } catch (e) { }
+  });
+  BrokenURL.prototype = NativeURL.prototype;
+  return BrokenURL;
+}
+
+/** 从补丁后的 window.URL 里取出解析结果（无论原始内核是好是坏）。 */
+function parse(addr) {
+  var u = new window.URL(addr);
+  return { protocol: u.protocol, hostname: u.hostname, pathname: u.pathname };
+}
+
+/** 复刻 dsh 的 protocolOf，用于端到端断言。 */
+function protocolOf(addr) {
+  var parsed;
+  try { parsed = new window.URL(addr); } catch (e) { return undefined; }
+  if (parsed.protocol !== 'dsh-resource:') return undefined;
+  return parsed.hostname === "" ? undefined : parsed.hostname.toLowerCase();
+}
+
+function loadPlugin() {
+  return new Promise(function (resolve, reject) {
+    window.__captured = null;
+    window.__ModuleLoader__ = { load: function (def) { window.__captured = def; } };
+    var s = document.createElement("script");
+    s.src = "../app/src/main/assets/plugins/dsh-mobile-adapt/plugin/lib/client.js?t=" + Date.now();
+    s.onload = function () {
+      // ⚠️ 关键：插件的代码在 factory 体内，**必须真正调用 factory 才会执行**。
+      // 只注册不调用 → 补丁从未运行（本夹具初版就是这样误判的）。
+      if (window.__captured && typeof window.__captured.factory === 'function') {
+        window.__plugin = window.__captured.factory(function () { return {}; });
+      }
+      resolve();
+    };
+    s.onerror = function () { reject(new Error("plugin load failed")); };
+    document.head.appendChild(s);
+  });
+}
+
+function report() {
+  var log = document.getElementById("log");
+  var failed = 0;
+  window.__results.forEach(function (r) {
+    var d = document.createElement("div");
+    d.className = r.pass ? "pass" : "fail";
+    d.textContent = (r.pass ? "PASS  " : "FAIL  ") + r.name + (r.detail ? "   [" + r.detail + "]" : "");
+    log.appendChild(d);
+    if (!r.pass) failed++;
+  });
+  var s = document.getElementById("summary");
+  var n = window.__results.length;
+  s.textContent = failed === 0 ? "ALL PASS (" + n + "/" + n + ")" : "FAILED " + failed + " / " + n;
+  s.className = failed === 0 ? "pass" : "fail";
+}
+</script>
+
+<script>
+(async function () {
+  try {
+    var NativeURL = window.URL;
+    var ADDR = "dsh-resource://file/session/session-abc/minecraft.html";
+
+    // ═══════════ A. 模拟旧内核（WebView 126）═══════════
+    var h2a = document.createElement("h2");
+    h2a.textContent = "A. 模拟旧内核（WebView 126：非标准 scheme hostname 为空）";
+    document.body.insertBefore(h2a, document.getElementById("log"));
+
+    window.URL = makeBrokenURL(NativeURL);
+    var before = new window.URL(ADDR);
+    check("A1 已模拟出旧内核症状（hostname 为空）", before.hostname === "",
+          'hostname="' + before.hostname + '"');
+
+    await loadPlugin();   // 加载真实插件（其中含兼容补丁）
+
+    check("A2 插件已注册", !!window.__captured);
+    var after = parse(ADDR);
+    check("A3 补丁后 hostname 恢复为 file", after.hostname === "file",
+          'hostname="' + after.hostname + '"');
+    check("A4 pathname 修正为 /session/…", after.pathname === "/session/session-abc/minecraft.html",
+          'pathname="' + after.pathname + '"');
+    check("A5 protocolOf 能取到 file（端到端）", protocolOf(ADDR) === "file",
+          "protocolOf=" + protocolOf(ADDR));
+
+    // 其它地址不得被误改
+    check("A6 普通 https 地址不受影响",
+          (function () { var u = parse("https://example.com/a/b"); return u.hostname === "example.com" && u.pathname === "/a/b"; })());
+    check("A7 无 authority 的 scheme 不被误改（mailto:）",
+          (function () { var u = parse("mailto:a@b.c"); return u.hostname === ""; })());
+
+    // ═══════════ B. 真实内核（等价新内核）═══════════
+    var h2b = document.createElement("h2");
+    h2b.textContent = "B. 真实内核（Chromium，等价 WebView 138）";
+    document.body.insertBefore(h2b, document.getElementById("log"));
+
+    // 重新加载插件，但这次 window.URL 是原生（正确）实现
+    window.URL = NativeURL;
+    var nativeBefore = new NativeURL(ADDR).hostname;
+    check("B1 真实内核本身可正确解析", nativeBefore === "file", 'hostname="' + nativeBefore + '"');
+
+    await loadPlugin();
+    var after2 = parse(ADDR);
+    check("B2 补丁为 no-op（未改变正确内核的行为）", after2.hostname === "file",
+          'hostname="' + after2.hostname + '"');
+    check("B3 window.URL 未被替换（仍是原生）", window.URL === NativeURL,
+          "同一引用=" + (window.URL === NativeURL));
+    check("B4 protocolOf 正常", protocolOf(ADDR) === "file");
+
+    report();
+  } catch (e) {
+    check("夹具异常: " + e.message, false, String(e));
+    report();
+  }
+})();
+</script>
+</body>
+</html>

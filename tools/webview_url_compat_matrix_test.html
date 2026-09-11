@@ -1,0 +1,177 @@
+<!doctype html>
+<!--
+  M22 兼容边界验证：把「不同内核的解析行为」枚举成若干族，
+  逐一断言补丁的处置是否正确（覆盖 / 放行）。
+
+  目的：回答「这个适配能兼容所有 WebView 版本吗」。
+  做法：不依赖具体版本号，而是构造各类**行为形态**的 URL 实现，
+  检查补丁的探测与修正逻辑在各形态下的取舍是否符合预期。
+
+  用法：cd source && python -m http.server 8797
+       浏览器开 http://127.0.0.1:8797/tools/webview_url_compat_matrix_test.html
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>DSHBox URL 兼容补丁 · 边界矩阵</title>
+<style>
+  body { font: 13px/1.6 monospace; padding: 16px; }
+  #log div { white-space: pre-wrap; }
+  .pass { color: #0a0; }
+  .fail { color: #c00; font-weight: bold; }
+  h2 { font-size: 15px; margin: 18px 0 6px; }
+  #summary { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div id="summary">running…</div>
+<div id="log"></div>
+
+<script>
+window.__results = [];
+function check(name, cond, detail) {
+  window.__results.push({ name: name, pass: !!cond, detail: detail || "" });
+}
+
+/**
+ * 在「指定内核行为」下加载插件，然后返回该内核下 protocolOf 的结果。
+ * behavior: (NativeURL) => URL 实现（模拟该内核的解析形态）
+ */
+function withEngine(behavior) {
+  return new Promise(function (resolve) {
+    var NativeURL = window.__REAL_URL__;
+    window.URL = behavior(NativeURL);
+    window.__captured = null;
+    window.__ModuleLoader__ = { load: function (def) { window.__captured = def; } };
+    var s = document.createElement("script");
+    s.src = "../app/src/main/assets/plugins/dsh-mobile-adapt/plugin/lib/client.js?t=" + Date.now();
+    s.onload = function () {
+      if (window.__captured && window.__captured.factory) {
+        try { window.__captured.factory(function () { return {}; }); } catch (e) { }
+      }
+      // 用「当前内核视图」跑 dsh 的 protocolOf 逻辑
+      var got;
+      try {
+        var p = new window.URL('dsh-resource://file/session/s/a.html');
+        got = (p.protocol !== 'dsh-resource:') ? undefined
+            : (p.hostname === '' ? undefined : p.hostname.toLowerCase());
+      } catch (e) { got = 'EXC'; }
+      resolve(got);
+    };
+    s.onerror = function () { resolve('LOADFAIL'); };
+    document.head.appendChild(s);
+  });
+}
+
+/* ── 内核行为族 ────────────────────────────────────────────── */
+
+// 族 1：规范实现（WebView 138 一类）—— probe 通过，补丁应完全不介入
+function engineCompliant(NativeURL) { return NativeURL; }
+
+// 族 2：authority 并入 pathname（WebView 126 一类）—— 补丁应修正
+function engineAuthorityMerged(NativeURL) {
+  var SPECIAL = { 'http:': 1, 'https:': 1, 'ws:': 1, 'wss:': 1, 'ftp:': 1, 'file:': 1 };
+  function E(input, base) {
+    var u = arguments.length > 1 ? new NativeURL(input, base) : new NativeURL(input);
+    if (SPECIAL[u.protocol] || !u.hostname) return u;
+    var host = '';
+    var path = '//' + u.hostname + u.pathname;
+    return new Proxy(u, {
+      get: function (t, p) {
+        if (p === 'hostname' || p === 'host') return host;
+        if (p === 'pathname') return path;
+        var v = t[p]; return typeof v === 'function' ? v.bind(t) : v;
+      }
+    });
+  }
+  Object.getOwnPropertyNames(NativeURL).forEach(function (k) {
+    if (k === 'prototype' || k === 'length' || k === 'name') return;
+    try { E[k] = NativeURL[k]; } catch (e) { }
+  });
+  E.prototype = NativeURL.prototype;
+  return E;
+}
+
+// 族 3：构造即抛（极老/不合规内核）—— 补丁应「不介入」，因为无可修正之解析结果
+function engineThrows(NativeURL) {
+  function E(input, base) {
+    var s = String(input);
+    if (s.indexOf('dsh-resource:') === 0) { throw new TypeError('Invalid URL'); }
+    return arguments.length > 1 ? new NativeURL(input, base) : new NativeURL(input);
+  }
+  Object.getOwnPropertyNames(NativeURL).forEach(function (k) {
+    if (k === 'prototype' || k === 'length' || k === 'name') return;
+    try { E[k] = NativeURL[k]; } catch (e) { }
+  });
+  E.prototype = NativeURL.prototype;
+  return E;
+}
+
+// 族 4：hostname 大小写未规范化（返回 'FILE'）—— 规范解析但未小写
+//        dsh 自身有 .toLowerCase()，因此应能自愈（补丁可 no-op）
+function engineNoLowercase(NativeURL) {
+  function E(input, base) {
+    var u = arguments.length > 1 ? new NativeURL(input, base) : new NativeURL(input);
+    if (u.protocol === 'dsh-resource:' && u.hostname) {
+      var up = u.hostname.toUpperCase();
+      return new Proxy(u, {
+        get: function (t, p) {
+          if (p === 'hostname' || p === 'host') return up;
+          var v = t[p]; return typeof v === 'function' ? v.bind(t) : v;
+        }
+      });
+    }
+    return u;
+  }
+  Object.getOwnPropertyNames(NativeURL).forEach(function (k) {
+    if (k === 'prototype' || k === 'length' || k === 'name') return;
+    try { E[k] = NativeURL[k]; } catch (e) { }
+  });
+  E.prototype = NativeURL.prototype;
+  return E;
+}
+
+function report() {
+  var log = document.getElementById("log");
+  var failed = 0;
+  window.__results.forEach(function (r) {
+    var d = document.createElement("div");
+    d.className = r.pass ? "pass" : "fail";
+    d.textContent = (r.pass ? "PASS  " : "FAIL  ") + r.name + (r.detail ? "   [" + r.detail + "]" : "");
+    log.appendChild(d);
+    if (!r.pass) failed++;
+  });
+  var s = document.getElementById("summary");
+  var n = window.__results.length;
+  s.textContent = failed === 0 ? "ALL PASS (" + n + "/" + n + ")" : "FAILED " + failed + " / " + n;
+  s.className = failed === 0 ? "pass" : "fail";
+}
+
+(async function () {
+  try {
+    window.__REAL_URL__ = window.URL;
+
+    function h(t) { var e = document.createElement("h2"); e.textContent = t; document.body.insertBefore(e, document.getElementById("log")); }
+
+    h("族 1：规范内核（WebView 138 一类）→ 期望 protocolOf='file'，补丁 no-op");
+    check("族1 protocolOf 正确", (await withEngine(engineCompliant)) === "file");
+    check("族1 window.URL 未被替换（真 no-op）", window.URL === window.__REAL_URL__);
+
+    h("族 2：authority 并入 pathname（WebView 126 一类）→ 期望被修正为 'file'");
+    check("族2 protocolOf 被修复为 file", (await withEngine(engineAuthorityMerged)) === "file");
+
+    h("族 3：构造即抛的极老内核 → 期望为 'EXC'（本补丁不覆盖，已知边界）");
+    check("族3 明确暴露为 EXC（不静默误判）", (await withEngine(engineThrows)) === "EXC");
+
+    h("族 4：未小写的规范实现 → 期望 'file'（dsh 自身 toLowerCase 兜住）");
+    check("族4 protocolOf 仍为 file", (await withEngine(engineNoLowercase)) === "file");
+
+    report();
+  } catch (e) {
+    check("夹具异常: " + e.message, false, String(e));
+    report();
+  }
+})();
+</script>
+</body>
+</html>
