@@ -242,7 +242,7 @@ internal fun prepareSettingsDocument(filesDir: File): String? {
  *  ① ViewCompat.setOnApplyWindowInsetsListener —— 实时读 ime insets，
  *     并消费 ime（防 Chromium M139+ 内建视口缩放造成二次压缩）；
  *  ② OnGlobalLayoutListener —— 直接量窗口可见区域差值兜底，
- *     兼容 insets 派发不完整/不标准的 ROM（vivo 等）。
+ *     兼容 insets 派发不完整/不标准的部分厂商 ROM。
  *
  * 两种机制都实时计算、零写死：换手机/平板/横竖屏都自适应。
  */
