@@ -361,10 +361,50 @@
     refreshDotLabels();
   }
 
+  /**
+   * 页面自带的版本号 —— 取 HTML 里 JSON-LD 的 softwareVersion（构建时写入，JS 从不修改）。
+   *
+   * 用途：识别「**新 HTML + 旧缓存**」。localStorage 里的 release 有 30 分钟有效期，
+   * 而站点 HTML 每次发版都更新；若用户在发版后立刻访问，缓存里还留着上一版的
+   * release 数据，而 loadLatestRelease() 是**缓存优先**的 —— 于是
+   * 页面明明已经是新版本（下载按钮已指向新 APK），
+   * 「最新版本变化」板块却还显示上一版的内容，看起来像"官网没更新"。
+   * 实测踩到：v1.3.1 发布后官网仍显示 v1.3.0 的更新要点。
+   */
+  function pageVersion() {
+    try {
+      var ld = document.querySelector('script[type="application/ld+json"]');
+      if (!ld) return null;
+      var m = /"softwareVersion"\s*:\s*"([^"]+)"/.exec(ld.textContent);
+      return m ? m[1] : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** 版本号按数值段比较：返回 -1/0/1；无法解析时返回 0（视为不可比）。 */
+  function compareVersions(a, b) {
+    var pa = String(a || "").replace(/^v/i, "").split(".");
+    var pb = String(b || "").replace(/^v/i, "").split(".");
+    for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+      var na = parseInt(pa[i], 10), nb = parseInt(pb[i], 10);
+      if (isNaN(na) || isNaN(nb)) return 0;
+      if (na !== nb) return na < nb ? -1 : 1;
+    }
+    return 0;
+  }
+
   function readCache() {
     try {
       var cached = JSON.parse(localStorage.getItem(CACHE_KEY));
       if (!cached || Date.now() - cached.savedAt > CACHE_DURATION) return null;
+      /* 缓存比页面自带版本还旧 → 作废，走网络重新拉取（见 pageVersion 注释）。
+         相等或更新则照用缓存，省掉一次 API 调用。 */
+      var pv = pageVersion();
+      if (pv && cached.release && cached.release.tag_name &&
+          compareVersions(cached.release.tag_name, pv) < 0) {
+        return null;
+      }
       return cached.release;
     } catch (e) {
       return null;

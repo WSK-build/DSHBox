@@ -44,6 +44,28 @@ jobs:
       - name: Run i18n consistency check
         run: bash tools/i18n_check.sh
 
+      # v1.3.1：官网资源查询串须与 versionName 同步
+      # （GitHub Pages 静态资源 max-age=600，漏改会出现「新 HTML + 旧 JS」）
+      - name: Check website asset version string
+        run: |
+          APP_VER=$(sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          echo "versionName=$APP_VER"
+          for f in website/index.html website/404.html; do
+            [ -f "$f" ] || continue
+            vers=$(grep -o 'assets/[^"]*?v=[0-9][^"&]*' "$f" | sed 's/.*?v=//' | sort -u)
+            if [ -z "$vers" ]; then
+              echo "::error file=$f::未发现 ?v= 版本查询串"
+              exit 1
+            fi
+            for v in $vers; do
+              if [ "$v" != "$APP_VER" ]; then
+                echo "::error file=$f::?v=$v 与 versionName=$APP_VER 不一致"
+                exit 1
+              fi
+            done
+          done
+          echo "官网资源版本号已同步"
+
       # v1.3.1：阻断「本机路径/用户名/凭据」随仓库公开
       # （实测踩到 docs/BUILD_RUNBOOK.md 带着开发机 JDK 路径并已公开）
       - name: Run privacy audit
