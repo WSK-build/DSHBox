@@ -92,12 +92,25 @@ fun SettingsScreen(
     sandboxRunning: Boolean,
     dshReady: Boolean,
     dshActive: Boolean,
+    // 首页「运行环境缺失」卡直达在线获取（MainScreen 置 true 并切到设置页；
+    // 本页消费后回调复位）。
+    pendingOnlineImport: Boolean = false,
+    onPendingOnlineImportConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sandboxManager = (context.applicationContext as DshApp).container.sandboxManager
     var showDiagnostics by remember { mutableStateOf(false) }
     var showBatteryDialog by remember { mutableStateOf(false) }
+    // 在线导入运行环境包（base/node 退出 APK 的主链路）：0=隐藏 1=入口页 2=Linux层 3=node层。
+    var onlineImportPage by remember { mutableStateOf(0) }
+    // 首页直达：pending 置位时打开入口页并复位标记。
+    LaunchedEffect(pendingOnlineImport) {
+        if (pendingOnlineImport) {
+            onlineImportPage = 1
+            onPendingOnlineImportConsumed()
+        }
+    }
     // 语言选择器单选对话框（外观区块）。
     var showLanguageDialog by remember { mutableStateOf(false) }
     var updateChecking by remember { mutableStateOf(false) }
@@ -124,114 +137,12 @@ fun SettingsScreen(
     var scanJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var lastScanAt by remember { mutableStateOf(0L) }
     var lastScanGuard by remember { mutableStateOf<Boolean?>(null) }
-    // 装配 DSH 移动端适配包（cordis 插件，指令注入方式 B）
-    var assembleRunning by remember { mutableStateOf(false) }
-    var assembleChecking by remember { mutableStateOf(false) }
-    // 开关版)：装配状态本地标记（开关瞬时响应），进入设置页自动检测校准。
-    val assemblePrefs = remember { context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE) }
-    var assembleInstalled by remember {
-        mutableStateOf(assemblePrefs.getBoolean(PREF_MOBILE_ADAPT_INSTALLED, false))
-    }
-    // 装配行动作占位：运行函数定义在本函数体更后处，用 var 引用、点击时取值。
-    var assembleRowAction by remember { mutableStateOf<() -> Unit>({}) }
-
     // 「用户反馈」两条入口的弹窗开关（见下方 SettingsSection）。
     var showStarDialog by remember { mutableStateOf(false) }
     var showIssueDialog by remember { mutableStateOf(false) }
 
-    // 开关版)：仅首次（本地标记从未设置过）进入设置页时校准一次开关；
-    // 此后开关状态完全由本地标记保持（装配/移除成功时翻转），不再反复查询。
-    LaunchedEffect(isActive) {
-        if (isActive && !assembleRunning && !assemblePrefs.contains(PREF_MOBILE_ADAPT_INSTALLED)) {
-            assembleChecking = true
-            val res = sandboxManager.runGuestCommand(
-                "grep -q mobile-adapt /root/projects/.dsh/profiles/web",
-                onLine = {},
-            )
-            // 首启校准：内联写入本地标记（setAssembleInstalled 声明在其后，避免前向引用）。
-            val detected = res is AppResult.Success
-            assembleInstalled = detected
-            assemblePrefs.edit().putBoolean(PREF_MOBILE_ADAPT_INSTALLED, detected).apply()
-            assembleChecking = false
-        }
-    }
-
-    // 本地装配标记持久化（免 guest 查询：点击即切，瞬时响应；仅装配/移除
-    // 成功时更新，失败保持原状）。
-    fun setAssembleInstalled(v: Boolean) {
-        assembleInstalled = v
-        assemblePrefs.edit().putBoolean(PREF_MOBILE_ADAPT_INSTALLED, v).apply()
-    }
-
-    // 装配 DSH 移动端适配包（指令注入方式 B）：往 DSH guest 注入 install.sh；
-    // 不重启 DSH、无弹窗，结果经 Toast 提示（重启 DSH 后生效）。
-    val runAssembleMobileAdapt = fun() {
-        if (assembleRunning) return
-        assembleRunning = true
-        scope.launch {
-            val profile = "/root/projects/.dsh/profiles/web"
-            val stage = "/root/projects/.dsh/mobile-adapt"
-            val res = sandboxManager.runGuestCommand("bash $stage/install.sh $profile", onLine = {})
-            assembleRunning = false
-            when (res) {
-                is AppResult.Success -> {
-                    setAssembleInstalled(true)
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.settings_assemble_mobile_adapt_success) +
-                            context.getString(R.string.settings_assemble_mobile_adapt_restart_hint),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-                is AppResult.Failure -> {
-                    scope.launch { sandboxManager.runGuestCommand("bash $stage/uninstall.sh $profile", onLine = {}) }
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.settings_assemble_mobile_adapt_failed) +
-                            detailOf(context, res.error),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-            }
-        }
-    }
-
-    // 一键移除已装配的移动端适配插件（uninstall.sh）；不重启 DSH、无弹窗。
-    val runRemoveMobileAdapt = fun() {
-        if (assembleRunning) return
-        assembleRunning = true
-        scope.launch {
-            val profile = "/root/projects/.dsh/profiles/web"
-            val stage = "/root/projects/.dsh/mobile-adapt"
-            val res = sandboxManager.runGuestCommand("bash $stage/uninstall.sh $profile", onLine = {})
-            assembleRunning = false
-            when (res) {
-                is AppResult.Success -> {
-                    setAssembleInstalled(false)
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.settings_assemble_mobile_adapt_remove_success) +
-                            context.getString(R.string.settings_assemble_mobile_adapt_restart_hint),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-                is AppResult.Failure -> {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.settings_assemble_mobile_adapt_remove_failed) +
-                            detailOf(context, res.error),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-            }
-        }
-    }
 
 
-    // 装配行一键切换：已装配 → 移除；未装配 → 装配（本地标记瞬时响应）。
-    assembleRowAction = {
-        if (assembleInstalled) runRemoveMobileAdapt() else runAssembleMobileAdapt()
-    }
 
     // 沙箱或 DSH 任一运行中时，guest /tmp 与 proot 临时目录走 24h 智能清理。
     val tmpGuardActive = sandboxRunning || dshActive
@@ -354,6 +265,33 @@ fun SettingsScreen(
         }
     }
 
+    // 在线导入运行环境包：入口页 → 两个独立子页（Linux 层 / node 层），覆盖式挂载。
+    when (onlineImportPage) {
+        1 -> {
+            OnlineImportHubScreen(
+                onBack = { onlineImportPage = 0 },
+                onOpenDebian = { onlineImportPage = 2 },
+                onOpenNode = { onlineImportPage = 3 },
+                modifier = modifier,
+            )
+            return
+        }
+        2 -> {
+            OnlineDebianImportScreen(
+                onBack = { onlineImportPage = 1 },
+                modifier = modifier,
+            )
+            return
+        }
+        3 -> {
+            OnlineNodeImportScreen(
+                onBack = { onlineImportPage = 1 },
+                modifier = modifier,
+            )
+            return
+        }
+    }
+
     // 在线更新走独立界面（仿 DiagnosticsScreen 的覆盖式挂载）。
     if (showDshOnlineUpdate) {
         DshUpdateScreen(
@@ -472,20 +410,6 @@ fun SettingsScreen(
                 )
             }
             SettingsDivider()
-            // 更新 DSH（在线）——进入独立界面：并行探测各 npm 源
-            // （版本号 + 延迟），选源选版本后在沙箱内用 npm 拉取 @deepseek-ai/dsh
-            // 及完整依赖替换内置层（沿用官方构建方式）。
-            SettingsActionRow(
-                title = stringResource(R.string.settings_dsh_update_online),
-                onClick = { showDshOnlineUpdate = true },
-            )
-            SettingsDivider()
-            // 更新 DSH（离线导入）——先弹"导入什么"说明，再选文件。
-            SettingsActionRow(
-                title = stringResource(R.string.settings_dsh_update_offline),
-                onClick = { showDshOfflineInfo = true },
-            )
-            SettingsDivider()
             SettingsActionRow(
                 title = stringResource(R.string.home_dsh_start),
                 onClick = { SandboxService.startDsh(context) },
@@ -500,62 +424,6 @@ fun SettingsScreen(
                 title = stringResource(R.string.home_dsh_stop),
                 onClick = { SandboxService.stopDsh(context) },
             )
-        }
-
-        // 装配 DSH 移动端适配包（cordis 插件，指令注入方式 B）——位于「外观」上方。
-        // 开关版：无弹窗开关，进入设置页自动检测校准；切换中禁用防连点。
-        // 独立成卡与其余分区共用圆角描边；失败原因也放在同一张卡内——
-        // 错误属于这个开关，脱离卡片会让人误以为它在描述页面别处。
-        SettingsSection {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = !assembleRunning && !assembleChecking) { assembleRowAction() }
-                    // 10dp（而非其它行的 14dp）：开关自身高度大于纯文本行，
-                    // 这样整行高度与 SettingsRow 对齐。
-                    .padding(vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_assemble_mobile_adapt),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = assembleInstalled,
-                    enabled = !assembleRunning && !assembleChecking,
-                    onCheckedChange = { assembleRowAction() },
-                    // 打开=绿、关闭=灰白（覆盖 M3 默认主题色）。
-                    colors = SwitchDefaults.colors(
-                        checkedTrackColor = Color(0xFF10A37F),
-                        uncheckedTrackColor = Color(0xFFD5D5D5),
-                        checkedThumbColor = Color.White,
-                        uncheckedThumbColor = Color(0xFF9E9E9E),
-                        checkedBorderColor = Color(0xFF10A37F),
-                        uncheckedBorderColor = Color(0xFFBDBDBD),
-                        disabledCheckedTrackColor = Color(0x6610A37F),
-                        disabledUncheckedTrackColor = Color(0xFFE3E3E3),
-                    ),
-                )
-            }
-
-            // 自动刷新失败的原因（由 bootstrap 写入偏好，见 SandboxService）。
-            // 启动阶段没有前台 UI 上下文、弹不了 Toast，所以在这里补偿展示 ——
-            // 否则用户只看到一个灰色开关，无从得知插件为何没生效。
-            // 刷新成功后该键会被清空，这里自动消失。
-            val assembleLastError = assemblePrefs.getString(
-                Constants.PREF_MOBILE_ADAPT_LAST_ERROR,
-                null,
-            )
-            if (!assembleInstalled && !assembleLastError.isNullOrBlank()) {
-                Text(
-                    text = stringResource(R.string.settings_assemble_mobile_adapt_auto_failed) +
-                        "\n" + assembleLastError,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-            }
         }
 
         SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
@@ -637,7 +505,27 @@ fun SettingsScreen(
                 },
             )
             SettingsDivider()
-            // Row 2：离线导入运行环境包 —— 先弹"重置虚拟系统/数据丢失"二次确认，再选包导入。
+            // Row 2：更新 DSH（在线）——从 DSH 区块迁入；并行探测各 npm 源（版本号 + 延迟），
+            // 选源选版本后在沙箱内用 npm 拉取 @deepseek-ai/dsh 及完整依赖替换内置层。
+            SettingsActionRow(
+                title = stringResource(R.string.settings_dsh_update_online),
+                onClick = { showDshOnlineUpdate = true },
+            )
+            SettingsDivider()
+            // Row 3：更新 DSH（离线导入）——从 DSH 区块迁入；先弹"导入什么"说明，再选文件。
+            SettingsActionRow(
+                title = stringResource(R.string.settings_dsh_update_offline),
+                onClick = { showDshOfflineInfo = true },
+            )
+            SettingsDivider()
+            // Row 4：在线导入运行环境包 —— 内分「Linux（精简 Debian）层」与「node 层」
+            // 两个独立子页（探测→按可用性+延迟排序→用户选源）。
+            SettingsActionRow(
+                title = stringResource(R.string.online_import_title),
+                onClick = { onlineImportPage = 1 },
+            )
+            SettingsDivider()
+            // Row 5：离线导入运行环境包 —— 先弹"重置虚拟系统/数据丢失"二次确认，再选包导入。
             SettingsActionRow(
                 title = stringResource(R.string.settings_import_update),
                 onClick = { showImportRuntimeWarn = true },
@@ -1088,7 +976,7 @@ private fun SettingsSection(
 /**
  * 卡片内相邻行之间的分隔线。
  *
- * 多行卡片（沙盒 7 行、DSH 7 行）此前只靠行间留白区分，扫读时容易把两行看成一整块；
+ * 多行卡片（沙盒 7 行、DSH 7 行）只靠行间留白区分时，扫读容易把两行看成一整块；
  * 补一条细线后每行的归属明确——这是设置页的通行做法。
  * 颜色用 outlineVariant（与卡片描边同源），不加粗、不缩进：线比边框更该退到后面，
  * 缩进反而会在卡片内切出一条假的左边缘。
@@ -1205,7 +1093,7 @@ private suspend fun installUpdateFromUri(
     uri: Uri,
 ): AppResult<Unit> = withContext(Dispatchers.IO) {
     // Copy the picked runtime bundle (zip of layered body) into a temp file, then
-    // hand it to SandboxManager.importRuntimeBundle (layered clean-replace per §2.3:
+    // hand it to SandboxManager.importRuntimeBundle (layered clean-replace:
     // new body -> runtime-current, old body -> previous/, protects DSH layer + user-data).
     //
     // the SAF->cache copy can itself throw IOException (cloud provider
@@ -1301,7 +1189,3 @@ private suspend fun installDshFromUri(
     }
 }
 
-/** 装配移动端适配包状态标记（1.1.1 T2，持久化于 user-data 之外的应用偏好）。
- *  定义收敛到 [Constants.PREF_MOBILE_ADAPT_INSTALLED]——bootstrap 也读它，
- *  用来决定是否把 profile 里的插件副本刷新为当前 APK 版本。 */
-private const val PREF_MOBILE_ADAPT_INSTALLED = Constants.PREF_MOBILE_ADAPT_INSTALLED

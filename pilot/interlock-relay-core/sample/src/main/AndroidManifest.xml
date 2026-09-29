@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:label="Relay sample host"
+        android:theme="@android:style/Theme.Material.Light">
+
+        <!-- The sample host starts the relay once per sandbox start and stops it on
+             teardown; everything else (UI, dialogs, policy) stays with the host. -->
+        <service
+            android:name=".SampleHostService"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

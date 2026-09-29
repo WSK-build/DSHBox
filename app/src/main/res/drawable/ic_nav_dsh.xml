@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  底部导航「DSH」图标。
+  来源：Tabler outline `world`（与首页/文件/终端/设置四个图标同源同规格：
+  24×24、stroke 2、圆角端与圆角连接），pathData 逐字取自源 SVG，不做坐标换算。
+  描边色占位为黑，实际显示颜色由 Compose 侧的 Icon tint 决定。
+
+  为什么换掉原来的 `Icons.Filled.Language`：那是**填充风格**图标，笔画密度与视觉重量
+  都比描边图标重，放在四个描边图标中间显得更粗更深（用户实测反馈"不协调"）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M3.6 9h16.8"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M3.6 15h16.8"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M11.5 3a17 17 0 0 0 0 18"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M12.5 3a17 17 0 0 1 0 18"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+</vector>

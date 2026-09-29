@@ -3,10 +3,10 @@ package com.dshbox.app.util
 /**
  * 批导入状态机（纯 JVM，收尾）。
  *
- * 2026-09-08 审查：多选导入最初把队列推进/完成信号写成 Compose 局部函数链，形成
- * 函数环（runImport→finish→advance→startFileImport）无法前向声明，后改协程等待
- * （CompletableDeferred）；期间发生「冲突弹窗关闭未回传信号 → 驱动器永久挂起」的
- * 死锁分支——审查结论：状态机必须纯函数化，否则这类分支只能靠真机碰运气。
+ * 队列推进/完成信号若写成 Compose 局部函数链，会形成
+ * 函数环（runImport→finish→advance→startFileImport）而无法前向声明；改用协程等待
+ * （CompletableDeferred）后仍会出现「冲突弹窗关闭未回传信号 → 驱动器永久挂起」的
+ * 死锁分支。因此状态机必须纯函数化：否则这类分支只能在设备上碰运气。
  * 本类承载计数/取消/汇总判定，Compose 驱动器（LaunchedEffect）与各导入出口只做
  * 状态转换与信号回传；纯 JVM 单测 `ImportBatchStateTest` 锁定。
  */

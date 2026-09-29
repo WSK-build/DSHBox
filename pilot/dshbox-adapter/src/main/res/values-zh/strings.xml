@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手机助手适配层界面文案的中文版本。键集合与 values/strings.xml 完全一致；
+     专有名词（Shizuku、Android、APK 等）不译。 -->
+<resources>
+
+    <string name="pilot_module_title">手机助手</string>
+    <string name="pilot_notify_channel_name">助手消息</string>
+
+    <!-- 通道错误码对应的用户可读文案。 -->
+    <string name="pilot_err_surface_api_level">后台执行需要 Android 13 及以上。</string>
+
+    <!-- ===== 界面层文案 ===== -->
+    <string name="pilot_page_overview">手机助手</string>
+    <string name="pilot_page_capabilities">能力</string>
+    <string name="pilot_page_capability_detail">能力详情</string>
+    <string name="pilot_page_surface">执行模式</string>
+    <string name="pilot_page_accessibility">无障碍模式</string>
+    <string name="pilot_page_privileged">特权模式</string>
+    <string name="pilot_page_permissions">应用权限</string>
+    <string name="pilot_page_logs">运行日志</string>
+    <string name="pilot_page_audit">授权记录</string>
+    <string name="pilot_page_storage">存储占用</string>
+    <string name="pilot_page_usage">助手说明</string>
+
+    <string name="pilot_section_status">状态</string>
+    <string name="pilot_section_entries">权限闸门</string>
+    <string name="pilot_section_diagnostics">诊断</string>
+    <string name="pilot_section_assistant_access">助手访问</string>
+    <string name="pilot_section_system_access">系统权限</string>
+    <string name="pilot_section_execution">执行</string>
+    <string name="pilot_section_surface_mode">模式</string>
+    <string name="pilot_section_how_to_enable">开启方式</string>
+    <string name="pilot_section_runtime_permissions">运行时权限</string>
+    <string name="pilot_section_options">选项</string>
+    <string name="pilot_section_recent_events">近期事件</string>
+    <string name="pilot_section_recent_calls">近期调用</string>
+    <string name="pilot_section_usage">占用</string>
+
+    <string name="pilot_row_channel">通道</string>
+    <string name="pilot_row_usable_caps">可用能力</string>
+    <string name="pilot_row_surface">执行模式</string>
+    <string name="pilot_row_system_state">系统权限状态</string>
+    <string name="pilot_row_implemented">实现状态</string>
+    <string name="pilot_row_surfaces">支持的模式</string>
+    <string name="pilot_row_min_api">最低 API</string>
+    <string name="pilot_row_chosen_surface">当前模式</string>
+    <string name="pilot_row_surface_na">不涉及</string>
+    <string name="pilot_row_shizuku_service">Shizuku 服务</string>
+    <string name="pilot_row_shizuku_granted">Shizuku 授权</string>
+    <string name="pilot_row_artifact_usage">交付副本</string>
+    <string name="pilot_row_artifact_count">产物文件数</string>
+    <string name="pilot_row_log_usage">日志占用</string>
+
+    <string name="pilot_channel_running">运行中</string>
+    <string name="pilot_channel_stopped">已停止</string>
+    <string name="pilot_channel_stalled">运行中（执行器无进展）</string>
+    <string name="pilot_channel_stalled_note">执行器没有推进，%1$d 条请求在队列中等待。重启沙箱可恢复通道，本页无法修复。</string>
+    <string name="pilot_runtime_starting">正在启动手机助手通道…</string>
+    <string name="pilot_runtime_degraded">通道启动未完成（%1$s），可在返回后重试。</string>
+
+    <string name="pilot_state_ready">就绪</string>
+    <string name="pilot_state_absent">未检测到</string>
+    <string name="pilot_row_shizuku_bound">用户服务</string>
+    <string name="pilot_state_connected">已连接</string>
+    <string name="pilot_state_disconnected">未连接</string>
+    <string name="pilot_guide_shizuku_unbound">Shizuku 本体在运行且已授权，但真正执行调用所需的用户服务未连接。它连上之前，所有特权能力与虚拟屏都会失败。点下方按钮立即重连，或重启 Shizuku 应用；本应用每分钟也会自动重试一次。</string>
+    <string name="pilot_action_shizuku_reconnect">重新连接用户服务</string>
+    <string name="pilot_state_granted">已授予</string>
+    <string name="pilot_state_not_granted">未授予</string>
+    <string name="pilot_state_planned">未实现</string>
+    <string name="pilot_state_on">已开启</string>
+    <string name="pilot_state_off">未开启</string>
+    <string name="pilot_perm_notification_listener">通知监听</string>
+    <string name="pilot_cap_missing_perm">·%1$s未授予</string>
+    <string name="pilot_cap_missing_service">·%1$s未开启</string>
+    <string name="pilot_projection_channel">屏幕采集</string>
+    <string name="pilot_fgs_label">手机助手通道</string>
+
+    <string name="pilot_action_open_system_setting">去开启</string>
+    <string name="pilot_action_open_accessibility_list">打开无障碍列表</string>
+    <string name="pilot_action_open_shizuku_releases">打开 Shizuku 下载页</string>
+    <string name="pilot_action_open_shizuku_app">打开 Shizuku</string>
+    <string name="pilot_action_request_permissions">申请权限</string>
+    <string name="pilot_action_clear_artifacts">立即清理</string>
+
+    <string name="pilot_sys_granted">已授予</string>
+    <string name="pilot_sys_askable">运行时可询问</string>
+    <string name="pilot_sys_manual">需手动开启</string>
+    <string name="pilot_sys_session_consent">每次会话确认</string>
+    <string name="pilot_sys_foreground_focus">需本应用在前台</string>
+    <string name="pilot_note_foreground_focus">需本应用在前台且持有输入焦点。</string>
+    <string name="pilot_sys_unavailable">本机不支持</string>
+
+    <string name="pilot_tier_denied">禁止</string>
+    <string name="pilot_tier_ask">询问审批</string>
+    <string name="pilot_tier_always">完全访问</string>
+
+    <string name="pilot_tier_choice_denied">禁止</string>
+    <string name="pilot_tier_choice_ask">询问审批</string>
+    <string name="pilot_tier_choice_always">完全访问</string>
+
+    <string name="pilot_ceiling_any">可长期授予完全访问。</string>
+    <string name="pilot_ceiling_session">完全访问仅在当前助手会话内有效。</string>
+    <string name="pilot_ceiling_ask_only">此项按系统安全要求每次都要确认，选「完全访问」也不会跳过。</string>
+
+    <string name="pilot_category_observe">观察</string>
+    <string name="pilot_category_control">操控</string>
+    <string name="pilot_category_data">数据</string>
+    <string name="pilot_category_system">系统</string>
+<string name="pilot_category_dangerous">"危险能力"</string>
+
+    <string name="pilot_surface_foreground">前台</string>
+    <string name="pilot_surface_background">优先后台</string>
+    <string name="pilot_surface_foreground_summary">把目标应用切到屏幕上，在屏幕上操作。</string>
+    <string name="pilot_surface_background_summary">在虚拟屏上操作，不把应用切到前台。</string>
+    <string name="pilot_surface_summary">选择助手操作手机的方式。助手不能覆盖该选择。</string>
+    <string name="pilot_surface_degrade_note">后台模式需要 Shizuku 与 Android 13 及以上。某一步无法在后台完成时会退到前台，并在响应中说明被降级。</string>
+
+    <!-- 选了「优先后台」而后台屏此刻不在时，说给拿着手机的人看的那几行。
+         缺哪一环由装配根判，这里一环一行。 -->
+    <string name="pilot_surface_bg_fallback_note">「优先后台」没有生效，操作仍会落当前的屏幕。</string>
+    <string name="pilot_surface_bg_reason_shizuku_missing">本机没有安装 Shizuku。</string>
+    <string name="pilot_surface_bg_reason_shizuku_offline">Shizuku 未运行。</string>
+    <string name="pilot_surface_bg_reason_not_granted">Shizuku 在运行，但未授权给本应用。</string>
+    <string name="pilot_surface_bg_reason_display_missing">后台虚拟屏暂未创建，此步要由助手来做。</string>
+
+    <string name="pilot_surface_kind_foreground">前台</string>
+    <string name="pilot_surface_kind_trusted">后台虚拟屏</string>
+    <string name="pilot_surface_kind_observe">仅观察</string>
+
+    <string name="pilot_guide_deep_link">在打开的设置页中授予。</string>
+    <string name="pilot_guide_list_only">系统设置只会打开功能列表，请在列表中找到本应用并开启。</string>
+    <string name="pilot_guide_no_settings_page">系统未提供对应设置页，请按下方步骤操作。</string>
+    <string name="pilot_guide_not_required">该能力不需要系统层面的操作。</string>
+    <string name="pilot_guide_accessibility_steps">打开无障碍列表，找到手机助手，开启该服务。读取屏幕与执行手势都依赖它。</string>
+    <string name="pilot_guide_accessibility_limit">手势只能作用于默认屏；免系统确认的截图需要 Android 11 及以上。</string>
+    <string name="pilot_guide_shizuku_steps">安装 Shizuku，用无线调试或电脑启动它，再回到本页授予本应用访问。特权操作以 shell 身份运行，依赖该服务。</string>
+    <string name="pilot_guide_shizuku_offline">Shizuku 未在运行。检测到其服务之前，特权能力保持阻断。</string>
+
+    <string name="pilot_perm_contacts">通讯录</string>
+    <string name="pilot_perm_calendar">日历</string>
+    <string name="pilot_perm_location">位置</string>
+    <string name="pilot_perm_microphone">麦克风</string>
+    <string name="pilot_perm_notification">通知</string>
+    <string name="pilot_perm_media">照片与媒体</string>
+
+    <string name="pilot_permissions_special_note">通知监听有各自的系统页面。屏幕采集按通路不同：走前台时每次都要系统单独弹窗确认，走后台由本应用自己取帧、不弹系统框。媒体访问在本页申请。</string>
+
+    <string name="pilot_verbose_title">详细日志</string>
+    <string name="pilot_verbose_summary">为每条记录追加参数摘要。除非在复现问题，否则保持关闭。</string>
+
+    <string name="pilot_logs_empty">暂无事件记录。</string>
+    <string name="pilot_logs_location_note">写入手机助手运行日志，超过 2 MB 轮转</string>
+
+    <string name="pilot_audit_empty">暂无调用记录。</string>
+    <string name="pilot_audit_note">每次调用一行：能力、两道闸门、决定、目标与耗时。参数值只保存加盐摘要。</string>
+    <string name="pilot_audit_retention_note">保留 30 天，过期文件自动清除</string>
+
+    <string name="pilot_clear_deferred">有调用正在执行，请待其结束后重试。</string>
+    <string name="pilot_storage_note">交给DSH的产物落在 /opt/pilot/out（截图/录屏/录音/其它文件四类）。该目录每类保留最近 20 份，总量上限 256 MB、最长 7 天；最近 10 分钟内改动过的文件一律不回收。24 小时规则与产物配额管的是手机宿主侧的那份原始交付副本。</string>
+
+    <string name="pilot_usage_missing">说明尚未生成，请先启动沙盒。</string>
+
+    <string name="pilot_approval_target">操作对象</string>
+    <string name="pilot_approval_detail">写入内容</string>
+    <string name="pilot_approval_call_index">该能力第 %1$d 次询问。</string>
+    <string name="pilot_approval_allow_once">仅本次允许</string>
+    <string name="pilot_approval_allow_session">本会话内允许</string>
+    <string name="pilot_approval_deny">拒绝</string>
+    <string name="pilot_approval_notify_channel">确认请求</string>
+    <string name="pilot_approval_notify_title">助手请求确认：%1$s</string>
+    <string name="pilot_approval_notify_public">有一项操作等你确认</string>
+
+    <!-- 通知这一路的呈现状态。可用不等于可见：投递成功最多算「已投递、可见性未证实」。 -->
+    <string name="pilot_notify_state_eligible">可以发送通知确认</string>
+    <string name="pilot_notify_state_posted">已发送到通知栏（是否真的显示无法证实）</string>
+    <string name="pilot_notify_state_posted_unverified">已发送到通知栏，是否显示取决于系统设置</string>
+    <string name="pilot_notify_state_unavailable">无法发送通知；请打开手机助手页面确认</string>
+
+    <string name="pilot_risk_low">影响较小。</string>
+    <string name="pilot_risk_medium">读取个人数据或影响其他应用。</string>
+    <string name="pilot_risk_high">难以撤销，可能影响其他应用。</string>
+
+    <string name="pilot_detail_missing">该能力已不在列表中。</string>
+    <string name="pilot_action_back">返回</string>
+
+    <string name="pilot_count_of_total">%1$d / %2$d</string>
+    <string name="pilot_count_files">%1$d</string>
+    <string name="pilot_usage_of_quota">%1$s / %2$s</string>
+
+    <string name="pilot_log_line">%1$s · %2$s · %3$s</string>
+    <string name="pilot_level_info">信息</string>
+    <string name="pilot_level_warn">警告</string>
+    <string name="pilot_level_error">错误</string>
+    <string name="pilot_subsystem_transport">通道</string>
+    <string name="pilot_subsystem_gate">闸门</string>
+    <string name="pilot_subsystem_backend">能力</string>
+    <string name="pilot_subsystem_storage">存储</string>
+    <string name="pilot_subsystem_ui">界面</string>
+
+    <string name="pilot_perm_contacts_read">读取通讯录</string>
+    <string name="pilot_perm_contacts_write">写入通讯录</string>
+    <string name="pilot_perm_calendar_read">读取日历</string>
+    <string name="pilot_perm_calendar_write">写入日历</string>
+    <string name="pilot_perm_location_fine">精确位置</string>
+    <string name="pilot_perm_location_coarse">大致位置</string>
+    <string name="pilot_perm_media_images">照片与视频</string>
+    <string name="pilot_perm_media_video">视频文件</string>
+    <string name="pilot_perm_media_audio">音频文件</string>
+    <string name="pilot_perm_media_selected">选定的照片</string>
+    <string name="pilot_log_time">====== %1$s ======</string>
+    <string name="pilot_usage_method_one">方法一</string>
+    <string name="pilot_usage_method_two">方法二</string>
+    <string name="pilot_usage_method_two_guide">打开 Cordis 面板，开启「DSH连接手机」开关，即可装配手机操控插件</string>
+    <string name="pilot_usage_lead">把这一句发给沙盒里的 DSH，它就会开始使用这组工具：</string>
+    <string name="pilot_usage_command">读 /opt/pilot/USAGE.md，之后按它调用 /opt/pilot/bin/pilot</string>
+    <string name="pilot_usage_copy">复制</string>
+    <string name="pilot_usage_copied">已复制</string>
+    <string name="pilot_overlay_asking">%1$s，允许吗？</string>
+    <string name="pilot_overlay_allow">允许</string>
+    <string name="pilot_page_overlay">悬浮确认窗</string>
+    <string name="pilot_overlay_note">确认框有三个去处，依次判断：手机助手页在前台时在页内弹框；不在前台而此处已授权时压在一切界面之上；未授权时改由系统通知横幅问一句（下拉点「允许」）。通知也被关掉时，就没有任何能点的地方了。</string>
+    <string name="pilot_action_shizuku_request">向 Shizuku 申请授权</string>
+    <string name="pilot_section_artifacts">手机操控产物（均可在不同时间内自动回收）</string>
+    <string name="pilot_section_records">记录</string>
+    <string name="pilot_section_album">系统媒体库</string>
+    <string name="pilot_section_auto_recycle">自动回收</string>
+    <string name="pilot_row_media_usage">图片和视频（系统相册）</string>
+    <string name="pilot_row_media_audio">音频</string>
+<string name="pilot_out_kind_file">其它文件</string>
+<string name="pilot_out_kind_audio">录音</string>
+<string name="pilot_out_kind_video">录屏</string>
+<string name="pilot_out_kind_shot">截图</string>
+<string name="pilot_row_out_files">产物文件数</string>
+<string name="pilot_row_out_breakdown">分类占用</string>
+<string name="pilot_row_out_usage">交付DSH产物</string>
+    <string name="pilot_row_uploads_usage">入站中转</string>
+    <string name="pilot_row_mailbox_usage">信箱与暂存</string>
+    <string name="pilot_overlay_waiting">还有 %1$d 项待确认</string>
+    <string name="pilot_ask_title">助手提问</string>
+    <string name="pilot_ask_reject_all">全部驳回</string>
+    <string name="pilot_ask_reask">重新提问</string>
+    <string name="pilot_approval_pending_now">待确认：当前 1 项</string>
+    <string name="pilot_approval_pending_queued">待确认：当前 1 项（另有 %1$d 项排队）</string>
+    <string name="pilot_row_approval_pending">待确认</string>
+
+    <!-- 无障碍缺口提示与后台保活引导。仅在此处与 values/ 提供，其余语言待补。 -->
+    <string name="pilot_a11y_notice_title">无障碍服务没有连上</string>
+    <string name="pilot_a11y_notice_revoked">%1$s 需要无障碍服务，而系统已启用的无障碍服务名单里已经没有本应用：这一权限被关掉了，请重新打开。</string>
+    <string name="pilot_a11y_notice_not_bound">%1$s 需要无障碍服务。系统名单里仍有本应用，说明权限没有被撤销，只是应用在后台被关掉了。重新打开本应用即可，不需要改任何设置。</string>
+    <string name="pilot_a11y_state_not_bound">系统名单里仍有本应用，但服务此刻没有绑上：应用在后台被关掉了。重新打开本应用即可恢复屏幕相关能力。</string>
+    <string name="pilot_action_understood">知道了</string>
+
+    <string name="pilot_section_keep_alive">在后台保持运行</string>
+    <string name="pilot_keep_alive_summary">系统随时可能关掉本应用；一旦被关，无障碍服务会跟着解绑，屏幕相关能力全部停摆。下面这几项是普通应用能直达的开关。</string>
+    <string name="pilot_keep_alive_no_entry">本机没有从此处直达该页面的入口，请在系统设置中手动找到对应页面。</string>
+    <string name="pilot_keep_alive_vendor_note">自启动与后台运行那一页由厂商自己实现，没有公开入口。本应用会按本机品牌依次试已知的组件名，全都不通则退为用户手动操作。各厂商开关的名字和层级在不同 ROM 版本间会变，未经真机核对的机型页面位置可能不同。</string>
+    <string name="pilot_action_ignore_battery_optimization">本应用免电池优化</string>
+    <string name="pilot_action_battery_optimization_list">打开电池优化列表</string>
+    <string name="pilot_action_vendor_autostart">打开厂商的自启动 / 后台运行设置</string>
+    <string name="pilot_action_open_app_details">在系统设置中打开本应用</string>
+    <string name="pilot_state_exempt">已豁免</string>
+    <string name="pilot_state_not_exempt">仍被优化</string>
+<string name="pilot_shell_verb_unsupported">系统不支持此权限。</string>
+    <string name="pilot_shell_ro_dumpsys">读一个系统服务的状态快照。</string>
+    <string name="pilot_shell_ro_pm">列出已装应用、特性、权限或库。</string>
+    <string name="pilot_shell_ro_settings">读一条系统设置项的当前值。</string>
+    <string name="pilot_shell_ro_getprop">读系统属性；不给键名时读全部。</string>
+    <string name="pilot_shell_ro_appops">查某个应用当前的操作权限现状。</string>
+    <string name="pilot_shell_ro_wm">读屏幕分辨率与密度。</string>
+    <string name="pilot_shell_ro_screencap">截一帧，存成产物文件。</string>
+    <string name="pilot_shell_readonly_row">只读：随 sys.shell 一起开合，不逐条给开关。</string>
+    <string name="pilot_shell_verb_svc">"开或关 Wi-Fi、蓝牙、移动数据。"</string>
+<string name="pilot_shell_verb_media">"把某一路音量（如媒体、铃声）设成指定值。"</string>
+<string name="pilot_shell_verb_input">"以系统身份注入点击、滑动、文字或按键；按屏幕坐标动手，不经过无障碍，也点击不到虚拟屏。"</string>
+
+    <!-- 这些是核心模块词条的 dshbox 覆写：键名沿用核心的 relay_ 前缀，取值为 dshbox 各语言文案 -->
+    <string name="relay_a11y_description">允许助手读取当前屏幕内容，并代你执行手势与输入（点按、长按、滑动、滚动、写入或设置控件值、发送按键）。系统这一层是一次性授予；助手每次调用仍会按能力逐项向你取得许可，且不会操控本应用。</string>
+    <string name="relay_a11y_label">DSHBox手机助手</string>
+    <string name="relay_approval_char_count">%1$d 个字符</string>
+    <string name="relay_cap_app_install_summary">经 Shizuku 仍可能需经用户确认安装。每次都要确认。</string>
+    <string name="relay_cap_app_install_title">安装应用</string>
+    <string name="relay_cap_app_launch_summary">在当前屏幕启动其他应用。</string>
+    <string name="relay_cap_app_launch_title">启动应用</string>
+    <string name="relay_cap_app_stop_summary">强制停止其他应用，影响整机。</string>
+    <string name="relay_cap_app_stop_title">停止应用</string>
+    <string name="relay_cap_appops_set_summary">经 Shizuku 调整单个应用的操作权限。每次都要确认。</string>
+    <string name="relay_cap_appops_set_title">修改应用操作权限</string>
+    <string name="relay_cap_audio_capture_summary">采集麦克风听到的声音，单次最长 30 秒。</string>
+    <string name="relay_cap_audio_capture_title">麦克风录音</string>
+    <string name="relay_cap_cal_read_summary">读取日历日程。</string>
+    <string name="relay_cap_cal_read_title">读取日历</string>
+    <string name="relay_cap_cal_write_summary">新增或修改日历日程。</string>
+    <string name="relay_cap_cal_write_title">写入日历</string>
+    <string name="relay_cap_clip_read_summary">读出系统剪贴板里的内容。</string>
+    <string name="relay_cap_clip_read_title">读取剪贴板</string>
+    <string name="relay_cap_clip_write_summary">把文本写入系统剪贴板。</string>
+    <string name="relay_cap_clip_write_title">写入剪贴板</string>
+    <string name="relay_cap_contact_read_summary">读取联系人姓名与号码。</string>
+    <string name="relay_cap_contact_read_title">读取通讯录</string>
+    <string name="relay_cap_contact_write_summary">新增或修改联系人。</string>
+    <string name="relay_cap_contact_write_title">写入通讯录</string>
+    <string name="relay_cap_loc_read_summary">读取最近一次已知位置，不支持后台持续定位。</string>
+    <string name="relay_cap_loc_read_title">读取位置</string>
+    <string name="relay_cap_media_read_summary">从共享媒体库列出照片与视频。</string>
+    <string name="relay_cap_media_read_title">读取照片与视频</string>
+    <string name="relay_cap_media_write_summary">向共享媒体集合写入文件。</string>
+    <string name="relay_cap_media_write_title">保存到相册</string>
+    <string name="relay_cap_notify_post_summary">以本应用名义发送通知。</string>
+    <string name="relay_cap_notify_post_title">发布通知</string>
+    <string name="relay_cap_notify_read_summary">读取其他应用发布的通知。</string>
+    <string name="relay_cap_notify_read_title">读取通知</string>
+    <string name="relay_cap_pkg_query_summary">列出可识别、可启动的应用。</string>
+    <string name="relay_cap_pkg_query_title">查询已装应用</string>
+    <string name="relay_cap_screen_capture_summary">把当前屏幕截取为文件。</string>
+    <string name="relay_cap_screen_capture_title">屏幕截图</string>
+    <string name="relay_cap_screen_observe_summary">只观察屏幕内容，不发送任何输入。</string>
+    <string name="relay_cap_screen_observe_title">屏幕镜像</string>
+    <string name="relay_cap_screen_record_summary">录制屏幕。前台屏每次要系统授权；后台屏由后台取帧，不需要系统授权。</string>
+    <string name="relay_cap_screen_record_title">屏幕录制</string>
+    <string name="relay_cap_surface_virtual_summary">需要 Shizuku 与 Android 13 及以上。</string>
+    <string name="relay_cap_surface_virtual_title">后台虚拟屏</string>
+    <string name="relay_cap_sys_intent_summary">"按固定模板调用系统公开入口：设闹钟、设计时器，打开闹钟页或计时器页、某个系统设置页、某个应用的详情页、拨号盘（只打开拨号盘，不拨出）或浏览器页面。不需要无障碍与 Shizuku。只认表内模板，参数越界就拒；表里没有删除或取消闹钟的入口；本应用不在前台且无悬浮窗授权时不发。"</string>
+    <string name="relay_cap_sys_intent_title">系统语义入口</string>
+    <string name="relay_cap_sys_settings_write_summary">经 Shizuku 写入受保护设置。每次都要确认。</string>
+    <string name="relay_cap_sys_settings_write_title">修改系统设置</string>
+    <string name="relay_cap_sys_shell_summary">"系统级权限操控手机，默认包含只读和某些基础功能权限。"</string>
+    <string name="relay_cap_sys_shell_title">"系统shell能力"</string>
+    <string name="relay_cap_ui_click_summary">按选择器或节点编号直接点中目标，不产生触摸事件</string>
+    <string name="relay_cap_ui_click_title">点击控件</string>
+    <string name="relay_cap_ui_dismiss_summary">请求关闭弹窗或可移除的条目</string>
+    <string name="relay_cap_ui_dismiss_title">关闭控件</string>
+    <string name="relay_cap_ui_imeaction_summary">触发输入框的回车类动作（搜索、发送或完成）</string>
+    <string name="relay_cap_ui_imeaction_title">触发输入法动作键</string>
+    <string name="relay_cap_ui_key_summary">发送返回、主页一类的按键事件。</string>
+    <string name="relay_cap_ui_key_title">发送按键</string>
+    <string name="relay_cap_ui_longclick_summary">按选择器或节点编号长按目标</string>
+    <string name="relay_cap_ui_longclick_title">长按控件</string>
+    <string name="relay_cap_ui_node_summary">读单个控件的文本、勾选、可用性与量程</string>
+    <string name="relay_cap_ui_node_title">读取控件状态</string>
+    <string name="relay_cap_ui_scroll_summary">在滚动视图里向前或向后滚动</string>
+    <string name="relay_cap_ui_scroll_title">滚动容器</string>
+    <string name="relay_cap_ui_select_summary">请求列表或可选项组选中某个节点</string>
+    <string name="relay_cap_ui_select_title">选中列表项</string>
+    <string name="relay_cap_ui_setprogress_summary">把滑杆或进度条设为某个百分比，或该节点量程内的一个数值。</string>
+    <string name="relay_cap_ui_setprogress_title">设置滑杆数值</string>
+    <string name="relay_cap_ui_setvalue_summary">直接给目标编辑框赋值，不要求先聚焦</string>
+    <string name="relay_cap_ui_setvalue_title">写入控件文本</string>
+    <string name="relay_cap_ui_snapshot_summary">以文本读取前台窗口的视图树。</string>
+    <string name="relay_cap_ui_snapshot_title">读取屏幕结构</string>
+    <string name="relay_cap_ui_swipe_summary">在屏幕上从一点拖到另一点。</string>
+    <string name="relay_cap_ui_swipe_title">滑动</string>
+    <string name="relay_cap_ui_tap_summary">在当前屏幕上点一个位置。</string>
+    <string name="relay_cap_ui_tap_title">点按</string>
+    <string name="relay_cap_ui_text_summary">向获得焦点的输入框写入文字。</string>
+    <string name="relay_cap_ui_text_title">输入文字</string>
+    <string name="relay_cap_ui_waitfor_summary">等到某个控件满足条件或到点为止</string>
+    <string name="relay_cap_ui_waitfor_title">等待界面状态</string>
+    <string name="relay_err_action_rejected">操作已下发但应用未接受，可稍后重发一次</string>
+    <string name="relay_err_awaiting_consent">正在等待用户在手机上确认，请稍后重试。</string>
+    <string name="relay_err_backend_dead">特权服务已断开，重启后请重试。</string>
+    <string name="relay_err_backend_unavailable">该能力已实现，但其服务此刻不可达（无障碍未绑定、特权服务掉线或缺少焦点）。</string>
+    <string name="relay_err_clipboard_no_focus">剪贴板要本应用持有焦点才读得到、写得起：把手机助手切到前台再试。</string>
+    <string name="relay_err_gate_cancelled">该请求已在任何外部动作提交前被取消；没有执行任何操作。</string>
+    <string name="relay_err_gate_denied">你未允许助手使用该能力。</string>
+    <string name="relay_err_gate_no_foreground">此刻没有任何界面能承载这一次：悬浮确认窗用不上（未授权，或后台模式把它藏了起来）、通知被关、手机助手页面也不在前台；也可能是这次调用要弹的系统弹框没有可用的前台界面。</string>
+    <string name="relay_err_gate_system_missing">该能力的系统权限尚未开启。</string>
+    <string name="relay_err_gate_timeout">确认框超时未作答，按拒绝处理。</string>
+    <string name="relay_err_gate_waiting_turn">前面还有没答完的确认占着队列，这一问暂时没有排上；请稍候再问一次。</string>
+    <string name="relay_err_internal">处理请求时出现未预期的错误。</string>
+    <string name="relay_err_launch_not_landed">"启动请求已被系统接下，但目标应用没有来到前台屏或虚拟屏的最前面。"</string>
+    <string name="relay_err_malformed">请求不符合通道格式，已拒绝。</string>
+    <string name="relay_err_no_editable_target">当前没有聚焦的输入框，请先点中输入框再试。</string>
+    <string name="relay_err_node_ambiguous">选择器命中多个控件，请加上 index 或补一个能区分的条件</string>
+    <string name="relay_err_node_consent_target">此控件属于系统授权界面，宿主直接拒绝：权限弹窗只能由用户本人回答，不写 package、改用 nodeId 或补 view id 都绕不过。</string>
+    <string name="relay_err_node_no_ime_action">"此节点没有可触发的输入法动作（它不是输入框）。"</string>
+    <string name="relay_err_node_not_actionable">该控件不接受这个操作，请换一个目标或改用坐标操作</string>
+    <string name="relay_err_node_not_found">找不到匹配的控件，请重新读取界面后再指定目标</string>
+    <string name="relay_err_not_implemented">该能力在当前版本尚未提供。</string>
+    <string name="relay_err_queue_full">助手通道队列已满，请稍候再试。</string>
+    <string name="relay_err_rate_limited">该能力调用过于频繁。</string>
+    <string name="relay_err_request_large">请求超出通道可接收的大小。</string>
+    <string name="relay_err_storage_full">助手存储配额已满且无可释放内容。</string>
+    <string name="relay_err_surface_api_level">后台执行需要 Android 13 及以上。</string>
+    <string name="relay_err_surface_consent">该采集会话需要你在系统弹窗中确认。</string>
+    <string name="relay_err_surface_mode_required">该能力只能在后台可信屏上执行；请把执行偏好切到「优先后台」，并确保那块屏已经建好。</string>
+    <string name="relay_err_surface_no_shell">Shizuku 未在运行，后台执行不可用。</string>
+    <string name="relay_err_surface_secure">该窗口被标记为安全窗口，内容不可采集。</string>
+    <string name="relay_err_surface_trusted_denied">系统拒绝了可信屏的创建。</string>
+    <string name="relay_err_surface_unavailable">当前没有可承担该能力的执行模式。</string>
+    <string name="relay_err_suspended_by_host">助手窗口正在前台，请离开该界面后重试。</string>
+    <string name="relay_err_timeout">宿主未在请求有效期内应答。</string>
+    <string name="relay_err_unavailable_device">本机或当前系统版本不支持该能力。</string>
+    <string name="relay_err_wait_timeout">等待的界面状态在超时前没有出现</string>
+    <string name="relay_fgs_label">手机助手通道</string>
+    <string name="relay_fgs_ongoing">正在等待手机助手指令</string>
+    <string name="relay_module_title">手机助手</string>
+    <string name="relay_notify_channel_name">助手消息</string>
+    <string name="relay_notify_listener_label">DSHBox通知读取</string>
+    <string name="relay_projection_channel">屏幕采集</string>
+    <string name="relay_projection_ongoing">正在采集屏幕内容</string>
+    <string name="relay_risk_high">难以撤销，可能影响其他应用。</string>
+    <string name="relay_risk_low">影响较小。</string>
+    <string name="relay_risk_medium">读取个人数据或影响其他应用。</string>
+
+</resources>

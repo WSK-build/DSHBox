@@ -1,6 +1,8 @@
 package com.dshbox.app.runtime
 
 import android.content.Context
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import com.dshbox.app.R
 import com.dshbox.app.common.AppError
@@ -9,6 +11,7 @@ import com.dshbox.app.common.DshNpmSource
 import com.dshbox.app.common.DshSources
 import com.dshbox.app.common.UiText
 import com.dshbox.app.common.Versions
+import com.dshbox.app.common.coroutineFailureHandler
 import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.sandbox.DshUpdateOutcome
 import com.dshbox.app.sandbox.SandboxManager
@@ -77,7 +80,9 @@ class RuntimeUpdateManager(
 ) {
     private val tag = "RuntimeUpdate"
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + coroutineFailureHandler(tag),
+    )
 
     @Volatile private var activeGuestProcess: java.lang.Process? = null
     @Volatile private var installCancelled = false
@@ -150,34 +155,53 @@ class RuntimeUpdateManager(
             // P1③)：登记后台操作，阻止设置页清理与其并发——
             // npm 安装写 base/tmp（GUEST_TMP）与 dsh-staging（CACHE），均为清理目标。
             BackgroundOps.runTracked {
-                // 日志流不本地化（与 npm/guest 原始输出混排），源名按当前语言解析。
-                appendLog("· source: ${source.name.asString(appContext)} (${source.url})")
-                appendLog("· package: @deepseek-ai/dsh@$version")
-                val result = sandboxManager.installDshFromNpm(
-                    registryUrl = source.url,
-                    version = version,
-                    allowDowngrade = allowDowngrade,
-                    onStage = { stage -> update { it.copy(stage = stage) } },
-                    onLog = ::appendLog,
-                    onProcess = { process -> activeGuestProcess = process },
-                    // 取消标志透传给 guest 命令等待循环——点「取消」后
-                    // waitFor 语义被轮询取代，~300ms 内整套安装即收敛。
-                    shouldAbort = { installCancelled },
-                )
-                if (result is AppResult.Failure) {
-                    Log.w(tag, "dsh npm install failed: ${result.error.code}: ${result.error.message}")
+                try {
+                    // 日志流不本地化（与 npm/guest 原始输出混排），源名按当前语言解析。
+                    appendLog("· source: ${source.name.asString(appContext)} (${source.url})")
+                    appendLog("· package: @deepseek-ai/dsh@$version")
+                    val result = sandboxManager.installDshFromNpm(
+                        registryUrl = source.url,
+                        version = version,
+                        allowDowngrade = allowDowngrade,
+                        onStage = { stage -> update { it.copy(stage = stage) } },
+                        onLog = ::appendLog,
+                        onProcess = { process -> activeGuestProcess = process },
+                        // 取消标志透传给 guest 命令等待循环——点「取消」后
+                        // waitFor 语义被轮询取代，~300ms 内整套安装即收敛。
+                        shouldAbort = { installCancelled },
+                    )
+                    if (result is AppResult.Failure) {
+                        Log.w(tag, "dsh npm install failed: ${result.error.code}: ${result.error.message}")
+                    }
+                    _installState.value = _installState.value.copy(
+                        running = false,
+                        stage = if (result is AppResult.Success) {
+                            UiText.Res(R.string.update_stage_done)
+                        } else {
+                            UiText.Res(R.string.update_stage_failed)
+                        },
+                        result = result,
+                        cancelled = installCancelled,
+                    )
+                } catch (t: Throwable) {
+                    // 意外异常同样要把安装态收敛：running 留在 true 会让本进程再也发不起安装。
+                    Log.e(tag, "dsh npm install threw", t)
+                    _installState.value = _installState.value.copy(
+                        running = false,
+                        stage = UiText.Res(R.string.update_stage_failed),
+                        result = AppResult.Failure(
+                            AppError(
+                                "DSH_NPM_INSTALL_THREW",
+                                "dsh npm install threw: ${t.message}",
+                                cause = t,
+                                userMessage = UiText.Res(R.string.update_stage_failed),
+                            ),
+                        ),
+                        cancelled = installCancelled,
+                    )
+                } finally {
+                    activeGuestProcess = null
                 }
-                _installState.value = _installState.value.copy(
-                    running = false,
-                    stage = if (result is AppResult.Success) {
-                        UiText.Res(R.string.update_stage_done)
-                    } else {
-                        UiText.Res(R.string.update_stage_failed)
-                    },
-                    result = result,
-                    cancelled = installCancelled,
-                )
-                activeGuestProcess = null
             }
         }
     }
@@ -193,18 +217,18 @@ class RuntimeUpdateManager(
      * [Process.destroyForcibly] as a backstop. The pipeline then settles into a
      * failure with [DshOnlineInstallState.cancelled] set.
      *
-     * the tree kill (full /proc scan + one `/system/bin/kill -KILL`
-     * spawn per pid, each waited) used to run synchronously on the UI thread,
-     * freezing the screen for ~1-3s so cancel felt dead/slow; it now runs on
-     * this manager's own background scope and the button responds instantly.
+     * the tree kill (full /proc scan + one direct signal per pid) used to run
+     * synchronously on the UI thread, freezing the screen for ~1-3s so cancel
+     * felt dead/slow; it now runs on this manager's own background scope and the
+     * button responds instantly.
      */
     fun cancelDshInstall() {
         if (!_installState.value.running) return
         installCancelled = true
         appendLog("· install cancelled by user")
         scope.launch {
-            // 真机诊断（logcat cancel: procRegistered=true pid=null ...
-            // destroyForcibly executed=true 但 proot 存活）证实两条原路都不可靠：
+            // 生产日志显示：cancel 时 procRegistered=true 但 pid=null，
+            // destroyForcibly executed=true 而 proot 仍存活 —— 两条原路都不可靠：
             //   1) 反射 Process.pid() 在 e.g. 该机返回 null → SIGKILL 树杀从未执行；
             //   2) destroyForcibly() 实际只发 SIGTERM，PRoot 会转发它而自己不退出。
             // 改为按 cmdline 特征定位安装 proot（--kill-on-exit 树里唯一含
@@ -218,9 +242,7 @@ class RuntimeUpdateManager(
             }
             // Children first, proot root last（与 SandboxProcessRunner.stop 同序）。
             tree.asReversed().forEach { p ->
-                runCatching {
-                    ProcessBuilder("/system/bin/kill", "-KILL", p.toString()).start().waitFor()
-                }
+                runCatching { Os.kill(p, OsConstants.SIGKILL) }
             }
         }
     }

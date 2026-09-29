@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ترجمة عربية. مجموعة المفاتيح وترتيبها مطابقة لملف values/strings.xml، وأسماء المنتجات والاختصارات التقنية تبقى بالحروف اللاتينية. -->
+<resources>
+
+    <string name="pilot_module_title">مساعد الهاتف</string>
+    <string name="pilot_notify_channel_name">رسائل المساعد</string>
+
+    <string name="pilot_err_surface_api_level">التشغيل في الخلفية يتطلب Android 13 أو أحدث.</string>
+
+    <string name="pilot_page_overview">مساعد الهاتف</string>
+    <string name="pilot_page_capabilities">القدرات</string>
+    <string name="pilot_page_capability_detail">القدرة</string>
+    <string name="pilot_page_surface">نمط التنفيذ</string>
+    <string name="pilot_page_accessibility">وضع إمكانية الوصول</string>
+    <string name="pilot_page_privileged">الوضع ذو الامتيازات</string>
+    <string name="pilot_page_permissions">أذونات التطبيق</string>
+    <string name="pilot_page_logs">سجل التشغيل</string>
+    <string name="pilot_page_audit">سجل التفويض</string>
+    <string name="pilot_page_storage">التخزين</string>
+    <string name="pilot_page_usage">دليل المساعد</string>
+
+    <string name="pilot_section_status">الحالة</string>
+    <string name="pilot_section_entries">التحكم في الوصول</string>
+    <string name="pilot_section_diagnostics">التشخيص</string>
+    <string name="pilot_section_assistant_access">وصول المساعد</string>
+    <string name="pilot_section_system_access">وصول النظام</string>
+    <string name="pilot_section_execution">التنفيذ</string>
+    <string name="pilot_section_surface_mode">النمط</string>
+    <string name="pilot_section_how_to_enable">كيفية التفعيل</string>
+    <string name="pilot_section_runtime_permissions">أذونات وقت التشغيل</string>
+    <string name="pilot_section_options">خيارات</string>
+    <string name="pilot_section_recent_events">الأحداث الأخيرة</string>
+    <string name="pilot_section_recent_calls">الاستدعاءات الأخيرة</string>
+    <string name="pilot_section_usage">الاستخدام</string>
+
+    <string name="pilot_row_channel">القناة</string>
+    <string name="pilot_row_usable_caps">القدرات الجاهزة</string>
+    <string name="pilot_row_surface">نمط التنفيذ</string>
+    <string name="pilot_row_system_state">حالة النظام</string>
+    <string name="pilot_row_implemented">التنفيذ البرمجي</string>
+    <string name="pilot_row_surfaces">الأنماط المدعومة</string>
+    <string name="pilot_row_min_api">أقل إصدار API</string>
+    <string name="pilot_row_chosen_surface">النمط الحالي</string>
+    <string name="pilot_row_surface_na">غير منطبق</string>
+    <string name="pilot_row_shizuku_service">خدمة Shizuku</string>
+    <string name="pilot_row_shizuku_granted">تفويض Shizuku</string>
+    <string name="pilot_row_artifact_usage">نسخ التسليم</string>
+    <string name="pilot_row_artifact_count">عدد الملفات الناتجة</string>
+    <string name="pilot_row_log_usage">السجلات</string>
+
+    <string name="pilot_channel_running">قيد التشغيل</string>
+    <string name="pilot_channel_stopped">متوقف</string>
+    <string name="pilot_channel_stalled">قيد التشغيل (المنفذ متوقف عن التقدم)</string>
+    <string name="pilot_channel_stalled_note">المنفذ لا يتقدم؛ %1$d من الطلبات في الانتظار. أعد تشغيل بيئة الحاويات لاستعادة القناة؛ هذه الصفحة لا يمكنها الإصلاح.</string>
+    <string name="pilot_runtime_starting">جارٍ بدء قناة المساعد…</string>
+    <string name="pilot_runtime_degraded">لم يكتمل بدء القناة (%1$s). يمكنك إعادة المحاولة بعد العودة.</string>
+
+    <string name="pilot_state_ready">جاهز</string>
+    <string name="pilot_state_absent">لم يُكتشف</string>
+    <string name="pilot_row_shizuku_bound">خدمة المستخدم</string>
+    <string name="pilot_state_connected">متصل</string>
+    <string name="pilot_state_disconnected">غير متصل</string>
+    <string name="pilot_guide_shizuku_unbound">Shizuku يعمل ومصرح له، لكن خدمة المستخدم التي تنفذ الاستدعاءات فعليًا غير متصلة. وقبل اتصالها ستفشل جميع القدرات المميزة والشاشة الافتراضية. اضغط الزر أدناه لإعادة الاتصال الآن، أو أعد تشغيل تطبيق Shizuku؛ كما يعيد هذا التطبيق المحاولة كل دقيقة.</string>
+    <string name="pilot_action_shizuku_reconnect">إعادة توصيل خدمة المستخدم</string>
+    <string name="pilot_state_granted">مُمنح</string>
+    <string name="pilot_state_not_granted">غير ممنوح</string>
+    <string name="pilot_state_planned">غير منفَّذ</string>
+    <string name="pilot_state_on">مفعّل</string>
+    <string name="pilot_state_off">غير مفعّل</string>
+    <string name="pilot_perm_notification_listener">مراقبة الإشعارات</string>
+    <string name="pilot_cap_missing_perm">·%1$s غير مُمنح</string>
+    <string name="pilot_cap_missing_service">·%1$s متوقف</string>
+    <string name="pilot_a11y_notice_title">خدمة إمكانية الوصول غير متصلة</string>
+    <string name="pilot_a11y_notice_not_bound">‏%1$s يحتاج إلى خدمة إمكانية الوصول. القائمة في النظام ما زالت تتضمن هذا التطبيق، إذن لم يُسحب الإذن: أُغلق التطبيق في الخلفية. يكفي إعادة فتحه، ولا يلزم تغيير أي إعداد.</string>
+    <string name="pilot_a11y_notice_revoked">‏%1$s يحتاج إلى خدمة إمكانية الوصول، لكن لم يعد النظام يدرج هذا التطبيق ضمن الخدمات المفعّلة: لقد أُوقف الإذن. أعد تفعيله.</string>
+    <string name="pilot_a11y_state_not_bound">القائمة في النظام تتضمن هذا التطبيق، لكن الخدمة غير مربوطة الآن: أُغلق التطبيق في الخلفية. أعد فتحه لاستعادة قدرات الشاشة.</string>
+    <string name="pilot_section_keep_alive">البقاء نشطًا في الخلفية</string>
+    <string name="pilot_keep_alive_summary">يمكن للنظام إغلاق هذا التطبيق في أي لحظة؛ وعندئذ تُفصل خدمة إمكانية الوصول وتتوقف كل قدرات الشاشة. هذه هي المفاتيح التي يستطيع التطبيق العادي الوصول إليها.</string>
+    <string name="pilot_keep_alive_vendor_note">صفحة التشغيل التلقائي والعمل في الخلفية تكتبها الشركة المصنّعة وليس لها مدخل عام. يحاول هذا التطبيق أسماء المكوّنات المعروفة لمارستك بالترتيب ويفتح أول ما يعمل فعلًا؛ وإن لم ينجح شيء يعود إلى الخطوات اليدوية. تتغيّر أسماء المفاتيح ومستوياتها بين نسخ الواجهة، وعلى الأجهزة التي لم تُتحق من عتاد حقيقي قد تكون الصفحة في مكان آخر.</string>
+    <string name="pilot_action_ignore_battery_optimization">إعفاء هذا التطبيق من تحسين البطارية</string>
+    <string name="pilot_action_battery_optimization_list">فتح قائمة تحسين البطارية</string>
+    <string name="pilot_action_vendor_autostart">فتح إعدادات التشغيل التلقائي والعمل في الخلفية لدى الشركة المصنّعة</string>
+    <string name="pilot_action_open_app_details">فتح هذا التطبيق في إعدادات النظام</string>
+    <string name="pilot_action_understood">فهمت</string>
+    <string name="pilot_keep_alive_no_entry">لا يوفر هذا الجهاز من هنا مدخلًا مباشرًا إلى تلك الصفحة. ابحث عنها يدويًا في إعدادات النظام.</string>
+    <string name="pilot_state_exempt">معفى</string>
+    <string name="pilot_state_not_exempt">لا يزال خاضعًا للتحسين</string>
+    <string name="pilot_projection_channel">التقاط الشاشة</string>
+    <string name="pilot_fgs_label">قناة المساعد</string>
+
+    <string name="pilot_action_open_system_setting">افتح إعداد النظام</string>
+    <string name="pilot_action_open_accessibility_list">افتح قائمة إمكانية الوصول</string>
+    <string name="pilot_action_open_shizuku_releases">افتح تنزيلات Shizuku</string>
+    <string name="pilot_action_open_shizuku_app">فتح Shizuku</string>
+    <string name="pilot_action_request_permissions">اطلب الأذونات</string>
+    <string name="pilot_action_clear_artifacts">امسح الملفات الناتجة</string>
+
+    <string name="pilot_sys_granted">مُمنح</string>
+    <string name="pilot_sys_askable">يطلب الإذن في وقت التشغيل</string>
+    <string name="pilot_sys_manual">يجب تفعيله يدويًّا</string>
+    <string name="pilot_sys_session_consent">يؤكد في كل جلسة</string>
+    <string name="pilot_sys_foreground_focus">التطبيق في المقدمة مطلوب</string>
+    <string name="pilot_note_foreground_focus">يجب أن يكون التطبيق في المقدمة ويحتفظ بالتركيز على الإدخال.</string>
+    <string name="pilot_sys_unavailable">غير متاح على هذا الجهاز</string>
+
+    <string name="pilot_tier_denied">محظور</string>
+    <string name="pilot_tier_ask">السؤال عند كل استدعاء</string>
+    <string name="pilot_tier_always">وصول كامل</string>
+
+    <string name="pilot_tier_choice_denied">محظور</string>
+    <string name="pilot_tier_choice_ask">السؤال عند كل استدعاء</string>
+    <string name="pilot_tier_choice_always">وصول كامل</string>
+
+    <string name="pilot_ceiling_any">يمكن منح الوصول الكامل بشكل دائم.</string>
+    <string name="pilot_ceiling_session">الوصول الدائم مقصور على جلسة المساعد الحالية.</string>
+    <string name="pilot_ceiling_ask_only">متطلبات الأمان تفرض التأكيد في كل مرة. ولا يتجاوز «وصول كامل» هذا الشرط.</string>
+
+    <string name="pilot_category_observe">المعاينة</string>
+    <string name="pilot_category_control">التحكم</string>
+    <string name="pilot_category_data">البيانات</string>
+    <string name="pilot_category_system">النظام</string>
+<string name="pilot_category_dangerous">"خطِرة"</string>
+
+    <string name="pilot_surface_foreground">المقدمة</string>
+    <string name="pilot_surface_background">تفضيل الخلفية</string>
+    <string name="pilot_surface_foreground_summary">تفتح التطبيق المستهدف على الشاشة وتعمل معه هناك.</string>
+    <string name="pilot_surface_background_summary">تعمل على شاشة افتراضية دون إحضار التطبيق إلى المقدمة.</string>
+    <string name="pilot_surface_summary">اختر كيف يتحكم المساعد في الهاتف. لا يستطيع المساعد تجاوز هذا الاختيار.</string>
+    <string name="pilot_surface_degrade_note">نمط الخلفية يتطلب Shizuku وAndroid 13 أو أحدث. إذا تعذّر تنفيذ خطوة في الخلفية، تُنفَّذ في المقدمة، ويذكر الرد حالة التخفيض.</string>
+    <string name="pilot_surface_bg_fallback_note">وضع الخلفية غير فعّال حاليًا: تبقى إجراءات المساعد على الشاشة التي تنظر إليها.</string>
+    <string name="pilot_surface_bg_reason_shizuku_missing">Shizuku غير مثبّت على هذا الجهاز.</string>
+    <string name="pilot_surface_bg_reason_shizuku_offline">Shizuku لا يعمل.</string>
+    <string name="pilot_surface_bg_reason_not_granted">Shizuku يعمل لكنه لم يمنح هذا التطبيق الإذن.</string>
+    <string name="pilot_surface_bg_reason_display_missing">لم يُنشأ شاشة الخلفية بعد؛ على المساعد إنشاءها.</string>
+
+    <string name="pilot_surface_kind_foreground">المقدمة</string>
+    <string name="pilot_surface_kind_trusted">شاشة الخلفية</string>
+    <string name="pilot_surface_kind_observe">معاينة فقط</string>
+
+    <string name="pilot_guide_deep_link">امنحه في صفحة الإعدادات التي تُفتح.</string>
+    <string name="pilot_guide_list_only">تفتح إعدادات النظام قائمة الميزات. ابحث عن هذا التطبيق هناك وفعّله.</string>
+    <string name="pilot_guide_no_settings_page">لا يوفر هذا النظام صفحة إعدادات لذلك. اتبع الخطوات أدناه.</string>
+    <string name="pilot_guide_not_required">لا تحتاج هذه القدرة إلى أي إجراء من النظام.</string>
+    <string name="pilot_guide_accessibility_steps">افتح قائمة إمكانية الوصول، وابحث عن «مساعد الهاتف»، ثم فعّل الخدمة. قراءة الشاشة وتنفيذ الإيماءات يتطلبانها معًا.</string>
+    <string name="pilot_guide_accessibility_limit">الإيماءات تعمل على الشاشة الرئيسية فقط، والتقاط لقطة شاشة دون طلب من النظام يتطلب Android 11 أو أحدث.</string>
+    <string name="pilot_guide_shizuku_steps">ثبّت Shizuku، ثم شغّله عبر التصحيح اللاسلكي أو من حاسوب، وبعدها عد إلى هنا وامنح هذا التطبيق الوصول. تُنفَّذ العمليات ذات الامتيازات بهوية shell، وهو يتطلب ذلك.</string>
+    <string name="pilot_guide_shizuku_offline">لا يعمل Shizuku. تبقى القدرات ذات الامتيازات محظورة حتى تُكتشف خدمته.</string>
+
+    <string name="pilot_perm_contacts">جهات الاتصال</string>
+    <string name="pilot_perm_calendar">التقويم</string>
+    <string name="pilot_perm_location">الموقع</string>
+    <string name="pilot_perm_microphone">الميكروفون</string>
+    <string name="pilot_perm_notification">الإشعارات</string>
+    <string name="pilot_perm_media">الصور والوسائط</string>
+
+    <string name="pilot_permissions_special_note">للوصول إلى الإشعارات صفحة خاصة بالنظام. أما التقاط الشاشة فيعتمد على المسار: في المقدمة يؤكد النظام في كل مرة، وفي الخلفية يلتقط التطبيق الإطارات دون مربع حوار من النظام. الوصول إلى الوسائط فيُطلب من هذه الصفحة.</string>
+
+    <string name="pilot_verbose_title">سجل مفصّل</string>
+    <string name="pilot_verbose_summary">يضيف ملخص قيم المعاملات إلى كل قيد. أبقِه متوقفًا إلا عند إعادة إنتاج عطل.</string>
+
+    <string name="pilot_logs_empty">لم تُسجَّل أي أحداث.</string>
+    <string name="pilot_logs_location_note">يُكتب في سجل المساعد؛ ويُدوَّر بعد 2 ميغابايت</string>
+
+    <string name="pilot_audit_empty">لم تُسجَّل أي استدعاءات.</string>
+    <string name="pilot_audit_note">سطر واحد لكل استدعاء: القدرة، ومرحلَتا فحص الوصول، والقرار، والهدف، والمدة. تُحفظ قيم المعاملات كملخص مُملَّح فقط.</string>
+    <string name="pilot_audit_retention_note">يُحتفظ به 30 يومًا؛ وتُحذف الملفات المنتهية تلقائيًا</string>
+
+    <string name="pilot_clear_deferred">هناك استدعاء قيد التنفيذ. أعد المحاولة بعد انتهائه.</string>
+    <string name="pilot_storage_note">تصل الملفات الناتجة المسلَّمة إلى DSH إلى ‎/opt/pilot/out‎ (لقطات وتسجيلات وصوتيات وملفات أخرى). يحتفظ هذا الدليل بأحدث 20 عنصرًا لكل نوع، بحد أقصى 256 ميغابايت و7 أيام؛ ولا يُحذف ما عُدّل خلال آخر 10 دقائق. تنطبق قاعدة 24 ساعة والحصة على نسخ التسليم لدى المضيف.</string>
+
+    <string name="pilot_usage_missing">لم يُنشَأ الدليل بعد. شغّل الصندوق الرملي أولًا.</string>
+
+    <string name="pilot_approval_target">الهدف</string>
+    <string name="pilot_approval_detail">القيمة</string>
+    <string name="pilot_approval_call_index">التأكيد %1$d لهذه القدرة.</string>
+    <string name="pilot_approval_allow_once">اسمح مرة واحدة</string>
+    <string name="pilot_approval_allow_session">اسمح لهذه الجلسة</string>
+    <string name="pilot_approval_deny">ارفض</string>
+    <string name="pilot_approval_notify_channel">طلبات التأكيد</string>
+    <string name="pilot_approval_notify_title">مطلوب تأكيد: %1$s</string>
+    <string name="pilot_approval_notify_public">هناك إجراء بانتظار تأكيدك</string>
+
+    <!-- حالة العرض عبر الإشعار. «متاح» لا يعني «مرئي»: الإرسال الناجح كحدّ أقصى -->
+    <!-- «أُرسل دون تأكيد الرؤية». -->
+    <string name="pilot_notify_state_eligible">جاهز لإرسال إشعار التأكيد</string>
+    <string name="pilot_notify_state_posted">أُرسل إلى لوحة الإشعارات (لا يمكن تأكيد ظهوره فعلا)</string>
+    <string name="pilot_notify_state_posted_unverified">أُرسل إلى شريط الإشعارات؛ ويتوقف ظهوره على إعدادات النظام</string>
+    <string name="pilot_notify_state_unavailable">يتعذر إرسال الإشعارات؛ افتح شاشة مساعد الهاتف للتأكيد</string>
+
+    <string name="pilot_risk_low">أثر محدود.</string>
+    <string name="pilot_risk_medium">تقرأ بيانات شخصية أو تؤثر في تطبيقات أخرى.</string>
+    <string name="pilot_risk_high">يصعب التراجع عنه، وقد يؤثر على تطبيقات أخرى.</string>
+
+    <string name="pilot_detail_missing">هذه القدرة لم تعد مُدرجة في القائمة.</string>
+    <string name="pilot_action_back">رجوع</string>
+
+    <string name="pilot_count_of_total">\u200F%1$d من %2$d</string>
+    <string name="pilot_count_files">%1$d</string>
+    <string name="pilot_usage_of_quota">\u200F%1$s من %2$s</string>
+
+    <string name="pilot_log_line">\u200F%1$s · %2$s · %3$s</string>
+    <string name="pilot_level_info">معلومات</string>
+    <string name="pilot_level_warn">تحذير</string>
+    <string name="pilot_level_error">خطأ</string>
+    <string name="pilot_subsystem_transport">القناة</string>
+    <string name="pilot_subsystem_gate">الوصول</string>
+    <string name="pilot_subsystem_backend">القدرة</string>
+    <string name="pilot_subsystem_storage">التخزين</string>
+    <string name="pilot_subsystem_ui">الشاشة</string>
+
+    <string name="pilot_perm_contacts_read">قراءة جهات الاتصال</string>
+    <string name="pilot_perm_contacts_write">كتابة جهات الاتصال</string>
+    <string name="pilot_perm_calendar_read">قراءة التقويم</string>
+    <string name="pilot_perm_calendar_write">كتابة التقويم</string>
+    <string name="pilot_perm_location_fine">الموقع الدقيق</string>
+    <string name="pilot_perm_location_coarse">الموقع التقريبي</string>
+    <string name="pilot_perm_media_images">الصور ومقاطع الفيديو</string>
+    <string name="pilot_perm_media_video">ملفات الفيديو</string>
+    <string name="pilot_perm_media_audio">ملفات الصوت</string>
+    <string name="pilot_perm_media_selected">الصور المحددة</string>
+    <string name="pilot_log_time">====== %1$s ======</string>
+    <string name="pilot_usage_method_one">الطريقة الأولى</string>
+    <string name="pilot_usage_method_two">الطريقة الثانية</string>
+    <string name="pilot_usage_method_two_guide">افتح لوحة Cordis وفعّل مفتاح «DSH للاتصال بالهاتف» لتثبيت إضافة التحكم بالهاتف.</string>
+    <string name="pilot_usage_lead">أرسل هذا السطر إلى DSH داخل العازل ليبدأ باستخدام الأدوات:</string>
+    <string name="pilot_usage_command">اقرأ /opt/pilot/USAGE.md ثم استدعِ /opt/pilot/bin/pilot كما هو موضح.</string>
+    <string name="pilot_usage_copy">نسخ</string>
+    <string name="pilot_usage_copied">تم النسخ</string>
+    <string name="pilot_overlay_asking">هل تسمح بـ%1$s؟</string>
+    <string name="pilot_overlay_allow">سماح</string>
+    <string name="pilot_page_overlay">تأكيد فوق النوافذ</string>
+    <string name="pilot_overlay_note">للطلب ثلاثة مواضع ممكنة، بهذا الترتيب: داخل شاشة المساعد عندما تكون في المقدمة؛ فوق كل النوافذ عندما لا تكون في المقدمة وهذا الإذن ممنوح؛ ولوحة الإشعارات (اسحبها لأسفل ثم اضغط «سماح») عندما لا يكون ممنوحا. وإذا كانت الإشعارات متوقفة أيضا فلا يبقى ما يمكن الضغط عليه.</string>
+    <string name="pilot_action_shizuku_request">طلب الوصول من Shizuku</string>
+    <string name="pilot_section_artifacts">ملفات المساعد الناتجة (يُجمع كل منها وفق مدته الخاصة)</string>
+    <string name="pilot_section_records">السجلات</string>
+    <string name="pilot_section_album">مكتبة الوسائط في النظام</string>
+    <string name="pilot_section_auto_recycle">جمع تلقائي</string>
+    <string name="pilot_row_media_usage">الصور ومقاطع الفيديو (معرض النظام)</string>
+    <string name="pilot_row_media_audio">الصوتيات</string>
+<string name="pilot_out_kind_file">ملفات</string>
+<string name="pilot_out_kind_audio">صوتيات</string>
+<string name="pilot_out_kind_video">تسجيلات</string>
+<string name="pilot_out_kind_shot">لقطات</string>
+<string name="pilot_row_out_files">عدد الملفات الناتجة</string>
+<string name="pilot_row_out_breakdown">التفصيل</string>
+<string name="pilot_row_out_usage">ملفات DSH الناتجة المسلَّمة</string>
+    <string name="pilot_row_uploads_usage">الملفات الواردة</string>
+    <string name="pilot_row_mailbox_usage">صندوق الرسائل والملفات المؤقتة</string>
+    <string name="pilot_overlay_waiting">%1$d في الانتظار</string>
+    <string name="pilot_ask_title">سؤال من المساعد</string>
+    <string name="pilot_ask_reject_all">رفض الكل</string>
+    <string name="pilot_ask_reask">إعادة السؤال</string>
+    <string name="pilot_approval_pending_now">بانتظار التأكيد: واحدة الآن</string>
+    <string name="pilot_approval_pending_queued">بانتظار التأكيد: واحدة الآن (%1$d أخرى في الطابور)</string>
+    <string name="pilot_row_approval_pending">بانتظار التأكيدات</string>
+<string name="pilot_shell_verb_unsupported">النظام لا يدعم هذا الإذن.</string>
+    <string name="pilot_shell_ro_dumpsys">يقرأ حالة خدمة نظام واحدة.</string>
+    <string name="pilot_shell_ro_pm">يسرد الحزم والميزات والأذونات والمكتبات.</string>
+    <string name="pilot_shell_ro_settings">يقرأ القيمة الحالية لإعداد نظام واحد.</string>
+    <string name="pilot_shell_ro_getprop">يقرأ خصائص النظام؛ بلا مفتاح يقرأ كلها.</string>
+    <string name="pilot_shell_ro_appops">يعرض حالة عمليات تطبيق معين.</string>
+    <string name="pilot_shell_ro_wm">يقرأ دقة الشاشة والكثافة.</string>
+    <string name="pilot_shell_ro_screencap">يلتقط إطارًا في ملف ناتج.</string>
+    <string name="pilot_shell_readonly_row">للقراءة فقط: تُفتح وتُغلق مع sys.shell وليس لها مفتاح خاص بها.</string>
+    <string name="pilot_shell_verb_svc">"يفعّل أو عطّل Wi-Fi أو Bluetooth أو بيانات الهاتف المحمول."</string>
+<string name="pilot_shell_verb_media">"يضبط مستوى صوت مسار معيّن (وسائط، رنين، وما شابه) على قيمة محددة."</string>
+<string name="pilot_shell_verb_input">"يحقن نقرات أو تمريرات أو نصًا أو مفاتيح بصلاهيات النظام؛ يعمل بإحداييات الشاشة، ولا يمر عبر إمكانية الوصول، ولا يصل إلى الشاشة الافتراضية."</string>
+
+    <!-- تغطية نصوص أخطاء النواة (relay_err_*) باللغات الأربع الإضافية؛ النواة
+         تتضمّن الإنجليزية والصينية بنفسها. -->
+
+    <!-- 这些是核心模块词条的 dshbox 覆写：键名沿用核心的 relay_ 前缀，取值为 dshbox 各语言文案 -->
+    <string name="relay_a11y_description">يتيح للمساعد قراءة الشاشة الحالية وتنفيذ الإيماءات وإدخال النص نيابةً عنك (اللمس، اللمس المطوّل، السحب، التمرير، الكتابة وضبط القيم، وإرسال المفاتيح). يمنح النظام هذه الخدمة مرة واحدة؛ ثم يطلب المساعد إذنك لكل قدرة على حدة، ولا يتحكم في هذا التطبيق مطلقًا.</string>
+    <string name="relay_a11y_label">مساعد الهاتف DSHBox</string>
+    <string name="relay_approval_char_count">%1$d حرفًا</string>
+    <string name="relay_cap_app_install_summary">تُثبّت عبر Shizuku، وقد لا يزال التثبيت يتطلب تأكيد المستخدم. تطلب التأكيد دائمًا.</string>
+    <string name="relay_cap_app_install_title">تثبيت تطبيق</string>
+    <string name="relay_cap_app_launch_summary">تُشغّل تطبيقًا آخر على الشاشة الحالية.</string>
+    <string name="relay_cap_app_launch_title">تشغيل تطبيق</string>
+    <string name="relay_cap_app_stop_summary">تُوقف تطبيقًا آخر إيقافًا قسرًا. يؤثر في الجهاز بالكامل.</string>
+    <string name="relay_cap_app_stop_title">إيقاف تطبيق</string>
+    <string name="relay_cap_appops_set_summary">تضبط أذونات العمليات لكل تطبيق عبر Shizuku. تطلب التأكيد دائمًا.</string>
+    <string name="relay_cap_appops_set_title">تغيير عمليات التطبيقات</string>
+    <string name="relay_cap_audio_capture_summary">يسجّل الصوت الذي يلتقطه الميكروفون، حتى 30 ثانية لكل استدعاء.</string>
+    <string name="relay_cap_audio_capture_title">التسجيل بالميكروفون</string>
+    <string name="relay_cap_cal_read_summary">تقرأ أحداث التقويم.</string>
+    <string name="relay_cap_cal_read_title">قراءة التقويم</string>
+    <string name="relay_cap_cal_write_summary">تضيف أحداث التقويم أو تعدّلها.</string>
+    <string name="relay_cap_cal_write_title">الكتابة في التقويم</string>
+    <string name="relay_cap_clip_read_summary">يقرأ المحتوى الموجود حاليًا في الحافظة.</string>
+    <string name="relay_cap_clip_read_title">قراءة الحافظة</string>
+    <string name="relay_cap_clip_write_summary">يكتب نصًا في الحافظة.</string>
+    <string name="relay_cap_clip_write_title">الكتابة في الحافظة</string>
+    <string name="relay_cap_contact_read_summary">تقرأ أسماء جهات الاتصال وأرقامها.</string>
+    <string name="relay_cap_contact_read_title">قراءة جهات الاتصال</string>
+    <string name="relay_cap_contact_write_summary">تضيف جهات اتصال أو تعدّلها.</string>
+    <string name="relay_cap_contact_write_title">الكتابة في جهات الاتصال</string>
+    <string name="relay_cap_loc_read_summary">تقرأ آخر موقع معروف؛ لا تدعم التتبع في الخلفية.</string>
+    <string name="relay_cap_loc_read_title">قراءة الموقع</string>
+    <string name="relay_cap_media_read_summary">تسرُد الصور ومقاطع الفيديو من الوسائط المشتركة.</string>
+    <string name="relay_cap_media_read_title">قراءة الصور ومقاطع الفيديو</string>
+    <string name="relay_cap_media_write_summary">تكتب الملفات في مجموعات الوسائط المشتركة.</string>
+    <string name="relay_cap_media_write_title">الحفظ في الصور</string>
+    <string name="relay_cap_notify_post_summary">ترسل إشعارات من هذا التطبيق.</string>
+    <string name="relay_cap_notify_post_title">نشر الإشعارات</string>
+    <string name="relay_cap_notify_read_summary">تقرأ الإشعارات الصادرة عن تطبيقات أخرى.</string>
+    <string name="relay_cap_notify_read_title">قراءة الإشعارات</string>
+    <string name="relay_cap_pkg_query_summary">تسرّد التطبيقات التي يمكن للنظام التعرف عليها وتشغيلها.</string>
+    <string name="relay_cap_pkg_query_title">الاستعلام عن التطبيقات المثبتة</string>
+    <string name="relay_cap_screen_capture_summary">تحفظ الشاشة الحالية في ملف.</string>
+    <string name="relay_cap_screen_capture_title">التقاط لقطة شاشة</string>
+    <string name="relay_cap_screen_observe_summary">تراقب محتوى الشاشة دون إرسال أي إدخال.</string>
+    <string name="relay_cap_screen_observe_title">عكس الشاشة</string>
+    <string name="relay_cap_screen_record_summary">تسجّل الشاشة. تسجيل الشاشة الأمامية يتطلب موافقة النظام في كل مرة، بينما يلتقط المساعد الشاشة الخلفية إطارًا بإطار دون موافقة.</string>
+    <string name="relay_cap_screen_record_title">تسجيل الشاشة</string>
+    <string name="relay_cap_surface_virtual_summary">تتطلب Shizuku وAndroid 13 أو أحدث.</string>
+    <string name="relay_cap_surface_virtual_title">شاشة افتراضية في الخلفية</string>
+    <string name="relay_cap_sys_intent_summary">"يرسل مفتاحاً نظامياً ثابتاً: ضبط منبه أو مؤقّت، أو فتح شاشة المنبهات أو المؤقّتات، أو صفحة من إعدادات النظام، أو تفاصيل تطبيق، أو لوحة الطلب (لا يطلب الرقم تلقائياً)، أو صفحة في المتصفح. لا يحتاج إلى إمكانية الوصول ولا Shizuku. تُقبل القوالب الواردة في الجدول فقط، وترفض القيم الخارجة عن المدى، ولا يوجد مدخل لحذف منبه أو إلغائه، ولا يُرسل شيء ما دام التطبيق في الخلفية بدون إذن التراكب."</string>
+    <string name="relay_cap_sys_intent_title">مفتاح النظام</string>
+    <string name="relay_cap_sys_settings_write_summary">تكتب الإعدادات المحمية عبر Shizuku. تطلب التأكيد دائمًا.</string>
+    <string name="relay_cap_sys_settings_write_title">تغيير إعدادات النظام</string>
+    <string name="relay_cap_sys_shell_summary">"يتحكّم بالهاتف بأذونات على مستوى النظام. يتضمّن افتراضياً أوامر للقراءة فقط وبعض الوظائف الأساسية."</string>
+    <string name="relay_cap_sys_shell_title">"قدرة الصدفة في النظام"</string>
+    <string name="relay_cap_ui_click_summary">تنقر عنصرًا محدَّدًا بالمنتقي أو بمعرّف العقدة دون توليد أحداث لمس</string>
+    <string name="relay_cap_ui_click_title">النقر على عنصر تحكم</string>
+    <string name="relay_cap_ui_dismiss_summary">تطلب من التطبيق إغلاق نافذة منبثقة أو عنصر قابل للإزالة</string>
+    <string name="relay_cap_ui_dismiss_title">إغلاق عنصر تحكم</string>
+    <string name="relay_cap_ui_imeaction_summary">يرسل إجراء الإدخال في محرّر النص (بحث أو إرسال أو تمّ)</string>
+    <string name="relay_cap_ui_imeaction_title">تشغيل إجراء لوحة المفاتيح</string>
+    <string name="relay_cap_ui_key_summary">تُرسل أحداث مفاتيح بأسلوب المفاتيح الفعلية، مثل رجوع أو رئيسية.</string>
+    <string name="relay_cap_ui_key_title">إرسال حدث مفتاح</string>
+    <string name="relay_cap_ui_longclick_summary">تضغط ضغطة مطوّلة على عنصر محدَّد بالمنتقي أو بمعرّف العقدة</string>
+    <string name="relay_cap_ui_longclick_title">الضغط مطوّلًا على عنصر تحكم</string>
+    <string name="relay_cap_ui_node_summary">تقرأ النص وحالتَي التحديد والتفعيل ونطاق عنصر واحد</string>
+    <string name="relay_cap_ui_node_title">قراءة حالة عنصر تحكم</string>
+    <string name="relay_cap_ui_scroll_summary">تمرّر عرضًا قابلًا للتمرير إلى الأمام أو إلى الخلف</string>
+    <string name="relay_cap_ui_scroll_title">تمرير حاوية</string>
+    <string name="relay_cap_ui_select_summary">تطلب من القائمة أو من مجموعة الخيارات تحديد العقدة المستهدفة</string>
+    <string name="relay_cap_ui_select_title">تحديد عنصر من قائمة</string>
+    <string name="relay_cap_ui_setprogress_summary">يضبط المؤشر أو شريط التقدم على نسبة مئوية، أو على قيمة داخل مدى ذلك العقدة نفسه.</string>
+    <string name="relay_cap_ui_setprogress_title">تعيين قيمة المؤشر</string>
+    <string name="relay_cap_ui_setvalue_summary">تكتب النص مباشرة في حقل الهدف دون الحاجة إلى التركيز</string>
+    <string name="relay_cap_ui_setvalue_title">تعيين نص عنصر تحكم</string>
+    <string name="relay_cap_ui_snapshot_summary">تقرأ شجرة عناصر النافذة الموجودة في المقدمة بصيغة نص.</string>
+    <string name="relay_cap_ui_snapshot_title">قراءة بنية الشاشة</string>
+    <string name="relay_cap_ui_swipe_summary">تنفّذ سحبًا من نقطة إلى أخرى على الشاشة الحالية.</string>
+    <string name="relay_cap_ui_swipe_title">السحب</string>
+    <string name="relay_cap_ui_tap_summary">تنفّذ لمسة في نقطة من الشاشة الحالية.</string>
+    <string name="relay_cap_ui_tap_title">اللمس</string>
+    <string name="relay_cap_ui_text_summary">تُدخِل النص في حقل الإدخال الذي عليه التركيز.</string>
+    <string name="relay_cap_ui_text_title">إدخال النص</string>
+    <string name="relay_cap_ui_waitfor_summary">تنتظر حتى يطابق عنصرٌ ما الشرط أو حتى تنتهي المهلة</string>
+    <string name="relay_cap_ui_waitfor_title">الانتظار لحالة الواجهة</string>
+    <string name="relay_err_action_rejected">تم إرسال الإجراء لكن التطبيق لم يقبله؛ أعد الإرسال لاحقًا</string>
+    <string name="relay_err_awaiting_consent">في انتظار تأكيد المستخدم على الهاتف؛ أعد المحاولة لاحقًا.</string>
+    <string name="relay_err_backend_dead">فقدت الخدمة ذات الامتيازات اتصالها؛ أعد المحاولة بعد إعادة تشغيلها.</string>
+    <string name="relay_err_backend_unavailable">هذه القدرة مُنفَّذة لكن خدمتها غير متاحة الآن.</string>
+    <string name="relay_err_clipboard_no_focus">لا يعمل الحافظة إلا عندما يحتفظ هذا التطبيق بالتركيز: اجلب المساعد إلى المقدمة ثم أعد المحاولة.</string>
+    <string name="relay_err_gate_cancelled">أُلغي الطلب قبل إرسال أي إجراء خارجي؛ لم يُنفَّذ شيء.</string>
+    <string name="relay_err_gate_denied">لم تسمح للمساعد باستخدام هذه القدرة.</string>
+    <string name="relay_err_gate_no_foreground">لا توجد واجهة تعرض هذا الآن: النافذة العائمة غير متاحة (الإذن غير ممنوح أو يخفيها وضع الخلفية)، والإشعارات متوقفة، وشاشة المساعد ليست في المقدمة؛ وربما لا توجد شاشة في المقدمة ليظهر عليها مربع النظام الذي يحتاجه هذا الاستدعاء.</string>
+    <string name="relay_err_gate_system_missing">لا يزال إذن النظام المطلوب لهذه القدرة غير ممنوح.</string>
+    <string name="relay_err_gate_timeout">انتهت مهلة نافذة التأكيد دون رد، وتُعامل الحالة كرفض.</string>
+    <string name="relay_err_gate_waiting_turn">هناك تأكيدات أخرى بانتظار ردّ ولم يحصل هذا على مكان. انتظر قليلاً ثم اسأل مجددًا.</string>
+    <string name="relay_err_internal">حدث خطأ غير متوقع أثناء معالجة الطلب.</string>
+    <string name="relay_err_launch_not_landed">"قبل النظام طلب التشغيل، لكن التطبيق لم يصبح النافذة الأمامية للشاشة الرئيسية أو الشاشة الافتراضية."</string>
+    <string name="relay_err_malformed">لم يطابق الطلب صيغة القناة، وتم رفضه.</string>
+    <string name="relay_err_no_editable_target">لا يوجد حقل نص في التركيز؛ انقر الحقل أولاً ثم أعد المحاولة.</string>
+    <string name="relay_err_node_ambiguous">طابق المحدد عدة عناصر؛ أضف index أو حدّد الهدف</string>
+    <string name="relay_err_node_consent_target">هذا العنصر ينتمي إلى مربع تأكيد النظام ويرفضه المضيف مباشرةً: المستخدم وحده يمكنه الإجابة عن طلب الإذن، ولا يفيد حذف package ولا استخدام nodeId ولا إضافة view id.</string>
+    <string name="relay_err_node_no_ime_action">"لا يحتوي هذا العنصر على أي إجراء لوسيلة إدخال يمكن تشغيله: فهو ليس حقراً قابلاً للتحرير."</string>
+    <string name="relay_err_node_not_actionable">هذا العنصر لا يقبل هذا الإجراء؛ غيّر الهدف أو استخدم الإحداثيات</string>
+    <string name="relay_err_node_not_found">لا يوجد عنصر مطابق؛ أعد قراءة الواجهة ثم حدّد الهدف من جديد</string>
+    <string name="relay_err_not_implemented">هذه القدرة غير متوفرة في هذه النسخة.</string>
+    <string name="relay_err_queue_full">قناة المساعد ممتلئة؛ انتظر قليلاً ثم أعد المحاولة.</string>
+    <string name="relay_err_rate_limited">تُستدعى هذه القدرة بتكرار أعلى من المسموح.</string>
+    <string name="relay_err_request_large">الطلب أكبر من الحجم الذي تقبله القناة.</string>
+    <string name="relay_err_storage_full">حصة تخزين المساعد ممتلئة ولا يمكن تحرير المزيد.</string>
+    <string name="relay_err_surface_api_level">التشغيل في الخلفية يتطلب Android 13 أو أحدث.</string>
+    <string name="relay_err_surface_consent">يطلب النظام تأكيدك لجلسة الالتقاط هذه.</string>
+    <string name="relay_err_surface_mode_required">تعمل هذه القدرة على الشاشة الموثوقة في الخلفية فقط؛ بدّل تفضيل التنفيذ إلى «الخلفية أولاً» وتأكد من أن الشاشة قائمة.</string>
+    <string name="relay_err_surface_no_shell">لا يعمل Shizuku، لذلك التشغيل في الخلفية غير متاح.</string>
+    <string name="relay_err_surface_secure">هذه النافذة مصنَّفة كمحمية، لذلك لا يمكن التقاط محتواها.</string>
+    <string name="relay_err_surface_trusted_denied">رفض النظام إنشاء شاشة موثوقة.</string>
+    <string name="relay_err_surface_unavailable">لا يوجد نمط تنفيذ يخدم هذه القدرة في الوقت الحالي.</string>
+    <string name="relay_err_suspended_by_host">نافذة المساعد في المقدمة؛ اتركها ثم أعد المحاولة.</string>
+    <string name="relay_err_timeout">لم يرد المضيف خلال المدة المطلوبة.</string>
+    <string name="relay_err_unavailable_device">هذا الجهاز أو إصدار النظام لا يدعم هذه القدرة.</string>
+    <string name="relay_err_wait_timeout">لم تظهر حالة الواجهة المنتظرة قبل انتهاء المهلة</string>
+    <string name="relay_fgs_label">قناة المساعد</string>
+    <string name="relay_fgs_ongoing">في انتظار أوامر المساعد</string>
+    <string name="relay_module_title">مساعد الهاتف</string>
+    <string name="relay_notify_channel_name">رسائل المساعد</string>
+    <string name="relay_notify_listener_label">وصول DSHBox إلى الإشعارات</string>
+    <string name="relay_projection_channel">التقاط الشاشة</string>
+    <string name="relay_projection_ongoing">يجري التقاط محتوى الشاشة</string>
+    <string name="relay_risk_high">يصعب التراجع عنه، وقد يؤثر على تطبيقات أخرى.</string>
+    <string name="relay_risk_low">أثر محدود.</string>
+    <string name="relay_risk_medium">تقرأ بيانات شخصية أو تؤثر في تطبيقات أخرى.</string>
+
+</resources>

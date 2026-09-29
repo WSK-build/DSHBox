@@ -7,9 +7,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 /**
- * 移动引擎（1.2.0 §5.3；§7.3 模块化收尾自 FileOps.kt 纯搬移拆出，行为零变化）。
+ * 移动引擎（自 FileOps.kt 纯搬移拆出，行为不变）。
  *
- * 单项执行序（§5.3）：目标无同名 → renameTo（同卷原子）；renameTo 失败 → 此时才比较
+ * 单项执行序：目标无同名 → renameTo（同卷原子）；renameTo 失败 → 此时才比较
  * 空间并走 `.dsh-moving-*` 复制兜底（同步 rwx/时间戳、字节校验）；目标同名 → OVERWRITE
  * 「先就位后替换」/ 目录递归合并。取消以单个文件为最小不可中断单元；finally 清理本轮
  * 全部中转残留，崩溃残留由启动扫描 cleanupMovingResidualsInAppDirs 覆盖。
@@ -19,7 +19,7 @@ import kotlinx.coroutines.ensureActive
 data class MoveFailure(val source: File, val message: UiText)
 
 /**
- * 批量移动结果（1.2.0 §5.3.7）。取消不打断已完成项：
+ * 批量移动结果。取消不打断已完成项：
  * [cancelled] 为 true 时 moved/skipped/failed 如实反映已完成与未处理情况。
  */
 data class MoveResult(
@@ -29,7 +29,7 @@ data class MoveResult(
     val cancelled: Boolean = false,
 )
 
-/** `.dsh-moving` 中转临时名前缀（§5.3.3/§5.3.6）。 */
+/** `.dsh-moving` 中转临时名前缀。 */
 private const val MOVING_TEMP_PREFIX = ".dsh-moving-"
 
 /** 中转残留的精确形态（仅识别本引擎生成的纯数字时间戳后缀，避免误删用户同名文件）。 */
@@ -81,7 +81,7 @@ private fun FileOpException.asUiTextOr(defaultRes: Int): UiText =
 object MoveEngine {
 
 /**
- * 批量移动执行引擎（1.2.0 §5.3）。任务来自 [MovePlanner.planMove]（冲突已预演/决策）。
+ * 批量移动执行引擎。任务来自 [MovePlanner.planMove]（冲突已预演/决策）。
  *
  * 单项执行序：
  * 1. 目标无同名 → `renameTo`（同卷原子，天然保留权限位与时间戳）；
@@ -93,10 +93,10 @@ object MoveEngine {
  *    `.dsh-moving-*`，确认就位后删旧目标再改名到位）；目录同名 → 递归合并
  *    （[mergeTree]，绝不整体删除目标目录）。
  *
- * 取消（§5.3.5）：以单个文件为最小不可中断单元，`ensureActive()` 只在文件之间检查；
+ * 取消：以单个文件为最小不可中断单元，`ensureActive()` 只在文件之间检查；
  * 取消即停止后续项、保留已完成项，[MoveResult.cancelled] = true，不做全局回滚。
  *
- * 清理（§5.3.6）：结束（含取消与异常）在 `finally` 中删除本轮产生的全部 `.dsh-moving-*`
+ * 清理：结束（含取消与异常）在 `finally` 中删除本轮产生的全部 `.dsh-moving-*`
  * 中转残留；崩溃/断电遗留由 App 启动时 [cleanupMovingResiduals] 全局清理。
  */
 suspend fun moveWithin(
@@ -130,7 +130,7 @@ suspend fun moveWithin(
             progress.report(UiText.Res(R.string.move_progress_moving_name, listOf(source.name)))
             try {
                 when {
-                    // 目录递归合并（§5.3.4）：绝不整体删除目标目录
+                    // 目录递归合并：绝不整体删除目标目录
                     task.existing == MoveExisting.MERGE_DIR && source.isDirectory && dest.isDirectory -> {
                         val innerSkipped = mergeTreeInternal(
                             source, dest, ConflictMode.OVERWRITE, temps, progress,
@@ -139,7 +139,7 @@ suspend fun moveWithin(
                         skipped += innerSkipped
                         moved++
                     }
-                    // 覆盖（§5.3.3）：先就位后替换
+                    // 覆盖：先就位后替换
                     task.existing == MoveExisting.OVERWRITE && dest.exists() -> {
                         replaceViaTemp(source, dest, temps, progress, forceCopyFallback, deleteTarget)
                         moved++
@@ -161,14 +161,14 @@ suspend fun moveWithin(
     } catch (e: kotlinx.coroutines.CancellationException) {
         cancelled = true
     } finally {
-        // §5.3.6：清理本轮全部 .dsh-moving-* 中转残留（含取消与异常路径）
+        // 清理本轮全部 .dsh-moving-* 中转残留（含取消与异常路径）
         for (t in temps) runCatching { if (t.exists()) t.deleteRecursively() }
     }
     return MoveResult(moved, skipped, failed.toList(), cancelled)
 }
 
 /**
- * 扫描并删除 [root] 下全部 `.dsh-moving-*` 中转残留（§5.3.6，App 启动时调用，
+ * 扫描并删除 [root] 下全部 `.dsh-moving-*` 中转残留（App 启动时调用，
  * 覆盖崩溃/断电场景）。只匹配本引擎生成的 `\.dsh-moving-\d+` 精确形态。
  * @return 删除的残留数量
  */
@@ -189,7 +189,7 @@ fun cleanupMovingResiduals(root: File): Int {
 }
 
 /**
- * App 启动清理入口（§5.3.6，审查修正：限定扫描范围）：只遍历移动落点可达的四层目录
+ * App 启动清理入口（限定扫描范围）：只遍历移动落点可达的四层目录
  * （base / node / dsh / user-data，含 1.1.x legacy debian 根）——中转位只会创建在移动
  * 目标旁，不会出现在 cacheDir 或 android-side 等其他位置。避免全量递归 filesDir
  * （runtime 资产树数万条目）与沙盒启动争 IO。由 [com.dshbox.app.DshApp] 后台延迟调用。
@@ -211,7 +211,7 @@ fun cleanupMovingResidualsInAppDirs(filesDir: File): Int {
 }
 
 /**
- * 递归合并 [src] 到已存在的目标目录 [destDir]（§5.3.4，原 FilesScreen.mergeTree 下沉）：
+ * 递归合并 [src] 到已存在的目标目录 [destDir]（自 FilesScreen.mergeTree 下沉）：
  * - 目标不存在的子项：走单项移动（rename 优先 + 复制兜底 + rwx/时间戳同步）；
  * - 同名子项按 [mode]：OVERWRITE 文件替换/目录继续合并，RENAME 自动改名，SKIP 跳过；
  * - 绝不整体删除目标目录（保持 1.1.0 修复后的「不静默丢弃目标子文件」语义）；
@@ -244,7 +244,7 @@ private suspend fun mergeTreeInternal(
     deleteTarget: (File) -> Boolean,
 ): Int {
     var skipped = 0
-    // 复查修正（可追溯性）：单个子项失败不再立即中断——继续其余子项（§5.3.7
+    // 单个子项失败不立即中断，继续其余子项（与批量移动的
     // 「单文件 IO 失败继续其余」同口径），结束时抛出带「已合并计数 + 首个失败子项」
     // 的异常，用户能看到哪些子项已过去、哪个失败，避免补移时重复/覆盖。
     var firstFailure: UiText? = null
@@ -303,8 +303,8 @@ private suspend fun mergeTreeInternal(
 }
 
 /**
- * 单项移动到尚不存在的 [dest]：renameTo 优先；失败才查空间并走复制兜底
- * （§5.3.1–2）。失败抛 [FileOpException]，由调用方计入结果并继续其余项。
+ * 单项移动到尚不存在的 [dest]：renameTo 优先；失败才查空间并走复制兜底。
+ * 失败抛 [FileOpException]，由调用方计入结果并继续其余项。
  */
 private suspend fun moveSingle(
     source: File,
@@ -356,7 +356,7 @@ private suspend fun moveSingle(
 }
 
 /**
- * 覆盖替换（§5.3.3 先就位后替换）：源先移到目标旁 `.dsh-moving-*` 中转位并完整就位，
+ * 覆盖替换（先就位后替换）：源先移到目标旁 `.dsh-moving-*` 中转位并完整就位，
  * 确认就位后删旧目标、再把中转位改名到位。
  *
  * 数据保全不变量（审查修正）：任何失败路径都绝不允许销毁数据的唯一副本——
@@ -478,7 +478,7 @@ private suspend fun stageCopy(
 /**
  * 递归复制 source → dest（dest 必须尚未占用）：逐文件复制后同步 rwx 权限位与
  * lastModified（rootfs 内可执行位至关重要），并校验目标字节数与源一致。
- * 取消检查仅在文件之间（§5.3.5：单个文件为最小不可中断单元）。
+ * 取消检查仅在文件之间（单个文件为最小不可中断单元）。
  */
 private suspend fun copyTreeWithMeta(source: File, dest: File, progress: MoveProgress?) {
     currentCoroutineContext().ensureActive()
@@ -558,8 +558,8 @@ private fun syncMetadata(src: File, dst: File) {
     }
 }
 
-/** 在 [parent] 下生成一个不冲突的 `.dsh-moving-<ts>` 中转名（§5.3.3）。
- *  时间戳按符号位归正（审查修正：nanoTime 可为负，负号会破坏 `\.dsh-moving-\d+$` 残留识别）。 */
+/** 在 [parent] 下生成一个不冲突的 `.dsh-moving-<ts>` 中转名。
+ *  时间戳按符号位归正（nanoTime 可为负，负号会破坏 `\.dsh-moving-\d+$` 残留识别）。 */
 private fun newMovingTemp(parent: File?): File {
     val dir = parent ?: File(".")
     var candidate: File

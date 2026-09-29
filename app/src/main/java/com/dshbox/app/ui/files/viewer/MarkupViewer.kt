@@ -40,30 +40,30 @@ import java.io.File
 /** Markdown 预览字符上限：Markwon 同步解析超大文档会长时间阻塞主线程，超限截断（已知限制）。 */
 private const val MARKDOWN_PREVIEW_MAX_CHARS = 512_000
 
-/** WebViewAssetLoader 虚拟域（§6.7：不用 file://，与 DSH 的 127.0.0.1 WebView 完全隔离）。 */
+/** WebViewAssetLoader 虚拟域（不用 file://，与 DSH 的 127.0.0.1 WebView 完全隔离）。 */
 private const val WEB_VIRTUAL_DOMAIN = "appassets.androidplatform.net"
 
 /** 预览类型（由外壳按扩展名决定：md/markdown→MD；html/htm→HTML；svg→SVG）。 */
 internal enum class MarkupKind { MD, HTML, SVG }
 
 /**
- * 标记语言查看（1.2.0 §6.7）。
+ * 标记语言查看。
  *
  * - 「预览/编辑」分段切换：编辑复用既有 TextCodeViewer（共享外壳 TextEditController，
  *   未保存拦截/保存链路原样生效）；「编辑」标签走外壳 requestEdit 门禁链（大文件/风险层
  *   强确认），不绕过任何门禁；编辑中强制编辑视图，门禁被取消则回退预览；
  * - **编辑器常驻组合**（预览层覆盖其上）：切换到预览不丢弃草稿与 textProvider，
- *   预览/返回编辑往返与 Tab 切换同语义（§6.4.5 草稿策略）；预览层带主题背景遮挡编辑器；
+ *   预览/返回编辑往返与 Tab 切换同语义（草稿策略）；预览层带主题背景遮挡编辑器；
  * - Markdown 预览：Markwon core（Apache-2.0）原生 Spannable 渲染，内容为当前编辑态
  *   （含未保存修改）；
  * - HTML/SVG 预览：WebView 离线渲染，内容在 WebView 创建时于主线程快照
- *   （Sora Content 非线程安全，不在拦截线程读编辑器），**安全基线逐条落实（§6.7）**：
+ *   （Sora Content 非线程安全，不在拦截线程读编辑器），**安全基线逐条落实**：
  *   ① allowFileAccess / allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs 全 false；
  *   ② setBlockNetworkLoads(true) 禁网（离线文档不外传、不加载远程资源）；
  *   ③ 无 addJavascriptInterface 且 JS 关闭（比基线更严：静态渲染不需要脚本）；
  *   ④ WebViewAssetLoader 虚拟域 https://appassets.androidplatform.net/ 承载内容，不用 file://；
  *   ⑤ 与 DSH 的 127.0.0.1 WebView 完全隔离（独立实例、独立虚拟域、外链导航一律拦截）；
- *   ⑥ 退出即销毁（离开组合 stopLoading + destroy，M2 decoder 教训同标准）；
+ *   ⑥ 退出即销毁（离开组合 stopLoading + destroy，与 decoder 回收同标准）；
  * - 大文件（>2MB 分块）无法预览（需完整文本），提示后仍可查看/编辑源文。
  */
 @Composable
@@ -158,7 +158,7 @@ internal fun MarkupViewer(
 /**
  * 预览文本：**
  * - fullBytes 缺失（>2MB 大文件分块路径）→ 返回 null → UI 显示「文件过大，无法预览」；
- *   （返工：此前先取 textProvider，编辑器常驻组合时 provider 返回空串 → 预览空白无提示）
+ *   （若先取 textProvider，编辑器常驻组合时 provider 会返回空串 → 预览空白且无提示）
  * - 有完整文本 → 优先当前编辑文本（textProvider），否则按探测解码已保存内容。
  */
 private fun currentPreviewText(
@@ -243,13 +243,15 @@ private fun WebPreview(
                     }
                     val assetMime = asset?.let { mimeForAsset(name) }
                     if (asset != null && assetMime != null) {
-                        // P1（2026-09-07 审查）：MIME 白名单即**准入**——非白名单扩展名的
+                        // MIME 白名单即**准入**：非白名单扩展名的
                         // 同目录文件不得经 HTML 引用读出（含 .dsh 凭据/id_rsa/config.json 等），
                         // 白名单未命中回退主文档，绝不以 octet-stream 放行任意文件
+                        // 流式返回文件本体：WebView 读完会自行关闭该流（框架文档明示），
+                        // 因此既不整读进内存，也无需在宿主侧缓存或额外回收。
                         WebResourceResponse(
                             assetMime,
                             null,
-                            ByteArrayInputStream(asset.readBytes()),
+                            asset.inputStream().buffered(),
                         )
                     } else {
                         WebResourceResponse(mainMime, "utf-8", ByteArrayInputStream(snapshot.toByteArray(Charsets.UTF_8)))
@@ -257,7 +259,7 @@ private fun WebPreview(
                 })
                 .build()
             WebView(ctx).apply {
-                // ---- §6.7 安全基线（逐条对应计划原文） ----
+                // ---- 安全基线（逐条对应） ----
                 settings.javaScriptEnabled = false // ③ 无 bridge、无脚本执行面（比基线更严）
                 settings.allowFileAccess = false // ①
                 @Suppress("DEPRECATION")
@@ -288,8 +290,8 @@ private fun WebPreview(
                             }
                             return true
                         }
-                        // P4（2026-09-07 审查）：非 http(s) 外链（tel:/mailto:/intent: 等）
-                        // 静默拦截曾让用户以为链接坏了——给明确提示
+                        // 非 http(s) 外链（tel:/mailto:/intent: 等）
+                        // 静默拦截会让用户以为链接坏了——给明确提示
                         android.widget.Toast.makeText(
                             ctx,
                             R.string.files_markup_link_blocked,

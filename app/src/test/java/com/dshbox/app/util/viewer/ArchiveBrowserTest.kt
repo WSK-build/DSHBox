@@ -25,8 +25,8 @@ import java.util.zip.ZipOutputStream
 
 /**
  * ArchiveBrowser 单测（纯 JVM）：JDK/commons-compress 可构造的 zip/tar 族样本，
- * 断言条目枚举、层级、嵌套、空包、损坏包不崩、加密位识别与条目内容流（1.2.0 §6.8）。
- * tar.zst 在 JVM 测试环境无原生库：断言收敛为 Error（不崩），真机（仅 arm64）另行验证。
+ * 断言条目枚举、层级、嵌套、空包、损坏包不崩、加密位识别与条目内容流。
+ * tar.zst 在 JVM 测试环境无原生库：断言收敛为 Error（不崩），arm64 设备上另行验证。
  */
 class ArchiveBrowserTest {
 
@@ -86,7 +86,7 @@ class ArchiveBrowserTest {
         snapshot.entries.first { it.path == path }
 
     // ---------------- 端到端命名链 ----------------
-    // 此前 formatOf 直测传 ("tar","tar.gz") 等理想参数、browse 直传 Format 枚举，
+    // formatOf 直测若传 ("tar","tar.gz") 等理想参数、browse 直传 Format 枚举，
     // 「文件名 → classify → formatOf」真实链路无一例覆盖，.tar.gz/.tar.zst/.tar.bz2/
     // .tzst 四类主流命名全部落信息卡仍 147 例全绿——本组用例固化完整链路。
 
@@ -421,7 +421,7 @@ class ArchiveBrowserTest {
     @Test
     fun tarZstConvergesToErrorWithoutNativeLib() {
         // JVM 测试环境（x86_64）无 zstd 原生库：UnsatisfiedLinkError 必须收敛为 Error
-        // （真机上若库存在但内容损坏同样收敛为 Error——两种路径均不崩）
+        // （设备上若库存在但内容损坏同样收敛为 Error——两种路径均不崩）
         val f = tmp.newFile("a.tar.zst")
         f.writeBytes(byteArrayOf(0x28, 0xB5.toByte(), 0x2F, 0xFD.toByte(), 1, 2, 3, 4))
         val result = ArchiveBrowser.browse(f, ArchiveBrowser.Format.TAR_ZST)
@@ -504,7 +504,7 @@ class ArchiveBrowserTest {
     // tarChineseNamesGbkDecoded 已移除（第三轮审查实证修正）：TAR 名统一 UTF-8，
     // GBK 编码 tar 为已知限制（commons 解 GBK 字节产出问号 U+003F，无标志位可依，
     // 判定不可靠；沙盒 `tar czf` 主场景为 UTF-8）。已知行为：GBK tar 条目名显示问号、
-    // 不崩溃、可枚举——真机清单观察点。1.2.x 评估 UI 编码切换入口。
+    // 不崩溃、可枚举。UI 编码切换入口另行评估。
 
    @Test
     fun zipChineseNamesUtf8WithoutFlagNotMistakenForGbk() {
@@ -547,5 +547,38 @@ class ArchiveBrowserTest {
         val snap = (result as ArchiveBrowser.Result.Ok).snapshot
         assertEquals("中文目录/中文文件.txt", snap.entries.single().path)
         assertEquals("UTF-8", snap.charsetLabel)
+    }
+
+    // ---------------- 中央目录读取判据 ----------------
+
+    @Test
+    fun centralDirectoryReadableWithinFile() {
+        // 常规包：偏移 + 长度落在文件内。
+        assertTrue(ArchiveBrowser.isCentralDirectoryReadable(cdOffset = 100, cdSize = 5_000, fileSize = 10_000))
+    }
+
+    @Test
+    fun centralDirectoryRejectedWhenOutsideFile() {
+        // 包头声明的范围越过文件末尾（既有防护口径）。
+        assertFalse(ArchiveBrowser.isCentralDirectoryReadable(cdOffset = 9_000, cdSize = 5_000, fileSize = 10_000))
+    }
+
+    @Test
+    fun centralDirectoryRejectedWhenOversized() {
+        // 长度超过一次性分配上限（即便落在文件内也拒绝，改为回退 UTF-8）。
+        val overCap = 16L * 1024 * 1024 + 1
+        assertFalse(ArchiveBrowser.isCentralDirectoryReadable(cdOffset = 0, cdSize = overCap, fileSize = overCap + 1))
+    }
+
+    @Test
+    fun centralDirectoryRejectedWhenNotRepresentable() {
+        // 超出 Int 可表示范围（既有防护口径）。
+        assertFalse(
+            ArchiveBrowser.isCentralDirectoryReadable(
+                cdOffset = 0,
+                cdSize = Int.MAX_VALUE.toLong() + 1,
+                fileSize = Long.MAX_VALUE / 2,
+            ),
+        )
     }
 }

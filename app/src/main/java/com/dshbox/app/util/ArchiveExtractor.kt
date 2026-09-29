@@ -56,7 +56,7 @@ object ArchiveExtractor {
      * 解压 [archive] 到 [destDir]。返回解压条目数。
      * [listener] 收到字节进度；阶段文案由调用方组合。
      *
-     * **约定**：[destDir] 必须是本次操作专用的目标目录（调用方传临时目录）；
+     * **约定**：[destDir] 必须是该次操作专用的目标目录（调用方传临时目录）；
      * 解压失败或取消时自动清理 [destDir] 全部内容，避免半成品残留（S1）。
      */
     suspend fun extract(
@@ -82,7 +82,7 @@ object ArchiveExtractor {
     }
 
     private suspend fun extractZip(archive: File, destRoot: File, listener: ProgressListener?): Int {
-        // 2026-09-08 修复：条目名编码与浏览侧（ArchiveBrowser）同口径——java.util.zip
+        // 条目名编码与浏览侧（ArchiveBrowser）同口径——java.util.zip
         // 固定 UTF-8，GBK 中文包（Windows 压缩软件）解压文件名必乱码。改用 commons
         // ZipFile（charset 按字节级 CEN 判定：bit11 置位→UTF-8，未置位严格校验非法→GBK）。
         val total = archive.length()

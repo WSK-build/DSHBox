@@ -91,13 +91,16 @@ class DshTerminalManager(
         newSession(Kind.FAILSAFE, client)
 
     /**
-     * Re-points every live session's client callback target, e.g. after an
-     * Activity recreation replaced the UI-owned client instance.
+     * Re-points every session's client callback target, e.g. after an Activity
+     * recreation replaced the UI-owned client instance.
      * Main thread only.
      */
     fun rebindClient(client: TerminalSessionClient) {
         synchronized(lock) {
-            handles.forEach { if (it.session.isRunning()) it.session.updateTerminalSessionClient(client) }
+            // Exited windows are re-pointed too: a session keeps the client it was
+            // created with, so leaving them on the previous instance would pin that
+            // instance for as long as the entry lives.
+            handles.forEach { it.session.updateTerminalSessionClient(client) }
         }
     }
 
@@ -116,6 +119,9 @@ class DshTerminalManager(
     /** Lifecycle method kept for SandboxService parity: stops everything. Thread-safe. */
     fun stopAll() {
         killSessions { true }
+        // Entries are normally dropped by the finish callback; purging here keeps a
+        // stale one from surviving across calls.
+        synchronized(lock) { intentionallyStopped.clear() }
     }
 
     /** Closes a single window (kills its shell, removes it). Thread-safe. */
@@ -158,9 +164,13 @@ class DshTerminalManager(
         synchronized(lock) {
             val toKill = handles.filter(selector)
             for (h in toKill) {
-                val running = h.session.isRunning()
-                intentionallyStopped.add(h.session)
-                if (running) h.session.finishIfRunning()
+                // Only a spawned process can be signalled and will report its exit
+                // exactly once; recording a session that never spawned (pid 0) or has
+                // already finished (pid -1) would leave an entry nothing ever clears.
+                if (TerminalSessionBookkeeping.needsKillAndMark(h.session.pid)) {
+                    intentionallyStopped.add(h.session)
+                    h.session.finishIfRunning()
+                }
                 h.running = false
                 handles.remove(h)
             }

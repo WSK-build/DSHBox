@@ -1,6 +1,7 @@
 package com.dshbox.app.sandbox
 
 import android.system.Os
+import android.util.Log
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
 import com.github.luben.zstd.ZstdInputStream
@@ -92,6 +93,8 @@ class BundleManager(
         }
         destDir.mkdirs()
         val destRoot = destDir.canonicalFile
+        // 硬链接目标可能排在本条目之后（tar 成员顺序不保证），收尾时补做。
+        val pendingHardLinks = mutableListOf<Triple<File, File, Int>>()
         return try {
             // Dispatch on the container format: zstd layers use zstd-jni, bzip2/xz
             // use commons-compress (+org.tukaani:xz for xz). zstd-jni is wired as a
@@ -159,11 +162,12 @@ class BundleManager(
                             }
                             entry.isLink -> {
                                 target.parentFile?.mkdirs()
-                                val linkTarget = if (entry.linkName.startsWith('/')) {
-                                    File(destRoot, entry.linkName.trimStart('/')).canonicalFile
-                                } else {
-                                    File(target.parentFile, entry.linkName).canonicalFile
-                                }
+                                // 硬链接名是归档根相对路径（POSIX）：`/usr/bin/x`、
+                                // `./usr/bin/x`、`usr/bin/x` 等价，不能按链接所在目录解析。
+                                val linkTarget = File(
+                                    destRoot,
+                                    entry.linkName.trimStart('/').removePrefix("./"),
+                                ).canonicalFile
                                 if (!isWithinRoot(linkTarget, destRoot)) {
                                     return AppResult.Failure(
                                         AppError("BUNDLE_UNSAFE_LINK", "unsafe hard link: ${entry.name} -> ${entry.linkName}"),
@@ -174,6 +178,8 @@ class BundleManager(
                                         FileOutputStream(target).use { out -> input.copyTo(out) }
                                     }
                                     applyEntryMode(target, entry.mode)
+                                } else {
+                                    pendingHardLinks += Triple(target, linkTarget, entry.mode)
                                 }
                             }
                             entry.isFile -> {
@@ -186,6 +192,17 @@ class BundleManager(
                             else -> Unit // skip device nodes, sockets, fifos; PRoot binds /dev etc.
                         }
                         entry = tar.nextEntry
+                    }
+                    // 收尾补做后置目标的硬链接；仍解析不到只记日志。
+                    for ((linkPath, linkTarget, mode) in pendingHardLinks) {
+                        if (linkTarget.isFile) {
+                            linkTarget.inputStream().use { input ->
+                                FileOutputStream(linkPath).use { out -> input.copyTo(out) }
+                            }
+                            applyEntryMode(linkPath, mode)
+                        } else {
+                            Log.w(TAG, "unresolved tar hard link: ${linkPath.name} -> ${linkTarget.path}")
+                        }
                     }
                 }
             }
@@ -341,5 +358,9 @@ class BundleManager(
         }
     } catch (_: Exception) {
         false
+    }
+
+    private companion object {
+        const val TAG = "BundleManager"
     }
 }

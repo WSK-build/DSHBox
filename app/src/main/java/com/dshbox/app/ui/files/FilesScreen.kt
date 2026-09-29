@@ -6,6 +6,11 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,25 +35,26 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.Archive
-import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.FolderZip
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.InsertDriveFile
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Sort
-import androidx.compose.material.icons.outlined.Upload
-import androidx.compose.material.icons.outlined.ViewList
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.automirrored.outlined.NoteAdd
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Check
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Close
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Delete
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Folder
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.MoreVert
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Archive
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.CreateNewFolder
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.DriveFileMove
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Download
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.FolderOpen
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.FolderZip
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.GridView
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.InsertDriveFile
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Refresh
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Search
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Sort
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Upload
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.ViewList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -88,15 +94,18 @@ import com.dshbox.app.R
 import com.dshbox.app.common.UiText
 import com.dshbox.app.sandbox.SandboxState
 import com.dshbox.app.ui.asString
+import com.dshbox.app.runtime.DebUnpackInstaller
 import com.dshbox.app.util.ArchiveExtractor
 import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.util.ConflictMode
 import com.dshbox.app.util.FileEntry
 import com.dshbox.app.util.FileOps
 import com.dshbox.app.util.ImportBatchState
+import com.dshbox.app.util.MAX_DIRECTORY_FILES
 import com.dshbox.app.util.MoveEngine
 import com.dshbox.app.util.GlobalSearch
 import com.dshbox.app.util.Layer
+import com.dshbox.app.util.isAppManagedAsset
 import com.dshbox.app.util.LayerRoots
 import com.dshbox.app.util.MoveTask
 import com.dshbox.app.util.PathMapper
@@ -105,6 +114,7 @@ import com.dshbox.app.util.RiskLevel
 import com.dshbox.app.util.SearchResult
 import com.dshbox.app.util.entrySubtitle
 import com.dshbox.app.util.formatFileSize
+import com.dshbox.app.util.guestPathOf
 import com.dshbox.app.util.layerOf
 import com.dshbox.app.util.queryDisplayName
 import com.dshbox.app.util.resolveConflictName
@@ -120,8 +130,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.res.vectorResource
+import com.dshbox.app.common.R as CommonR
 
-// --- Design tokens 已迁至 FilesCommon.kt（1.2.0 §4.3），同包直接使用 ---
+// --- Design tokens 在 FilesCommon.kt（同包直接使用） ---
 
 private enum class SortMode { NAME, TIME, SIZE }
 
@@ -134,7 +146,7 @@ private data class PendingImport(val uri: Uri, val targetDir: File, val baseName
 private data class PendingMerge(val extractedDir: File, val targetDir: File)
 
 /**
- * Layer → RiskLevel 映射（1.2.0 §4.1/§4.2）：NODE/DSH 运行环境层按系统目录级强确认；
+ * Layer → RiskLevel 映射：NODE/DSH 运行环境层按系统目录级强确认；
  * DSH_DATA 走 DSH 数据文案；WORKSPACE/BASE 直接放行。
  */
 internal fun riskLevelOfLayer(layer: Layer): RiskLevel? = when (layer) {
@@ -162,9 +174,9 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     val nodeLayer = remember { File(context.filesDir, "runtime/runtime-current/node").takeIf { it.isDirectory } }
     val dshLayer = remember { File(context.filesDir, "runtime/runtime-current/dsh").takeIf { it.isDirectory } }
     val mapper = remember { PathMapper(sandboxRoot, workspaceRoot, nodeLayer, dshLayer) }
-    /** 统一层判定的物理根（1.2.0 §4.1）。 */
+    /** 统一层判定的物理根。 */
     val layerRoots = remember { LayerRoots(mapper) }
-    // 沙盒运行中标记：NODE/DSH 层移动文案追加停机建议（§4.2/§5.4）
+    // 沙盒运行中标记：NODE/DSH 层移动文案追加停机建议
     val app = LocalContext.current.applicationContext as DshApp
     val sandboxState by app.container.sandboxManager.sandboxState.collectAsState()
     val sandboxRunning = sandboxState == SandboxState.RUNNING
@@ -180,6 +192,8 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 
     var currentDir by remember { mutableStateOf(root) }
     var entries by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
+    /** 当前目录的文件数是否超过上限被截断（目录不受限）；仅在真的截断时提示。 */
+    var listTruncated by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var sortMode by remember { mutableStateOf(SortMode.NAME) }
@@ -187,7 +201,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     /** 切换 rootMode 时携带的目标目录（搜索结果跨根跳转等场景），避免被根重置覆盖。 */
     var pendingNavigateDir by remember { mutableStateOf<File?>(null) }
 
-    // 通用文件查看器（1.2.0 §6.1：只持 logicalPath 字符串，Tab 切回不影响查看器状态）
+    // 通用文件查看器（只持 logicalPath 字符串，Tab 切回不影响查看器状态）
     var viewerLogicalPath by remember { mutableStateOf<String?>(null) }
 
     // 全局搜索
@@ -199,6 +213,10 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     // 对话框状态
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
+    var showNewFileDialog by remember { mutableStateOf(false) }
+    var newFileName by remember { mutableStateOf("") }
+    /** 风险确认后回跳的新建类型（folder / file），避免 confirmRisk 写死回文件夹弹窗。 */
+    var pendingNewKind by remember { mutableStateOf("folder") }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<FileEntry?>(null) }
     var renameName by remember { mutableStateOf("") }
@@ -225,7 +243,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
     var importQueue by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var importQueueTarget by remember { mutableStateOf<File?>(null) }
     var importQueueMode by remember { mutableStateOf("file") }
-    // 2026-09-08 审查：计数/取消/汇总判定收敛为纯状态机（util/ImportBatchState，含单测）
+    // 计数/取消/汇总判定收敛为纯状态机（util/ImportBatchState，含单测）
     var importBatchState by remember { mutableStateOf(ImportBatchState(total = 0)) }
     /** 批驱动器触发（launcher 回调 +1）；导出出口经 [importBatchDone] 回传单件完成信号。 */
     var importTrigger by remember { mutableIntStateOf(0) }
@@ -266,7 +284,8 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         scope.launch {
             val all = withContext(Dispatchers.IO) { scanDirectory(dir, mapper, isTop) }
             if (dir.absolutePath != currentDir.absolutePath) return@launch
-            entries = all.sortedWith(
+            listTruncated = all.truncated
+            entries = all.entries.sortedWith(
                 when (sortMode) {
                     SortMode.NAME -> compareBy<FileEntry> { !it.isDirectory }.thenBy { it.name.lowercase() }
                     SortMode.TIME -> compareBy<FileEntry> { !it.isDirectory }.thenByDescending { it.lastModified }
@@ -301,7 +320,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 
     /**
      * 条目级「删除/重命名」的操作门禁（复查第七轮修正）：按 [entryLayer] 物理层判定——
-     * node/dsh 层内条目、嵌套 `.dsh` 内部文件均命中（与 §4.2 全域语义对齐）；
+     * node/dsh 层内条目、嵌套 `.dsh` 内部文件均命中（与全域语义对齐）；
      * 不再用 [isRiskEntry] 的名称口径（层内文件返回 NORMAL 会完全静默）。
      * 「打开」仍用名称口径：层内逐目录弹窗会使导航不可用。
      */
@@ -320,7 +339,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         showRiskDialog = true
     }
 
-    // 移动流程编排（1.2.0 §7.3：状态与编排函数迁出至 MoveFlow.kt，行为零变化）
+    // 移动流程编排（状态与编排函数在 MoveFlow.kt，行为不变）
     val moveFlow = remember {
         MoveFlow(
             context = context,
@@ -356,7 +375,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             }
             "delete" -> showDeleteConfirm = true
             "rename" -> if (renameTarget != null) showRenameDialog = true
-            "write" -> showNewFolderDialog = true
+            "write" -> if (pendingNewKind == "file") showNewFileDialog = true else showNewFolderDialog = true
             "import" -> showImportMenu = true
             // 源侧风险强确认通过后进入目标选择器
             "move" -> moveFlow.onMoveRiskConfirmed()
@@ -397,7 +416,19 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
 
     // ---------------- 新建 / 重命名 / 删除 ----------------
 
+    /** 物理路径是否属于我方只读资产（`.dsh/dshbox`）。 */
+    fun isProtectedAsset(logicalPath: String): Boolean =
+        isAppManagedAsset(mapper.resolvePhysical(File(logicalPath)).absolutePath, mapper.workspaceRoot)
+
     fun createNewFolder() {
+        // 我方固定资产目录（.dsh/dshbox）对用户只读：写操作在 UI 层直接挡掉，
+        // 给一句明确提示（否则只会看到内核权限失败后的通用报错）。
+        if (isProtectedAsset(currentDir.absolutePath)) {
+            showToastRes(R.string.files_dshbox_readonly)
+            newFolderName = ""
+            showNewFolderDialog = false
+            return
+        }
         val safeName = sanitizeFileName(newFolderName)
         if (safeName == null) {
             showToastRes(R.string.files_name_invalid)
@@ -422,8 +453,53 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         refreshEntries()
     }
 
+    fun createNewFile() {
+        // 与新建文件夹同门禁链：只读资产直接拦截，给明确提示。
+        if (isProtectedAsset(currentDir.absolutePath)) {
+            showToastRes(R.string.files_dshbox_readonly)
+            newFileName = ""
+            showNewFileDialog = false
+            return
+        }
+        val safeName = sanitizeFileName(newFileName)
+        if (safeName == null) {
+            showToastRes(R.string.files_name_invalid)
+            newFileName = ""
+            showNewFileDialog = false
+            return
+        }
+        // 后缀不约束：用户输入含后缀原样生成；无后缀（或以点结尾）统一补 .txt。
+        val finalName = if ('.' !in safeName || safeName.endsWith(".")) {
+            safeName.trimEnd('.') + ".txt"
+        } else {
+            safeName
+        }
+        val physical = mapper.resolvePhysical(currentDir)
+        val created = runCatching {
+            val target = File(physical, finalName)
+            if (target.exists()) {
+                showToastRes(R.string.files_rename_conflict)
+                // 清空输入便于重输，弹窗保留
+                newFileName = ""
+                return
+            }
+            target.createNewFile()
+        }
+        created.onFailure { showError(it.message ?: context.getString(R.string.files_create_failed)) }
+        newFileName = ""
+        showNewFileDialog = false
+        refreshEntries()
+    }
+
     fun doRename() {
         val entry = renameTarget ?: return
+        if (isProtectedAsset(entry.logicalPath)) {
+            showToastRes(R.string.files_dshbox_readonly)
+            renameTarget = null
+            renameName = ""
+            showRenameDialog = false
+            return
+        }
         val safeNewName = sanitizeFileName(renameName)
         if (safeNewName == null) {
             showToastRes(R.string.files_name_invalid)
@@ -488,6 +564,12 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         val single = pendingDeleteTarget
         val targets = if (single != null) listOf(single) else entries.filter { it.logicalPath in selectedPaths }
         if (targets.isEmpty()) return
+        if (targets.any { isProtectedAsset(it.logicalPath) }) {
+            showToastRes(R.string.files_dshbox_readonly)
+            showDeleteConfirm = false
+            pendingDeleteTarget = null
+            return
+        }
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
@@ -669,8 +751,8 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 }
                 withContext(Dispatchers.IO) { tmpArchive!!.delete() }
                 tmpArchive = null
-                // 用户反馈（2026-09-08）：导入文件夹压缩包后内容「全部散开」——包内无顶层
-                // 唯一目录时（系统压缩软件常如此）顶层多个条目直接平铺进目标目录。
+                // 包内没有唯一顶层目录时（系统压缩软件常如此），
+                // 顶层多个条目会直接平铺进目标目录、表现为「全部散开」。
                 // 与 7-Zip「解压到文件夹」同口径：顶层不唯一 → 在解压缓存内包一层
                 // 以包名命名的目录；后续冲突/合并流程原样复用（tmpExtract 顶层现在唯一）。
                 withContext(Dispatchers.IO) {
@@ -706,7 +788,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     mergeExtracted(tmpExtract!!, targetDir, ConflictMode.OVERWRITE)
                 }
             } catch (e: CancellationException) {
-                // S1/M6: 取消时清理缓存临时文件与目录；取消=中止整个批
+                // 取消时清理缓存临时文件与目录；取消=中止整个批
                 FileOps.deleteQuietly(tmpArchive)
                 FileOps.deleteQuietly(tmpExtract)
                 clearProgress()
@@ -935,9 +1017,15 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     count = selectedPaths.size,
                     canRename = selectedPaths.size == 1,
                     canExport = selectedPaths.isNotEmpty(),
-                    // 多选栏移动入口（§5.1）
+                    // 多选栏移动入口
                     onMove = {
-                        moveFlow.startMove(entries.filter { it.logicalPath in selectedPaths })
+                        val picked = entries.filter { it.logicalPath in selectedPaths }
+                        // 只读资产：只挡源侧；目标侧由 0555 权限兜底
+                        if (picked.any { isProtectedAsset(it.logicalPath) }) {
+                            showToastRes(R.string.files_dshbox_readonly)
+                        } else {
+                            moveFlow.startMove(picked)
+                        }
                     },
                     onRename = {
                         selectedPaths.firstOrNull()?.let { path ->
@@ -978,7 +1066,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     Spacer(Modifier.width(8.dp))
                     IconButton(onClick = { refreshEntries() }, modifier = Modifier.size(36.dp)) {
                         Icon(
-                            imageVector = Icons.Outlined.Refresh,
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_refresh),
                             contentDescription = stringResource(R.string.files_refresh),
                             tint = TextSecondary(),
                             modifier = Modifier.size(20.dp),
@@ -1002,7 +1090,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         modifier = Modifier.size(36.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.Sort,
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_arrows_sort),
                             contentDescription = stringResource(R.string.files_sort),
                             tint = TextSecondary(),
                             modifier = Modifier.size(20.dp),
@@ -1013,7 +1101,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         modifier = Modifier.size(36.dp),
                     ) {
                         Icon(
-                            imageVector = if (viewMode == ViewMode.LIST) Icons.Outlined.GridView else Icons.Outlined.ViewList,
+                            imageVector = if (viewMode == ViewMode.LIST) ImageVector.vectorResource(CommonR.drawable.ic_layout_grid) else ImageVector.vectorResource(CommonR.drawable.ic_list),
                             contentDescription = stringResource(
                                 if (viewMode == ViewMode.LIST) R.string.files_view_grid else R.string.files_view_list,
                             ),
@@ -1024,7 +1112,69 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                 }
             }
 
-            // ---------- 2. 面包屑 + 常驻全局搜索框 ----------
+            // ---------- 2. 常驻全局搜索框（左）+ 操作按键组（右） ----------
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GlobalSearchField(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    onClear = { searchQuery = "" },
+                    // 搜索框居左占约一半宽度，右侧为操作按键组
+                    modifier = Modifier.weight(1f),
+                )
+                TopActionBar(
+                    onNewFolder = {
+                        pendingNewKind = "folder"
+                        val risk = protectedRiskLevel(currentDir)
+                        if (risk != null) {
+                            showRisk(
+                                FileEntry(currentDir.name, currentDir.absolutePath, true, 0, 0, risk),
+                                "write",
+                            )
+                        } else {
+                            showNewFolderDialog = true
+                        }
+                    },
+                    onNewFile = {
+                        pendingNewKind = "file"
+                        val risk = protectedRiskLevel(currentDir)
+                        if (risk != null) {
+                            showRisk(
+                                FileEntry(currentDir.name, currentDir.absolutePath, true, 0, 0, risk),
+                                "write",
+                            )
+                        } else {
+                            showNewFileDialog = true
+                        }
+                    },
+                    onImport = {
+                        val risk = protectedRiskLevel(currentDir)
+                        if (risk != null) {
+                            showRisk(
+                                FileEntry(currentDir.name, currentDir.absolutePath, true, 0, 0, risk),
+                                "import",
+                            )
+                        } else {
+                            showImportMenu = true
+                        }
+                    },
+                    onExport = {
+                        // L3: 无选择时仅一次提示，不强行进入选择模式/开菜单
+                        if (selectedPaths.isEmpty()) {
+                            showToastRes(R.string.files_select_hint)
+                        } else {
+                            showExportMenu = true
+                        }
+                    },
+                )
+            }
+
+            // ---------- 3. 面包屑（独占一行，常驻；搜索态也不让位，位置感不丢） ----------
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1032,31 +1182,35 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                     .padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (searchQuery.isEmpty()) {
-                    Breadcrumb(
-                        root = root,
-                        rootLabel = rootLabel,
-                        currentDir = currentDir,
-                        onNavigate = { currentDir = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
+                Breadcrumb(
+                    root = root,
+                    rootLabel = rootLabel,
+                    currentDir = currentDir,
+                    onNavigate = { currentDir = it },
+                    modifier = Modifier.weight(1f),
+                )
+                // 搜索态只在右侧补一个结果标记，不再顶掉面包屑本身。
+                if (searchQuery.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = stringResource(R.string.files_search_results),
                         fontSize = 13.sp,
                         color = TextSecondary(),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        softWrap = false,
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                GlobalSearchField(
-                    query = searchQuery,
-                    onQueryChange = { searchQuery = it },
-                    onClear = { searchQuery = "" },
-                    // L2: 相对宽度自适应，窄屏不与面包屑重叠
-                    modifier = Modifier.fillMaxWidth(0.38f),
+            }
+
+            // 文件数超限时的提示：目录始终完整，只有文件被截断才出现（搜索态不适用）。
+            if (listTruncated && searchQuery.isBlank()) {
+                Text(
+                    text = stringResource(R.string.files_list_truncated, MAX_DIRECTORY_FILES),
+                    fontSize = 12.sp,
+                    color = TextSecondary(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 2.dp),
                 )
             }
 
@@ -1097,6 +1251,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         FileListRow(
                             entry = entry,
                             selected = entry.logicalPath in selectedPaths,
+                            selectionVisible = selectionMode,
                             onClick = {
                                 if (selectionMode) {
                                     toggleSelect(entry)
@@ -1114,7 +1269,13 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                                 if (!selectionMode) selectionMode = true
                                 toggleSelect(entry)
                             },
-                            onMove = { moveFlow.startMove(listOf(entry)) },
+                            onMove = {
+                                if (isProtectedAsset(entry.logicalPath)) {
+                                    showToastRes(R.string.files_dshbox_readonly)
+                                } else {
+                                    moveFlow.startMove(listOf(entry))
+                                }
+                            },
                             onRename = {
                                 renameTarget = entry
                                 renameName = entry.name
@@ -1128,6 +1289,32 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                                 selectedPaths = setOf(entry.logicalPath)
                                 selectionMode = true
                                 showExportChoice = true
+                            },
+                            onInstall = if (DebUnpackInstaller.isDeb(entry.name)) {
+                                {
+                                    // 解包安装只摊数据部分、不写 dpkg 账本（语义边界见
+                                    // DebUnpackInstaller 的说明），因此不弹风险确认，
+                                    // 结果仍走文件页既有的 toast 反馈。
+                                    val guestPath = guestPathOf(mapper, mapper.resolvePhysical(File(entry.logicalPath)))
+                                    scope.launch {
+                                        val info = withContext(Dispatchers.IO) {
+                                            DebUnpackInstaller.install(
+                                                sandboxManager = app.container.sandboxManager,
+                                                debGuestPath = guestPath,
+                                                workspaceDir = app.container.sandboxConfig.userDataDir,
+                                                inventoryDir = File(app.container.sandboxConfig.appFilesDir, "deb-installs"),
+                                            )
+                                        }
+                                        // 用了维护脚本或需要注册替代名的包，解包后仍需自行处理；
+                                        // 这里只如实回报「数据部分是否摊开」。
+                                        showToastRes(
+                                            if (info?.unpacked == true) R.string.files_install_deb_done
+                                            else R.string.files_install_deb_failed,
+                                        )
+                                    }
+                                }
+                            } else {
+                                null
                             },
                         )
                     }
@@ -1144,6 +1331,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         FileGridCell(
                             entry = entry,
                             selected = entry.logicalPath in selectedPaths,
+                            selectionVisible = selectionMode,
                             onClick = {
                                 if (selectionMode) {
                                     toggleSelect(entry)
@@ -1167,42 +1355,6 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             }
         }
 
-        // ---------- 悬浮胶囊框（右上区域） ----------
-        FloatingCapsule(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 56.dp, end = 16.dp),
-            onNewFolder = {
-                val risk = protectedRiskLevel(currentDir)
-                if (risk != null) {
-                    showRisk(
-                        FileEntry(currentDir.name, currentDir.absolutePath, true, 0, 0, risk),
-                        "write",
-                    )
-                } else {
-                    showNewFolderDialog = true
-                }
-            },
-            onImport = {
-                val risk = protectedRiskLevel(currentDir)
-                if (risk != null) {
-                    showRisk(
-                        FileEntry(currentDir.name, currentDir.absolutePath, true, 0, 0, risk),
-                        "import",
-                    )
-                } else {
-                    showImportMenu = true
-                }
-            },
-            onExport = {
-                // L3: 无选择时仅一次提示，不强行进入选择模式/开菜单
-                if (selectedPaths.isEmpty()) {
-                    showToastRes(R.string.files_select_hint)
-                } else {
-                    showExportMenu = true
-                }
-            },
-        )
     }
 
     // ---------------- 对话框 ----------------
@@ -1235,17 +1387,45 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         )
     }
 
+    if (showNewFileDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewFileDialog = false },
+            title = { Text(stringResource(R.string.files_new_file)) },
+            text = {
+                OutlinedTextField(
+                    value = newFileName,
+                    onValueChange = { newFileName = it },
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.files_new_file_hint)) },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    shape = MaterialTheme.shapes.medium,
+                    onClick = { createNewFile() },
+                ) {
+                    Text(stringResource(R.string.files_new_folder_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewFileDialog = false }) {
+                    Text(stringResource(R.string.files_cancel))
+                }
+            },
+        )
+    }
+
     if (showImportMenu) {
         MenuListDialog(
             title = stringResource(R.string.files_import),
             items = listOf(
-                MenuItemSpec(R.string.files_import_file, Icons.Outlined.InsertDriveFile) {
+                MenuItemSpec(R.string.files_import_file, ImageVector.vectorResource(CommonR.drawable.ic_file)) {
                     showImportMenu = false
                     importMode = "file"
                     importTargetDir = currentDir
                     importLauncher.launch(arrayOf("*/*"))
                 },
-                MenuItemSpec(R.string.files_import_archive, Icons.Outlined.Archive) {
+                MenuItemSpec(R.string.files_import_archive, ImageVector.vectorResource(CommonR.drawable.ic_archive)) {
                     showImportMenu = false
                     importMode = "extract"
                     importTargetDir = currentDir
@@ -1260,7 +1440,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         MenuListDialog(
             title = stringResource(R.string.files_export),
             items = listOf(
-                MenuItemSpec(R.string.files_export_files, Icons.Outlined.Download) {
+                MenuItemSpec(R.string.files_export_files, ImageVector.vectorResource(CommonR.drawable.ic_download)) {
                     showExportMenu = false
                     if (selectedPaths.isEmpty()) {
                         showToastRes(R.string.files_select_hint)
@@ -1268,7 +1448,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
                         treeExportLauncher.launch(null)
                     }
                 },
-                MenuItemSpec(R.string.files_export_zip, Icons.Outlined.FolderZip) {
+                MenuItemSpec(R.string.files_export_zip, ImageVector.vectorResource(CommonR.drawable.ic_file_zip)) {
                     showExportMenu = false
                     if (selectedPaths.isEmpty()) {
                         showToastRes(R.string.files_select_hint)
@@ -1285,11 +1465,11 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         MenuListDialog(
             title = stringResource(R.string.files_export_choice_title),
             items = listOf(
-                MenuItemSpec(R.string.files_export_files, Icons.Outlined.Download) {
+                MenuItemSpec(R.string.files_export_files, ImageVector.vectorResource(CommonR.drawable.ic_download)) {
                     showExportChoice = false
                     treeExportLauncher.launch(null)
                 },
-                MenuItemSpec(R.string.files_export_zip, Icons.Outlined.FolderZip) {
+                MenuItemSpec(R.string.files_export_zip, ImageVector.vectorResource(CommonR.drawable.ic_file_zip)) {
                     showExportChoice = false
                     zipExportLauncher.launch("${currentDir.name}_export_${System.currentTimeMillis()}.zip")
                 },
@@ -1513,10 +1693,10 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         )
     }
 
-    // ---------- 通用文件查看器（覆盖式二级页，1.2.0 §6.1） ----------
+    // ---------- 通用文件查看器（覆盖式二级页） ----------
     // zIndex(2f)：本函数的覆盖页发射在根 Box 之外（与 MainScreen 各 tab 同层），
     // 而根 Box 由 MainScreen 设了 zIndex(1f) 且背景不透明——覆盖页必须显式压过它，
-    // 否则被遮挡（真机实证：选择器已组合但不可见，表现为「移动到无反应」）。
+    // 否则被遮挡（选择器已组合但不可见，表现为「移动到无反应」）。
     viewerLogicalPath?.let { path ->
         FileViewerScreen(
             logicalPath = path,
@@ -1528,14 +1708,14 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(2f)
-                // 2026-09-07 返工批次：覆盖页必须随 tab 活跃性走 keepAliveHidden——
+                // 覆盖页必须随 tab 活跃性走 keepAliveHidden——
                 // 否则切换 tab 后它仍全屏绘制在其它 tab 之上（底部导航「点了没反应」），
-                // 且切回时组合原样恢复（编辑草稿保留，D-12 语义不变）。
+                // 且切回时组合原样恢复（编辑草稿保留）。
                 .then(if (isActiveTab) Modifier else Modifier.keepAliveHidden()),
         )
     }
 
-    // ---------- 移动目标选择器（覆盖式二级页，1.2.0 §5.1） ----------
+    // ---------- 移动目标选择器（覆盖式二级页） ----------
     if (moveFlow.state.showFolderPicker) {
         FolderPickerScreen(
             mapper = mapper,
@@ -1550,13 +1730,13 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(2f)
-                // 2026-09-07 返工批次：同 FileViewerScreen——覆盖页随 tab 活跃性隐藏，
+                // 同 FileViewerScreen：覆盖页随 tab 活跃性隐藏，
                 // 否则切 tab 后移动选择器仍全屏压住其它 tab（底部导航「点了没反应」）。
                 .then(if (isActiveTab) Modifier else Modifier.keepAliveHidden()),
         )
     }
 
-    // ---------- 移动冲突对话框（覆盖 / 跳过 / 自动改名 + 应用到其余全部，§5.1） ----------
+    // ---------- 移动冲突对话框（覆盖 / 跳过 / 自动改名 + 应用到其余全部） ----------
     moveFlow.state.pendingMove?.let { moveState ->
         if (moveState.conflicts.isNotEmpty()) {
             MoveConflictDialog(
@@ -1569,7 +1749,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         }
     }
 
-    // ---------- §5.4 阶段二：跨层移动强确认（消费 layerRisks） ----------
+    // ---------- 阶段二：跨层移动强确认（消费 layerRisks） ----------
     moveFlow.state.pendingMatrixConfirm?.let { confirm ->
         MoveMatrixConfirmDialog(
             message = confirm.message,
@@ -1578,7 +1758,7 @@ fun FilesScreen(modifier: Modifier = Modifier, isActiveTab: Boolean = true) {
         )
     }
 
-    // ---------- 移动结果对话框（§5.3.7 / §5.6） ----------
+    // ---------- 移动结果对话框 ----------
     if (moveFlow.state.showMoveResultDialog) {
         MoveResultDialog(
             result = moveFlow.state.lastMoveResult,
@@ -1713,12 +1893,12 @@ private fun SelectionActionBar(
             color = TextPrimary(),
             modifier = Modifier.weight(1f),
         )
-        SelectionChip(Icons.Outlined.DriveFileMove, stringResource(R.string.files_move), enabled = canExport, onClick = onMove)
-        SelectionChip(Icons.Outlined.Download, stringResource(R.string.files_export_to_dir), enabled = canExport, onClick = onExportDir)
-        SelectionChip(Icons.Outlined.FolderZip, stringResource(R.string.files_export_zip_short), enabled = canExport, onClick = onExportZip)
-        SelectionChip(Icons.Outlined.InsertDriveFile, stringResource(R.string.files_rename), enabled = canRename, onClick = onRename)
-        SelectionChip(Icons.Filled.Delete, stringResource(R.string.files_delete), enabled = count > 0, onClick = onDelete)
-        SelectionChip(Icons.Filled.Close, stringResource(R.string.files_cancel), enabled = true, onClick = onCancel)
+        SelectionChip(ImageVector.vectorResource(CommonR.drawable.ic_file_arrow_right), stringResource(R.string.files_move), enabled = canExport, onClick = onMove)
+        SelectionChip(ImageVector.vectorResource(CommonR.drawable.ic_download), stringResource(R.string.files_export_to_dir), enabled = canExport, onClick = onExportDir)
+        SelectionChip(ImageVector.vectorResource(CommonR.drawable.ic_file_zip), stringResource(R.string.files_export_zip_short), enabled = canExport, onClick = onExportZip)
+        SelectionChip(ImageVector.vectorResource(CommonR.drawable.ic_file), stringResource(R.string.files_rename), enabled = canRename, onClick = onRename)
+        SelectionChip(ImageVector.vectorResource(CommonR.drawable.ic_trash), stringResource(R.string.files_delete), enabled = count > 0, onClick = onDelete)
+        SelectionChip(ImageVector.vectorResource(CommonR.drawable.ic_x), stringResource(R.string.files_cancel), enabled = true, onClick = onCancel)
     }
 }
 
@@ -1761,13 +1941,16 @@ private fun GlobalSearchField(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Outlined.Search,
+            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_search),
             contentDescription = null,
             tint = TextHint(),
             modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.width(6.dp))
-        Box(modifier = Modifier.weight(1f)) {
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.CenterStart,
+        ) {
             if (query.isEmpty()) {
                 Text(
                     text = stringResource(R.string.files_search_hint),
@@ -1782,6 +1965,16 @@ private fun GlobalSearchField(
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, color = TextPrimary()),
                 modifier = Modifier.fillMaxSize(),
+                // 输入区占满整框高度（整框可点即聚焦），但文本须靠 decorationBox 垂直居中：
+                // 单行文本在高于自身的高度里默认顶部对齐，视觉上明显偏高。
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        innerTextField()
+                    }
+                },
             )
         }
         if (query.isNotEmpty()) {
@@ -1791,7 +1984,7 @@ private fun GlobalSearchField(
                 modifier = Modifier.size(20.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Close,
+                    imageVector = ImageVector.vectorResource(CommonR.drawable.ic_x),
                     contentDescription = stringResource(R.string.files_clear_search),
                     tint = TextHint(),
                     modifier = Modifier.size(14.dp),
@@ -1801,41 +1994,38 @@ private fun GlobalSearchField(
     }
 }
 
-// ---------- 悬浮胶囊框（右上角，高透明） ----------
+// ---------- 顶部操作按键组（搜索框右侧，横排） ----------
 
 @Composable
-private fun FloatingCapsule(
+private fun TopActionBar(
     onNewFolder: () -> Unit,
+    onNewFile: () -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(26.dp), ambientColor = CardShadow(), spotColor = CardShadow())
-            .clip(RoundedCornerShape(26.dp))
-            .background(CardBg().copy(alpha = 0.82f))
-            .border(1.dp, DividerColor().copy(alpha = 0.6f), RoundedCornerShape(26.dp))
-            .padding(horizontal = 4.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        CapsuleIconButton(Icons.Outlined.CreateNewFolder, stringResource(R.string.files_new_folder), onNewFolder)
-        CapsuleIconButton(Icons.Outlined.Download, stringResource(R.string.files_import), onImport)
-        CapsuleIconButton(Icons.Outlined.Upload, stringResource(R.string.files_export), onExport)
+        ActionIconButton(ImageVector.vectorResource(CommonR.drawable.ic_folder_plus), stringResource(R.string.files_new_folder), onNewFolder)
+        ActionIconButton(ImageVector.vectorResource(CommonR.drawable.ic_file_plus), stringResource(R.string.files_new_file), onNewFile)
+        ActionIconButton(ImageVector.vectorResource(CommonR.drawable.ic_download), stringResource(R.string.files_import), onImport)
+        ActionIconButton(ImageVector.vectorResource(CommonR.drawable.ic_upload), stringResource(R.string.files_export), onExport)
     }
 }
 
 @Composable
-private fun CapsuleIconButton(
+private fun ActionIconButton(
     icon: ImageVector,
     contentDesc: String,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(42.dp)
-            .clip(RoundedCornerShape(21.dp))
+            .size(36.dp)
+            .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .then(
                 Modifier.background(Color.Transparent),
@@ -1846,7 +2036,7 @@ private fun CapsuleIconButton(
             imageVector = icon,
             contentDescription = contentDesc,
             tint = PrimaryGreen,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(20.dp),
         )
     }
 }
@@ -1875,7 +2065,7 @@ private fun SelectionCheckbox(
     ) {
         if (selected) {
             Icon(
-                imageVector = Icons.Filled.Check,
+                imageVector = ImageVector.vectorResource(CommonR.drawable.ic_check),
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(14.dp),
@@ -1891,6 +2081,7 @@ private fun SelectionCheckbox(
 private fun FileListRow(
     entry: FileEntry,
     selected: Boolean,
+    selectionVisible: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onToggleSelect: () -> Unit,
@@ -1898,6 +2089,8 @@ private fun FileListRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onExport: () -> Unit,
+    /** 非空时在菜单里提供「安装到沙箱」（仅 `.deb`）。 */
+    onInstall: (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -1909,14 +2102,22 @@ private fun FileListRow(
             .padding(start = 24.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // P3: 选择方框前置，点击直接切换选择
-        SelectionCheckbox(
-            selected = selected,
-            onClick = onToggleSelect,
-        )
-        Spacer(Modifier.width(12.dp))
+        // 选择方框仅多选模式显示：长按唤出，随模式淡入/收回（直接重排，图标随之移动）
+        AnimatedVisibility(
+            visible = selectionVisible,
+            enter = fadeIn() + expandHorizontally(),
+            exit = fadeOut() + shrinkHorizontally(),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SelectionCheckbox(
+                    selected = selected,
+                    onClick = onToggleSelect,
+                )
+                Spacer(Modifier.width(12.dp))
+            }
+        }
         Icon(
-            imageVector = if (entry.isDirectory) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
+            imageVector = if (entry.isDirectory) ImageVector.vectorResource(CommonR.drawable.ic_folder) else ImageVector.vectorResource(CommonR.drawable.ic_file),
             contentDescription = null,
             tint = if (entry.isDirectory) PrimaryGreen else TextHint(),
             modifier = Modifier.size(24.dp),
@@ -1941,7 +2142,7 @@ private fun FileListRow(
         }
         Box {
             Icon(
-                imageVector = Icons.Filled.MoreVert,
+                imageVector = ImageVector.vectorResource(CommonR.drawable.ic_dots_vertical),
                 contentDescription = stringResource(R.string.files_more),
                 tint = TextSecondary(),
                 modifier = Modifier
@@ -1979,6 +2180,15 @@ private fun FileListRow(
                         onExport()
                     },
                 )
+                onInstall?.let { install ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(stringResource(R.string.files_install_deb)) },
+                        onClick = {
+                            menuOpen = false
+                            install()
+                        },
+                    )
+                }
             }
         }
     }
@@ -1996,6 +2206,7 @@ private fun FileListRow(
 private fun FileGridCell(
     entry: FileEntry,
     selected: Boolean,
+    selectionVisible: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onToggleSelect: () -> Unit,
@@ -2008,17 +2219,23 @@ private fun FileGridCell(
             .padding(vertical = 14.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // P3: 左上角选择方框，点击直接切换选择
-        Box(modifier = Modifier.fillMaxWidth()) {
-            SelectionCheckbox(
-                selected = selected,
-                onClick = onToggleSelect,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
+        // 选择方框仅多选模式显示：长按唤出，随模式淡入/收回
+        AnimatedVisibility(
+            visible = selectionVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                SelectionCheckbox(
+                    selected = selected,
+                    onClick = onToggleSelect,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+            }
         }
         Spacer(Modifier.height(4.dp))
         Icon(
-            imageVector = if (entry.isDirectory) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
+            imageVector = if (entry.isDirectory) ImageVector.vectorResource(CommonR.drawable.ic_folder) else ImageVector.vectorResource(CommonR.drawable.ic_file),
             contentDescription = null,
             tint = if (entry.isDirectory) PrimaryGreen else TextHint(),
             modifier = Modifier.size(32.dp),
@@ -2072,7 +2289,7 @@ private fun SearchResultsContent(
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(
-                imageVector = Icons.Outlined.Search,
+                imageVector = ImageVector.vectorResource(CommonR.drawable.ic_search),
                 contentDescription = null,
                 tint = Color(0xFFE5E7EB),
                 modifier = Modifier.size(48.dp),
@@ -2110,7 +2327,7 @@ private fun SearchResultRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = if (result.isDirectory) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
+                imageVector = if (result.isDirectory) ImageVector.vectorResource(CommonR.drawable.ic_folder) else ImageVector.vectorResource(CommonR.drawable.ic_file),
                 contentDescription = null,
                 tint = if (result.isDirectory) PrimaryGreen else TextHint(),
                 modifier = Modifier.size(18.dp),
@@ -2170,7 +2387,7 @@ private fun EmptyState(
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(
-            imageVector = Icons.Outlined.FolderOpen,
+            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_folder_open),
             contentDescription = null,
             tint = Color(0xFFE5E7EB),
             modifier = Modifier.size(64.dp),

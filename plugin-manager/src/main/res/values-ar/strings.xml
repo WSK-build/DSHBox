@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- بطاقة الصفحة الرئيسية -->
+    <string name="pm_home_entry_title">Cordis</string>
+    <string name="pm_home_entry_subtitle">إدارة الإضافات · المتجر</string>
+
+    <!-- اللوحة -->
+    <string name="pm_panel_title">إضافات Cordis</string>
+    <string name="pm_panel_hint">كيفية التعامل مع الإضافات التي تفشل في التحميل.</string>
+    <string name="pm_safety_mode">الوضع الآمن</string>
+    <string name="pm_safety_mode_desc">تخطّي الإضافات التي تفشل في التحميل</string>
+    <string name="pm_absolute_mode">الوضع الآمن المطلق</string>
+    <string name="pm_absolute_mode_desc">بدء التشغيل دون تحميل أي إضافة خارجية</string>
+    <string name="pm_absolute_on_hint">الوضع الآمن المطلق مُفعَّل: لن يتم تحميل أي إضافة خارجية.</string>
+    <string name="pm_load_log_row">سجل تحميل الإضافات</string>
+    <string name="pm_isolation_row">الإضافات المتخطّاة</string>
+    <string name="pm_market_row">متجر الإضافات</string>
+
+    <!-- سجل التحميل -->
+    <string name="pm_load_log_title">سجل تحميل الإضافات</string>
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_current">هذا التشغيل</string> -->
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_previous">التشغيل السابق</string> -->
+    <string name="pm_load_log_empty">لا توجد سجلات</string>
+    <string name="pm_load_log_hint">يُحتفظ بآخر %1$d عمليات تشغيل بالتناوب.</string>
+    <string name="pm_load_log_too_long">السجل طويل جدًا — يُعرض الجزء الأخير فقط. صدّر السجل الكامل من «سجلات التشغيل» في التشخيص.</string>
+    <string name="pm_repair_row">مساعد إصلاح أعطال الإضافات</string>
+    <string name="pm_repair_card_title">وكيل الطرفية opencode</string>
+    <string name="pm_repair_install">تثبيت</string>
+    <string name="pm_repair_update">تحديث</string>
+    <string name="pm_repair_remove">إزالة</string>
+    <string name="pm_repair_note_1">‏opencode أداة وكيل طرفية مفتوحة المصدر تساعدك على العمل في الطرفية.</string>
+    <string name="pm_repair_note_2">‏opencode يوفّر حصة مجانية يومية محدودة.</string>
+    <string name="pm_repair_note_3">إذا تعطّلت إضافات DSH فيمكنك إصلاحها من الطرفية بهذه الأداة.</string>
+    <string name="pm_repair_note_4">طريقة الاستخدام: اضغط تثبيت ثم اكتب opencode في الطرفية.</string>
+    <string name="pm_repair_state_installed">مثبّت v%1$s</string>
+    <string name="pm_repair_state_installed_no_version">مثبّت</string>
+    <string name="pm_repair_state_missing">غير مثبّت</string>
+    <string name="pm_repair_working">جارٍ التنزيل والتثبيت. أبقِ الشبكة متصلة وانتظر.</string>
+    <string name="pm_repair_retrying">الشبكة غير مستقرة — إعادة المحاولة.</string>
+    <string name="pm_repair_done">تم</string>
+    <string name="pm_repair_failed">فشل: %1$s</string>
+    <string name="pm_repair_failed_unknown">خطأ غير معروف</string>
+    <string name="pm_repair_retry">إعادة المحاولة</string>
+    <string name="pm_repair_remove_confirm_body">سيتم حذف opencode نفسه والإعدادات وبيانات المستخدم.</string>
+
+    <!-- قائمة الاستبعاد -->
+    <string name="pm_isolation_title">الإضافات المتخطّاة</string>
+    <string name="pm_isolation_hint">فشلت في التحميل عند بدء التشغيل وتم تخطّيها. يسري إعادة التفعيل في التشغيل التالي.</string>
+    <string name="pm_isolation_empty">لا توجد إضافات متخطّاة</string>
+    <string name="pm_isolation_restore">إعادة التفعيل</string>
+    <string name="pm_isolation_badge">متخطّاة</string>
+
+    <!-- عام -->
+    <string name="pm_back">رجوع</string>
+    <string name="pm_refresh">تحديث</string>
+    <string name="pm_copy">نسخ</string>
+    <string name="pm_copied">تم النسخ إلى الحافظة</string>
+    <string name="pm_working">جارٍ المعالجة…</string>
+
+    <!-- المتجر · الهيكل -->
+    <string name="pm_market_title">متجر الإضافات</string>
+    <string name="pm_market_subtitle">إضافات من المجتمع لـ DeepSeek Harness</string>
+    <string name="pm_market_tab_discover">استكشاف</string>
+    <string name="pm_market_tab_favorites">المفضّلة</string>
+    <string name="pm_market_tab_installed">المثبَّتة</string>
+
+    <!-- المتجر · تحميل الفهرس -->
+    <string name="pm_market_loading">جارٍ تحميل فهرس الإضافات…</string>
+    <string name="pm_market_unavailable">فهرس الإضافات غير متاح حالياً.</string>
+    <string name="pm_market_load_failed_title">تعذّر تحميل فهرس الإضافات</string>
+    <string name="pm_market_load_failed_attempts">عدد المحاولات: %1$d</string>
+    <string name="pm_market_load_failed_elapsed">استغرق %1$d مِلّي ثانية</string>
+    <string name="pm_market_load_retry">إعادة المحاولة</string>
+    <string name="pm_market_empty">لا توجد إضافات مطابقة</string>
+    <string name="pm_market_result_count">%1$d/%2$d</string>
+
+    <!-- المتجر · استكشاف -->
+    <string name="pm_market_search_ph">ابحث عن إضافات، مثل: الإشعارات، الطرفية، الذاكرة…</string>
+    <string name="pm_market_category_all">الكل</string>
+    <string name="pm_market_filter_host">المتوافقة مع المضيف فقط</string>
+    <string name="pm_market_filter_host_hint">الإضافات التي لا تُصرّح بشيء، أو يتعذّر فحصها، تبقى ظاهرة.</string>
+    <string name="pm_market_sort_field">الترتيب حسب</string>
+    <string name="pm_market_sort_downloads">التنزيلات</string>
+    <string name="pm_market_sort_stars">النجوم</string>
+    <string name="pm_market_sort_added">تاريخ الإضافة</string>
+    <string name="pm_market_sort_desc">تنازلي</string>
+    <string name="pm_market_sort_asc">تصاعدي</string>
+    <string name="pm_market_load_more">تحميل المزيد</string>
+
+    <!-- المتجر · حقول البطاقة -->
+    <string name="pm_market_deprecated_badge">مهجورة</string>
+    <string name="pm_market_deprecated_warn">يصنّف الفهرس هذه الإضافة كمهجورة؛ لا يُنصح بتثبيتها للمستخدمين الجدد.</string>
+    <string name="pm_market_replacement_hint">يقترح الفهرس %1$s بدلاً منها</string>
+    <string name="pm_market_downloads_value">↓ %1$s</string>
+    <string name="pm_market_stars_value">★ %1$s</string>
+    <string name="pm_market_version_value">v%1$s</string>
+    <string name="pm_market_author_value">بواسطة %1$s</string>
+    <string name="pm_market_categories_label">التصنيفات</string>
+    <string name="pm_market_installed_badge">✓ مثبَّتة</string>
+    <string name="pm_market_third_party_badge">طرف ثالث</string>
+    <string name="pm_market_local_dev_badge">تطوير محلي</string>
+
+    <!-- المتجر · توافق المضيف -->
+    <string name="pm_market_compat_compatible">متطلّب المضيف مُحقَّق</string>
+    <string name="pm_market_compat_incompatible">تأكّد عدم التوافق مع هذا الإصدار من DSH</string>
+    <string name="pm_market_compat_unknown">متطلّب المضيف غير معروف — يمكن تثبيتها رغم ذلك</string>
+    <string name="pm_market_compat_undeclared">لم يُصرَّح بمتطلّب المضيف</string>
+    <string name="pm_market_compat_unavailable">تعذّرت قراءة متطلّب المضيف</string>
+    <string name="pm_market_compat_requirement">يتطلّب DSH %1$s</string>
+
+    <!-- المتجر · التثبيت والتفاصيل -->
+    <string name="pm_market_install">تثبيت</string>
+    <string name="pm_market_installing">جارٍ التثبيت…</string>
+    <string name="pm_market_confirm_install">تأكيد التثبيت</string>
+    <string name="pm_market_confirm">تأكيد</string>
+    <string name="pm_market_cancel">إلغاء</string>
+    <string name="pm_market_confirm_warn">الإضافات شيفرة طرف ثالث من المجتمع. التثبيت يعني أنك تثق بهذا المصدر؛ وسكربتات البناء محظورة افتراضياً.</string>
+    <string name="pm_market_detail_title">تفاصيل الإضافة</string>
+    <string name="pm_market_detail_cmd">أمر التثبيت</string>
+    <string name="pm_market_detail_published">نُشرت في %1$s</string>
+    <string name="pm_market_detail_third_party">هذه شيفرة طرف ثالث كتبها المجتمع لا نحن. راجع المصدر قبل التثبيت.</string>
+    <string name="pm_market_detail_build_blocked">تحتاج هذه الإضافة إلى تشغيل سكربتات البناء، وهي محظورة افتراضياً لأسباب أمنية. لا تسمح بها إلا بعد الثقة بالمصدر.</string>
+    <string name="pm_market_detail_source">مستودع المصدر</string>
+    <string name="pm_market_detail_install_anyway">تثبيتها رغم ذلك</string>
+    <string name="pm_market_incompatible_warn">تُصرّح هذه الإضافة بعدم توافقها مع إصدار DSH الحالي. تثبيتها سيؤدي على الأرجح إلى تعطّلها.</string>
+    <string name="pm_market_close">إغلاق</string>
+
+    <!-- المتجر · المثبَّتة -->
+    <string name="pm_market_installed_empty">لا توجد إضافات مجتمعية مثبَّتة بعد</string>
+    <string name="pm_market_installed_empty_hint">تصفّح تبويب «استكشاف» للعثور على بعضها.</string>
+    <string name="pm_market_state_live">مُفعَّلة</string>
+    <string name="pm_market_state_restart">مثبَّتة، تسري بعد إعادة التشغيل</string>
+    <string name="pm_market_state_inert">مثبَّتة، غير مستخدمة</string>
+    <string name="pm_market_state_broken">مثبَّتة، لم تجتز التحقّق</string>
+    <string name="pm_market_state_missing">مُدرجة، لكن ملفاتها مفقودة</string>
+    <string name="pm_market_state_disabled">مُعطَّلة</string>
+    <string name="pm_market_act_why">التفاصيل</string>
+    <string name="pm_market_act_why_empty">لم يُسجَّل أي تشخيص لهذه الحالة.</string>
+    <string name="pm_market_toggle_on">مُفعَّلة</string>
+    <string name="pm_market_toggle_off">مُعطَّلة</string>
+    <string name="pm_market_toggle_restart_notice">تم التبديل. يسري عند التشغيل التالي.</string>
+    <string name="pm_market_update">تحديث</string>
+    <string name="pm_market_updating">جارٍ التحديث…</string>
+    <string name="pm_market_up_to_date">محدَّثة</string>
+    <string name="pm_market_update_channel_switch">يمكن التبديل إلى قناة %1$s — وهذا ليس ترقية إصدار</string>
+    <string name="pm_market_uninstall">إزالة</string>
+    <string name="pm_market_uninstall_confirm">إزالة؟</string>
+    <string name="pm_market_uninstall_confirm_desc">ستُزال الإضافة من الـ profile الحالي. لا يمكن التراجع عن ذلك.</string>
+    <string name="pm_market_note_add">إضافة ملاحظة</string>
+    <string name="pm_market_note_edit">تعديل الملاحظة</string>
+    <string name="pm_market_note_mine">ملاحظتي</string>
+    <string name="pm_market_note_ph">صِف هذه الإضافة بكلماتك. سيحلّ ذلك محل وصف المؤلف.</string>
+    <string name="pm_market_note_save">حفظ</string>
+    <string name="pm_market_note_clear">مسح الملاحظة</string>
+    <string name="pm_market_note_limit">الملاحظة محدودة بـ 200 حرف.</string>
+    <string name="pm_market_spec_label">مصدر التثبيت</string>
+
+    <!-- المتجر · لوحة المهام -->
+    <string name="pm_market_ops_title">المهام</string>
+    <string name="pm_market_ops_busy">جارٍ المعالجة %1$d/%2$d</string>
+    <string name="pm_market_ops_attention">%1$d بحاجة إليك</string>
+    <string name="pm_market_ops_leave_hint">يمكنك مغادرة هذه الصفحة؛ وسيُبلَّغ لك عند الانتهاء.</string>
+    <string name="pm_market_ops_empty">لا توجد عملية جارية</string>
+    <string name="pm_market_ops_empty_hint">يظهر هنا تقدّم التثبيت والتحديث والإزالة.</string>
+    <string name="pm_market_ops_close">طيّ</string>
+    <string name="pm_market_ops_clear">مسح المنتهية</string>
+    <string name="pm_market_ops_running">جارٍ التنفيذ</string>
+    <string name="pm_market_ops_done">تمّ</string>
+    <string name="pm_market_ops_failed">فشل</string>
+    <string name="pm_market_ops_retry">إعادة المحاولة</string>
+    <string name="pm_market_ops_progress">تمّ %1$d من %2$d</string>
+    <string name="pm_market_ops_kind_install">تثبيت</string>
+    <string name="pm_market_ops_kind_update">تحديث</string>
+    <string name="pm_market_ops_kind_uninstall">إزالة</string>
+    <string name="pm_market_ops_reason">السبب</string>
+    <string name="pm_market_ops_output">المخرجات</string>
+    <string name="pm_market_ops_no_output">لا مخرجات بعد</string>
+    <string name="pm_market_ops_unsupported">الإلغاء والسماح بسكربتات البناء يحتاجان دعمًا من طبقة البيانات لم يتوفّر بعد.</string>
+    <string name="pm_market_busy_wait">هناك عملية أخرى قيد التنفيذ — انتظر انتهاءها (عملية تثبيت/تحديث/إزالة واحدة في كل مرة).</string>
+
+    <!-- المتجر · المفضّلة -->
+    <string name="pm_market_fav_empty">لا مفضّلات بعد</string>
+    <string name="pm_market_fav_empty_hint">تُخزَّن المفضّلة في ملف حالة المتجر مع بقية إعدادات الإضافات.</string>
+    <string name="pm_market_fav_unavailable">المفضّلة غير متاحة بعد: طبقة البيانات لا توفّرها.</string>
+    <string name="pm_market_fav_count">%1$d مفضّلة</string>
+
+    <!-- المتجر · سبب عدم الفحص / فشل قراءة القائمة -->
+    <string name="pm_market_update_unchecked">لم يُفحص (%1$s)</string>
+    <string name="pm_market_update_unchecked_source">هذا المصدر لا يدعم فحص التحديثات</string>
+    <string name="pm_market_update_unchecked_query">فشل الاستعلام أو لم يُرجع نتيجة</string>
+    <string name="pm_market_installed_failed_title">تعذّرت قراءة قائمة الإضافات المثبَّتة</string>
+    <string name="pm_market_updates_failed_title">تعذّر فحص التحديثات</string>
+    <string name="pm_market_notice_dismiss">إغلاق التنبيه</string>
+
+    <!-- المتجر · جارٍ الفحص / استعادة ملف الحالة -->
+    <string name="pm_market_update_checking">جارٍ فحص التحديثات…</string>
+    <string name="pm_market_state_broken_title">تعذّرت قراءة ملف حالة المتجر</string>
+    <string name="pm_market_state_broken_message">ملف حالة المتجر على القرص (مفاتيح التعطيل والملاحظات) غير قابل للتحليل. لتجنّب استبداله، لن يتم حفظ أي تغيير.</string>
+    <string name="pm_market_state_rebuild">نسخ احتياطي وإعادة البناء</string>
+    <string name="pm_market_state_rebuilt">تمت إعادة بناء ملف الحالة، وأُبقِي الأصل كنسخة احتياطية.</string>
+    <string name="pm_adapt_section_title">إضافات التكيّف الخاصة بـ DSHBox</string>
+    <string name="pm_adapt_mobile">تكييف صفحة DSH للجوال</string>
+    <string name="pm_adapt_mobile_pilot">ربط الهاتف بـ DSH</string>
+    <string name="pm_adapt_ok">تم التجميع</string>
+    <string name="pm_adapt_fail">فشل التجميع، وتم التراجع</string>
+    <string name="pm_adapt_restart_hint">(يُفعَّل بعد إعادة تشغيل DSH)</string>
+    <string name="pm_guard_toast_attempt_title">الوضع الآمن يتخطّى الإضافات المعطوبة (المحاولة %1$d)</string>
+    <string name="pm_guard_toast_attempt_skipped">تم تخطّي %1$d إضافة: %2$s</string>
+    <string name="pm_guard_toast_recovered_title">تخطّى الوضع الآمن %1$d إضافة، وتم تشغيل DSH</string>
+    <string name="pm_guard_toast_recovered_skipped">تم تخطّي: %1$s</string>
+    <string name="pm_guard_toast_absolute">الوضع الآمن المطلق مُفعَّل</string>
+    <string name="pm_guard_toast_failed">لم يبدأ DSH؛ تم إيقاف إعادة المحاولة تلقائيًا</string>
+    <!-- إضافات DSH الرسمية (قدرات مدمجة يشحنها المصدر معطّلة افتراضيًا) -->
+    <string name="pm_official_section">إضافات DSH الرسمية</string>
+    <string name="pm_official_desc_ui_sidebar_browser">متصفح مدمج في الشريط الجانبي الأيمن</string>
+    <string name="pm_official_note">يُكتب في ‎.dsh/dshbox/dsh-official-plugin/dsh-official-plugin-overlay.yml‎؛ أعد تشغيل DSH ليُطبَّق.</string>
+    <string name="pm_official_on">تم تفعيل %1$s؛ أعد تشغيل DSH ليُطبَّق</string>
+    <string name="pm_official_off">تم تعطيل %1$s؛ أعد تشغيل DSH ليُطبَّق</string>
+    <string name="pm_official_fail">تعذّر التطبيق: %1$s</string>
+    <!-- 市场 · 数据源 -->
+    <string name="pm_market_source_label">مصدر البيانات</string>
+    <string name="pm_market_source_switch">تغيير</string>
+    <string name="pm_market_source_title">مصدر البيانات</string>
+    <string name="pm_market_source_current">الحالي</string>
+    <string name="pm_market_source_pick">اختيار</string>
+    <string name="pm_market_source_intro">اختر مصدر فهرس الإضافات. عند التغيير ستُعاد تحميله.</string>
+    <string name="pm_market_source_foot">الإضافات المثبَّتة لا تتأثر.</string>
+    <string name="pm_market_source_mobile_desc">مجموعة مختارة من إضافات DeepSeek Harness مصمَّمة لشاشات الهواتف.
+
+فهرس DSHBox الجديد، لتسهيل توسيع دعم الإضافات على الجوّال. نرحّب بطلبات السحب والأفكار!</string>
+    <string name="pm_market_source_official_desc">أكبر قائمة مختارة لإضافات DeepSeek Harness — لكنها موجَّهة للحاسوب، لذا تعاني بعض الإضافات من مشاكل في التخطيط أو التوافق على الجوّال.</string>
+    <string name="pm_market_source_open_failed">لا يوجد تطبيق يمكنه فتح هذا الرابط</string>
+</resources>

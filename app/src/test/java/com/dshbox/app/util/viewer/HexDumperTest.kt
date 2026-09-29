@@ -6,7 +6,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 十六进制转储单测（1.2.0 §10.1）：块边界、尾部不足块、偏移正确性、熵粗估。
+ * 十六进制转储单测：块边界、尾部不足块、偏移正确性、熵粗估。
  */
 class HexDumperTest {
 
@@ -97,5 +97,43 @@ class HexDumperTest {
         val text = ("the quick brown fox jumps over the lazy dog. ").toByteArray()
         val h = HexDumper.entropy(text)
         assertTrue("h=$h", h in 3.0..5.0)
+    }
+
+    // ---------------- 整文件熵采样 ----------------
+
+    @Test
+    fun entropyOfSmallFileUsesWholeContent() {
+        val content = ByteArray(1024) { (it % 7).toByte() }
+        val f = File.createTempFile("entropy-small", ".bin").apply {
+            writeBytes(content)
+            deleteOnExit()
+        }
+        assertEquals(HexDumper.entropy(content), HexDumper.entropyOf(f), 1e-9)
+    }
+
+    @Test
+    fun entropyOfLargeFileSamplesHeadMiddleTail() {
+        val block = HexDumper.BLOCK_SIZE
+        val size = block.toLong() * 3 + 123 // 三块分别落在索引 0 / 1 / 2（各不相同）
+        val content = ByteArray(size.toInt()) { (it % 251).toByte() }
+        val f = File.createTempFile("entropy-large", ".bin").apply {
+            writeBytes(content)
+            deleteOnExit()
+        }
+        val blocks = sortedSetOf(0, HexDumper.blockOf(size / 2), HexDumper.blockOf(size - block))
+        val expected = blocks.flatMap { HexDumper.readBlock(f, it).toList() }.toByteArray()
+        assertEquals(HexDumper.entropy(expected), HexDumper.entropyOf(f), 1e-9)
+    }
+
+    @Test
+    fun entropyOfDeduplicatesBlocksJustOverOneBlock() {
+        val block = HexDumper.BLOCK_SIZE
+        val size = block + 1 // 中/尾块索引都落在 0，去重后只采样第一块
+        val content = ByteArray(size) { (it % 13).toByte() }
+        val f = File.createTempFile("entropy-dedup", ".bin").apply {
+            writeBytes(content)
+            deleteOnExit()
+        }
+        assertEquals(HexDumper.entropy(HexDumper.readBlock(f, 0)), HexDumper.entropyOf(f), 1e-9)
     }
 }

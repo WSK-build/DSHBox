@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sandbox_not_running_debian">Le bac à sable ne fonctionne pas. Démarrez d\'abord le bac à sable Debian.</string>
-    <string name="dsh_not_ready_timeout">DSH n\'est pas devenu prêt dans le délai imparti</string>
+    <string name="dsh_not_ready_timeout">Échec du démarrage de DSH</string>
     <string name="dsh_stopped_retry">DSH a été arrêté. Réessayez plus tard.</string>
     <string name="dsh_ready_timeout">Délai d\'attente de disponibilité de DSH dépassé</string>
     <string name="bundle_empty">L\'archive ne contient aucun fichier</string>
+    <string name="bundle_sandbox_running">Le bac à sable est en cours d\'exécution. Arrêtez-le avant cette opération.</string>
+    <string name="dsh_start_need_node">Importez d\'abord la couche node (Paramètres → Importer l\'environnement en ligne → couche node)</string>
     <string name="bundle_unsafe_path_rel">L\'archive contient un chemin illégal (..) ; bloqué : %1$s</string>
     <string name="bundle_unsafe_path_escape">Un chemin d\'archive sort du répertoire cible ; bloqué : %1$s</string>
     <string name="bundle_no_profile">Le paquet d\'environnement d\'exécution manque de runtime-profile.json (l\'intégrité de la couche ne peut pas être vérifiée ; importation refusée)</string>

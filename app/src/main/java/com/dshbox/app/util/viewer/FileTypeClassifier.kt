@@ -3,7 +3,7 @@ package com.dshbox.app.util.viewer
 import java.io.File
 
 /**
- * 文件类型识别器（1.2.0 §6.2，纯 JVM，无 Android 依赖）。
+ * 文件类型识别器（纯 JVM，无 Android 依赖）。
  *
  * 三级识别，**内容优先、不信扩展名**：
  * 1. **魔数签名**（前 16–512 字节）：图片/PDF/ZIP 族/gzip/zst/7z/rar/tar/ELF/class/dex/SQLite/
@@ -14,15 +14,15 @@ import java.io.File
  *
  * 输出 [FileType]：[FileKind] + 子类型（语言/具体格式）+ 置信度。
  * 分类失败/未知 → [FileKind.HEX] 或 [FileKind.UNKNOWN]，UI 落 HexViewer + 信息卡——
- * **任何文件都有界面打开，不存在「不支持预览」死路（§6.1.4）**。
+ * **任何文件都有界面打开，不存在「不支持预览」死路**。
  */
 object FileTypeClassifier {
 
     /** 文本嗅探的探测窗口（字节）。 */
     const val SNIFF_LIMIT = 8 * 1024
 
-    /** 文件大类（§6.1 分发目标）。UNKNOWN 为 §6.2 预留输出：M2 路由不产出——
-     *  无法识别的二进制一律 HEX（§6.3「非文本即 Hex」兜底行），M3+ 子类型标注再启用。 */
+    /** 文件大类（分发目标）。UNKNOWN 为预留输出：当前路由不产出——
+     *  无法识别的二进制一律 HEX（「非文本即 Hex」兜底），子类型标注启用后再用。 */
     enum class FileKind { TEXT, IMAGE, PDF, MARKUP, ARCHIVE, OFFICE, HEX, AUDIO_VIDEO, UNKNOWN }
 
     /** 识别置信度：魔数 HIGH；嗅探 MEDIUM；扩展名兜底 LOW。 */
@@ -42,14 +42,14 @@ object FileTypeClassifier {
      * [fileSize] 为文件真实大小（0 表示空文件）。
      */
     fun classify(name: String, head: ByteArray, fileSize: Long): FileType {
-        // M3 返工 B：复合扩展名还原（a.tar.gz 的 extensionOf 只得 "gz"，tar 容器语义丢失
-        // 导致 formatOf 全部落 null → 信息卡）。分类一律用容器感知扩展名。
+        // 复合扩展名还原（a.tar.gz 的 extensionOf 只得 "gz"，tar 容器语义丢失
+        // 会导致 formatOf 全部落 null → 信息卡）。分类一律用容器感知扩展名。
         val ext = effectiveExtensionOf(name)
         magicOf(head, ext, fileSize)?.let { (kind, sub, conf) ->
             return FileType(kind, sub, conf, ext)
         }
         // 文本嗅探（二级）：仅对非空样本判断。
-        // §6.2：UTF BOM（EF BB BF / FF FE / FE FF）直接定文本——UTF-16 文本含大量 NUL，
+        // UTF BOM（EF BB BF / FF FE / FE FF）直接定文本——UTF-16 文本含大量 NUL，
         // 若不加此分支会被嗅探误判二进制（编码判定由 TextEncoding 承接）。
         if (hasBom(head)) {
             return textResult(ext, Confidence.MEDIUM)
@@ -110,7 +110,7 @@ object FileTypeClassifier {
             startsAt(4, "ftyp") -> isoBmffBrand(head)?.let { Triple(it.first, it.second, Confidence.HIGH) }
             // ---- 文档 ----
             startsAt(0, "%PDF") -> Triple(FileKind.PDF, "pdf", Confidence.HIGH)
-            // ---- ZIP 族（二级按扩展名区分，§6.2）：OOXML 文档 → OFFICE，
+            // ---- ZIP 族（二级按扩展名区分）：OOXML 文档 → OFFICE，
             // jar/apk/aar/war/epub 应用容器与普通 zip → ARCHIVE
             starts(0x50, 0x4B) -> Triple(
                 if (ext in OOXML_EXT) FileKind.OFFICE else FileKind.ARCHIVE,
@@ -147,7 +147,7 @@ object FileTypeClassifier {
     }
 
     /**
-     * ELF 子类型（返工二批 #11：落实 §6.3「ELF 架构信息卡」）——读 e_machine（偏移 18，
+     * ELF 子类型（ELF 架构信息卡）——读 e_machine（偏移 18，
      * 2 字节，端序按 EI_DATA）映射常见架构；未识别返回 "elf"。
      */
     private fun elfSubType(head: ByteArray): String {
@@ -235,7 +235,7 @@ object FileTypeClassifier {
     /**
      * 容器感知扩展名：在 [extensionOf] 之上还原复合扩展名——`a.tar.gz` → "tar.gz"、
      * `a.tar.zst` → "tar.zst"、`a.tar.bz2` → "tar.bz2"、`a.tzst` → "tar.zst"（惯例命名）。
-     * 其余名称与 [extensionOf] 等价。纯函数，M3 返工 B 的端到端命名用例覆盖。
+     * 其余名称与 [extensionOf] 等价。纯函数，端到端命名用例覆盖。
      */
     internal fun effectiveExtensionOf(name: String): String {
         val ext = extensionOf(name)
@@ -249,7 +249,7 @@ object FileTypeClassifier {
         }
     }
 
-    /** 扩展名 → 高亮语言映射（§6.4 首发覆盖 6 种：json/yaml/sh/python/js/java+kotlin）。
+    /** 扩展名 → 高亮语言映射（覆盖 json/yaml/sh/python/js/java+kotlin 六种）。
      *  无映射的文本扩展落纯文本编辑（不参与高亮）。 */
     val LANG_BY_EXT: Map<String, String> = mapOf(
         // json
@@ -276,12 +276,12 @@ object FileTypeClassifier {
 
     private val OOXML_EXT = setOf("docx", "xlsx", "pptx")
 
-    // tar 容器扩展名集合（含 M3 返工 B 的复合扩展名与 tzst 惯例）
+    // tar 容器扩展名集合（含复合扩展名与 tzst 惯例）
     private val TAR_GZ_EXT = setOf("tgz", "tar", "tar.gz")
     private val TAR_ZST_EXT = setOf("tar", "tar.zst")
     private val TAR_BZ2_EXT = setOf("tar", "tar.bz2")
 
-    // ---------------- GlobalSearch 文本候选判定（§6.1.5 统一） ----------------
+    // ---------------- GlobalSearch 文本候选判定（统一口径） ----------------
 
     /** 已知二进制扩展名：搜索跳过内容嗅探（免读盘），但文件名匹配照常。 */
     private val KNOWN_BINARY_EXT = setOf(
@@ -295,7 +295,7 @@ object FileTypeClassifier {
     )
 
     /**
-     * 搜索内容命中候选（§6.1.5：取代 GlobalSearch 私有清单，消除「Makefile 搜索可命中、
+     * 搜索内容命中候选（与 GlobalSearch 共用同一口径，消除「Makefile 搜索可命中、
      * 预览打不开」的分叉）。[head] 为调用方采样的前若干字节（可为空 = 不嗅探）。
      */
     fun isTextCandidate(name: String, head: ByteArray): Boolean {

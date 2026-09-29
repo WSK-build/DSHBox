@@ -52,23 +52,23 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
-/** 单页位图像素上限（§6.6：防 "trying to draw too large bitmap" 崩溃）——4M px ≈ 16MB ARGB_8888。 */
+/** 单页位图像素上限（防 "trying to draw too large bitmap" 崩溃）——4M px ≈ 16MB ARGB_8888。 */
 private const val PDF_MAX_PAGE_PIXELS = 2_048 * 2_048
 
 /** 双击放大倍率（按系数重渲当前页，超像素上限时自动压回，实际倍率受上限约束）。 */
 private const val PDF_ZOOM_FACTOR = 2.5f
 
 /**
- * PDF 查看（1.2.0 §6.6，原生 PdfRenderer，零 .so 零第三方库）。
+ * PDF 查看（原生 PdfRenderer，零 .so 零第三方库）。
  *
  * - 纵向分页列表：每页独立渲染，只渲染进入组合的可见页；离屏（离开组合）经
- *   DisposableEffect 释放位图（与 ImageViewer decoder.recycle 同标准，M2 教训固化）；
+ *   DisposableEffect 释放位图（与 ImageViewer decoder.recycle 同标准）；
  * - 渲染串行化：PdfRenderer 同一时刻只允许一个 openPage，全页共享一把锁；
  * - 缩放：双击按 [PDF_ZOOM_FACTOR] 系数重渲当前页，目标位图先过 [PDF_MAX_PAGE_PIXELS]
  *   像素上限（超限按比例压回）；
  * - 加密 PDF：SecurityException 识别；API 35+ 弹密码输入（PdfRenderer.LoadParams，
  *   独立方法隔离高版本 API），低版本提示不支持并引导外部打开（信息卡出口）；
- * - 渲染失败：错误态 + 重试 + 信息卡兜底（onFallback），任何格式不得让文件打不开（§6.1.4）。
+ * - 渲染失败：错误态 + 重试 + 信息卡兜底（onFallback），任何格式不得让文件打不开。
  */
 @Composable
 internal fun PdfViewer(
@@ -136,7 +136,7 @@ private fun ReadyPane(state: PdfUiState.Ready, modifier: Modifier = Modifier) {
     val zooms = remember(state.renderer) { mutableStateMapOf<Int, Float>() }
     var viewportWidth by remember { mutableStateOf(0) }
 
-    // 退出即销毁（§6.7/M2 decoder 教训同标准）：renderer.close() 释放 native 资源
+    // 退出即销毁（与 decoder 回收同标准）：renderer.close() 释放 native 资源
     DisposableEffect(state.renderer) {
         onDispose { runCatching { state.renderer.close() } }
     }
@@ -216,7 +216,7 @@ private fun PdfPageItem(
     var renderVersion by remember(index) { mutableIntStateOf(0) }
     var pageFailed by remember(index, zoom) { mutableStateOf(false) }
 
-    // 离屏即回收（§6.6）
+    // 离屏即回收
     DisposableEffect(holder) {
         onDispose { holder.recycle() }
     }
@@ -266,7 +266,7 @@ private fun PdfPageItem(
             pageFailed = true
             return@LaunchedEffect
         }
-        // 返工 C：取消路径显式回收——此前注释声称回收，实际 ensureActive() 抛
+        // 取消路径必须显式回收：否则 ensureActive() 抛
         // CancellationException 直接跳过 holder.set，位图泄漏（快速滚动大量离屏页累积）
         if (!isActive) {
             bitmap.recycle()

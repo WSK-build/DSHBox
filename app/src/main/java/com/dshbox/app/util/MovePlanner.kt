@@ -5,7 +5,7 @@ import com.dshbox.app.common.UiText
 import java.io.File
 
 /**
- * 移动计划器（1.2.0 §5.2，纯 JVM，无 Android 依赖）。
+ * 移动计划器（纯 JVM，无 Android 依赖）。
  *
  * 职责：在真正执行 IO 前完成全部校验与预演——防环 → 无操作 → 冲突预演 → 跨层标注。
  * 产出 [MovePlan]：[MovePlan.items] 是可直接交给 [FileOps.moveWithin] 的执行任务；
@@ -24,7 +24,7 @@ data class MoveRequest(
     val sandboxRunning: Boolean = false,
 )
 
-/** 问题类型（§5.2 校验序 + §5.4 系统目录禁令）。 */
+/** 问题类型（校验序 + 系统目录禁令）。 */
 enum class IssueKind {
     /** 防环：目标与某源目录同路径或位于其内部，整体拒绝。 */
     ILLEGAL_CYCLE,
@@ -38,7 +38,7 @@ enum class IssueKind {
     /** 冲突：源目录与目标同名目录，OVERWRITE 语义为递归合并。 */
     CONFLICT_DIR_MERGE,
 
-    /** 系统绑定目录（proc/sys/dev/system/apex/tmp/.dshbox）：§5.4 禁止作为源或目标。 */
+    /** 系统绑定目录（proc/sys/dev/system/apex/tmp/.dshbox）：禁止作为源或目标。 */
     SYSTEM_DIR_FORBIDDEN,
 }
 
@@ -50,7 +50,7 @@ data class MoveIssue(
     val conflictCount: Int = 0,
 )
 
-/** 单个源与其目标落点的跨层风险标注（§5.2.4），UI 据此弹强确认。 */
+/** 单个源与其目标落点的跨层风险标注，UI 据此弹强确认。 */
 data class LayerRiskReport(
     val source: File,
     val target: File,
@@ -59,7 +59,7 @@ data class LayerRiskReport(
     val sandboxRunning: Boolean,
 )
 
-/** 目标落点已存在时的处置策略（执行器语义，§5.3.3/§5.3.4）。 */
+/** 目标落点已存在时的处置策略（执行器语义）。 */
 enum class MoveExisting {
     /** 目标不应存在；若执行时仍存在则按失败处理（防并发误覆盖）。 */
     FAIL,
@@ -111,7 +111,7 @@ object MovePlanner {
         val targetCanon = request.targetDir.canonicalFile
         val targetLayer = layerOf(targetCanon.absolutePath, roots)
 
-        // §5.4：系统绑定目录禁止作为目标——整体拒绝
+        // 系统绑定目录禁止作为目标——整体拒绝
         if (targetLayer == Layer.SYSTEM_DIR) {
             issues += MoveIssue(
                 source = request.targetDir,
@@ -134,7 +134,7 @@ object MovePlanner {
             val intended = File(targetCanon, srcCanon.name)
             risks += LayerRiskReport(srcCanon, intended, srcLayer, targetLayer, request.sandboxRunning)
 
-            // 1. 防环（§5.2.1）：目标与源目录同路径，或目标位于源目录内部 → 该项拒绝。
+            // 1. 防环：目标与源目录同路径，或目标位于源目录内部 → 该项拒绝。
             //    目标同路径对文件源同样无意义（目标即源本身），一并拒绝。
             if (srcCanon == targetCanon || (srcCanon.isDirectory && isWithin(targetCanon, srcCanon))) {
                 issues += MoveIssue(
@@ -145,7 +145,7 @@ object MovePlanner {
                 continue
             }
 
-            // §5.4：系统绑定目录禁止作为源
+            // 系统绑定目录禁止作为源
             if (srcLayer == Layer.SYSTEM_DIR) {
                 issues += MoveIssue(
                     source = source,
@@ -155,7 +155,7 @@ object MovePlanner {
                 continue
             }
 
-            // 2. 无操作（§5.2.2）：源的当前父目录就是目标目录
+            // 2. 无操作：源的当前父目录就是目标目录
             val parent = srcCanon.parentFile?.canonicalFile
             if (parent != null && parent == targetCanon) {
                 issues += MoveIssue(
@@ -166,7 +166,7 @@ object MovePlanner {
                 continue
             }
 
-            // 3. 冲突预演（§5.2.3）。决策键按「原始路径 → canonical 路径」双形式查找：
+            // 3. 冲突预演。决策键按「原始路径 → canonical 路径」双形式查找：
             //    UI 以 issue.source（原始形态）为键，Windows 等环境两者可能不同形。
             if (intended.exists()) {
                 val bothDirs = srcCanon.isDirectory && intended.isDirectory
@@ -219,7 +219,7 @@ object MovePlanner {
         return MovePlan(issues, risks, items, skipped)
     }
 
-    /** [path] 是否位于 [ancestor] 目录内部（canonical 前缀判断，§5.2.1）。 */
+    /** [path] 是否位于 [ancestor] 目录内部（canonical 前缀判断）。 */
     fun isWithin(path: File, ancestor: File): Boolean {
         val p = path.absolutePath.trimEnd(File.separatorChar)
         val a = ancestor.absolutePath.trimEnd(File.separatorChar)
@@ -228,8 +228,8 @@ object MovePlanner {
     }
 
     /**
-     * §5.6：移动完成后的刷新集合 = **所有源父目录** ∪ 目标目录（去重，统一 canonical 形态）。
-     * 复查修正：此前只纳入目标目录与 SKIP 项父目录，漏掉已移动项的源父目录——
+     * 移动完成后的刷新集合 = **所有源父目录** ∪ 目标目录（去重，统一 canonical 形态）。
+     * 只纳入目标目录与 SKIP 项父目录是不够的：已移动项的源父目录若不在集合里，
      * 在 A 目录把文件移到 B 后停在 A 时目录未变、列表不重扫，原目录残留幽灵条目。
      * 纯路径计算（canonicalFile 仅做路径解析，无任何变更操作）。
      */
@@ -264,7 +264,7 @@ object MovePlanner {
     }
 
     /**
-     * §5.4 跨层语义矩阵的阶段二判定（纯函数，供 UI 与单测共用）：
+     * 跨层语义矩阵的阶段二判定（纯函数，供 UI 与单测共用）：
      * 本次移动是否需要「移动风险确认」。
      *
      * 免确认组合：

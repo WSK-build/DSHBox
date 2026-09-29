@@ -34,12 +34,12 @@ import com.dshbox.app.util.MoveFailure
 import com.dshbox.app.util.MoveResult
 
 /**
- * 移动流程三个对话框的纯展示组件（1.2.0 §7.3 自 FilesScreen 抽出）：
- * 冲突决策（§5.1）/ §5.4 跨层强确认 / 移动结果（§5.3.7、§5.6）。
+ * 移动流程三个对话框的纯展示组件（自 FilesScreen 抽出）：
+ * 冲突决策 / 跨层强确认 / 移动结果。
  * 组件不持有任何状态，全部经参数与回调与 [MoveFlow] 交互。
  */
 
-/** 移动冲突对话框：覆盖 / 跳过 / 自动改名 +「应用到其余全部」勾选（§5.1、§5.5）。 */
+/** 移动冲突对话框：覆盖 / 跳过 / 自动改名 +「应用到其余全部」勾选。 */
 @Composable
 internal fun MoveConflictDialog(
     pending: PendingMove,
@@ -76,7 +76,7 @@ internal fun MoveConflictDialog(
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                // 「应用到其余全部」勾选（§5.5）
+                // 「应用到其余全部」勾选
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -113,7 +113,7 @@ internal fun MoveConflictDialog(
     )
 }
 
-/** §5.4 阶段二：跨层移动强确认（消费 layerRisks）。 */
+/** 阶段二：跨层移动强确认（消费 layerRisks）。 */
 @Composable
 internal fun MoveMatrixConfirmDialog(
     message: String,
@@ -143,7 +143,7 @@ internal fun MoveMatrixConfirmDialog(
     )
 }
 
-/** 移动结果对话框（§5.3.7 / §5.6）：成功/跳过/失败计数 + 失败明细 + 跨视图提示。 */
+/** 移动结果对话框：成功/跳过/失败计数 + 失败明细 + 跨视图提示。 */
 @Composable
 internal fun MoveResultDialog(
     result: MoveResult?,

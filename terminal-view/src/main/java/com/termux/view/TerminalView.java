@@ -1443,6 +1443,10 @@ public final class TerminalView extends View {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
 
+        // The cursor blinker re-posts itself from inside run(); stopping it here ends that
+        // chain, so a detached view (and the activity context it holds) cannot be pinned.
+        stopTerminalCursorBlinker();
+
         if (mTextSelectionCursorController != null) {
             // Might solve the following exception
             // android.view.WindowLeaked: Activity com.termux.app.TermuxActivity has leaked window android.widget.PopupWindow

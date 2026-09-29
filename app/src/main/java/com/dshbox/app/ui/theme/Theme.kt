@@ -135,11 +135,16 @@ fun DshAppTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !darkTheme
+            // 导航栏外观原先从未设置，走的是 enableEdgeToEdge() 按**系统**主题取的默认值。
+            // 应用内主题（设置里的浅色/暗色）与系统主题不一致时，深色下系统仍给三键导航
+            // 铺一层亮色 scrim，底部看起来"亮一条"。与状态栏同源处理即可对齐。
+            controller.isAppearanceLightNavigationBars = !darkTheme
         }
     }
     // 全局强制 LTR 布局方向——阿拉伯语仅保留翻译与文本自身的 bidi 渲染，
-    // 页面布局（页签顺序/导航/行方向/图标位置）不整体镜像（用户真机实测反馈镜像混乱）。
+    // 页面布局（页签顺序/导航/行方向/图标位置）不整体镜像：RTL 镜像会打乱布局。
     // 与 Manifest supportsRtl="false" 双保险一致。阿拉伯语文本仍按 Unicode bidi 正常显示。
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         MaterialTheme(

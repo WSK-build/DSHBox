@@ -108,7 +108,7 @@ object AppUpdater {
     private const val PREFS_NAME = "app_update_ignore"
     private const val KEY_IGNORED_VERSION = "ignored_version"
 
-    /** 用户此前忽略的版本 tag（无则 null）。 */
+    /** 用户已忽略的版本 tag（无则 null）。 */
     fun ignoredVersion(context: Context): String? =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_IGNORED_VERSION, null)

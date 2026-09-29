@@ -18,9 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Add
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Close
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +40,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,10 +55,15 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.dshbox.app.DshApp
 import com.dshbox.app.R
 import com.dshbox.app.service.SandboxService
-import com.dshbox.app.ui.theme.AppIconsTerminal
+// 终端图标已改用与导航页签同一个资源（R.drawable.ic_nav_terminal），此导入不再使用：
+// import com.dshbox.app.ui.theme.AppIconsTerminal
 import com.dshbox.app.ui.theme.AppIconsStop
 import com.dshbox.terminal.DshTerminalManager
 import com.termux.view.TerminalView
+import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.dshbox.app.common.R as CommonR
 
 /**
  * The terminal tab: one shared TerminalView displays the ACTIVE session from
@@ -173,6 +182,8 @@ fun TerminalScreen(
                     },
                     onRelease = { view ->
                         if (sessionClient.view === view) sessionClient.view = null
+                        // 释放后不再保留该视图：否则它会连同会话与回看缓冲一直驻留到下次开窗。
+                        if (terminalView === view) terminalView = null
                     },
                 )
 
@@ -314,7 +325,7 @@ private fun FloatingControls(
                                 modifier = Modifier.size(28.dp),
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.Close,
+                                    imageVector = ImageVector.vectorResource(CommonR.drawable.ic_x),
                                     contentDescription = stringResource(R.string.terminal_panel_toggle),
                                     tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.size(18.dp),
@@ -354,7 +365,9 @@ private fun FloatingControls(
                                     modifier = Modifier.size(28.dp),
                                 ) {
                                     Icon(
-                                        imageVector = AppIconsTerminal,
+                                        // 会话列表里的终端图标：与底部导航「终端」页签**同一个资源**，
+                                        // 两处天然一致（用户要求）。
+                                        imageVector = ImageVector.vectorResource(R.drawable.ic_nav_terminal),
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(18.dp),
@@ -393,7 +406,7 @@ private fun FloatingControls(
                     .padding(top = 8.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Add,
+                    imageVector = ImageVector.vectorResource(CommonR.drawable.ic_plus),
                     contentDescription = stringResource(R.string.terminal_panel_toggle),
                 )
             }
@@ -412,7 +425,8 @@ private fun PlaceholderCard(titleRes: Int, bodyRes: Int?) {
             modifier = Modifier.padding(24.dp),
         ) {
             Icon(
-                imageVector = AppIconsTerminal,
+                // 空态（终端全部关闭）居中这个图标：同样取导航页签那一个资源。
+                imageVector = ImageVector.vectorResource(R.drawable.ic_nav_terminal),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
             )
@@ -467,28 +481,45 @@ private fun FailsafeBanner(
     onSwitchToSandbox: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth().padding(8.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        shape = MaterialTheme.shapes.medium,
+    var visible by rememberSaveable { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(AUTO_DISMISS_DELAY_MS)
+        visible = false
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        exit = fadeOut(animationSpec = tween(durationMillis = FADE_OUT_DURATION_MS)),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Surface(
+            modifier = modifier.fillMaxWidth().padding(8.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = BANNER_BACKGROUND_ALPHA),
+            shape = MaterialTheme.shapes.medium,
         ) {
-            Text(
-                text = stringResource(R.string.terminal_banner_failsafe),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f),
-            )
-            if (sandboxRunning) {
-                Button(onClick = onSwitchToSandbox) {
-                    Text(stringResource(R.string.terminal_action_open_sandbox_terminal))
-                }
-            } else {
-                OutlinedButton(onClick = onStartSandbox) {
-                    Text(stringResource(R.string.terminal_banner_failsafe_action))
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.terminal_banner_failsafe),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                if (sandboxRunning) {
+                    Button(onClick = onSwitchToSandbox) {
+                        Text(stringResource(R.string.terminal_action_switch_to_sandbox))
+                        Icon(
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_arrows_right_left),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                } else {
+                    OutlinedButton(onClick = onStartSandbox) {
+                        Text(stringResource(R.string.terminal_banner_failsafe_action))
+                    }
                 }
             }
         }
@@ -555,3 +586,9 @@ private fun hideIme(view: View) {
 private const val DEFAULT_FONT_SP = 28
 private const val MIN_FONT_SP = 8
 private const val MAX_FONT_SP = 40
+
+// FailsafeBanner 自动消失：显示 3 秒后 2 秒内渐变淡出。
+private const val AUTO_DISMISS_DELAY_MS = 3000L
+private const val FADE_OUT_DURATION_MS = 2000
+// 横幅背景半透明，保证底部终端输出可见。
+private const val BANNER_BACKGROUND_ALPHA = 0.65f

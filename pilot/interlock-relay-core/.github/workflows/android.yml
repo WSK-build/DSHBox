@@ -1,0 +1,50 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The action defaults to `packages: tools platform-tools`, and the standalone
+      # `tools` package no longer exists in the SDK repository, so leaving it at the
+      # default fails this step outright ("Failed to find package 'tools'"). Ask only
+      # for what is still published here; what the build needs is installed next.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      # compileSdk 36 is not part of the runner image's default package set, so the
+      # platform and its build-tools are installed explicitly rather than assumed.
+      - name: Accept licenses & install SDK packages
+        run: |
+          sdkmanager --update >/dev/null 2>&1 || true
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Grant execute permission to the wrapper
+        run: chmod +x gradlew
+
+      # `build` covers the three things this repository is judged on: the JVM unit
+      # suite (including the string-resource parity check), lint, and assembling the
+      # library. The sample module compiles as part of it, so an accidental break of
+      # the public API surface shows up here as well.
+      - name: Build and test
+        run: ./gradlew build --stacktrace

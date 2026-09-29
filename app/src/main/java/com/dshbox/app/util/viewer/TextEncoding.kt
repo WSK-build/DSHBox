@@ -4,7 +4,7 @@ import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
 /**
- * 文本编码探测（1.2.0 §6.4，纯 JVM 自研，无 Android 依赖）。
+ * 文本编码探测（纯 JVM 自研，无 Android 依赖）。
  *
  * 不用 `android.icu.text.CharsetDetector`——它是 Android 平台类，纯 JVM 单测中不存在
  * （项目无 Robolectric，CI 跑 testDebugUnitTest）。自研 `java.nio.charset` 方案：
@@ -25,8 +25,8 @@ object TextEncoding {
         UTF_8("UTF-8", "UTF-8"),
         GBK("GBK", "GBK"),
         GB18030("GB18030", "GB18030"),
-        // 返工 #5（2026-09-07 真机）：日文 Shift_JIS/EUC-JP 文件此前无手动切换项，
-        // 探测兜底后只能看乱码；补选项（自动探测留 1.2.1 评估）
+        // 日文 Shift_JIS/EUC-JP 若没有手动切换项，
+        // 探测兜底后只能看乱码；故补上这两个选项（自动探测另行评估）
         SHIFT_JIS("Shift_JIS", "Shift_JIS"),
         EUC_JP("EUC-JP", "EUC-JP"),
         UTF_16LE("UTF-16LE", "UTF-16LE"),

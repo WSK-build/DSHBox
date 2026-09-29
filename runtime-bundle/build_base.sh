@@ -73,7 +73,7 @@ find "$ROOTFS_DIR/usr/share/locale" -mindepth 1 -maxdepth 1 -type d \
 # locale.alias maps stored in /usr/share/locale/locale.alias (intentionally kept).
 
 # doc: keep every package's copyright (license declaration), delete only
-# changelog/README/real-doc fluff (hard constraint #8).
+# changelog/README/documentation fluff.
 if [ -d "$ROOTFS_DIR/usr/share/doc" ]; then
     find "$ROOTFS_DIR/usr/share/doc" -type f ! -name 'copyright' -exec sudo rm -f {} + 2>/dev/null || true
     # remove empty per-package doc dirs that only held the deleted files

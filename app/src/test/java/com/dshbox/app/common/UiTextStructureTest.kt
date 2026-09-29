@@ -6,7 +6,7 @@ import org.junit.Test
 /**
  * UiText 结构测试（纯 JVM，无 Android Context）。
  * 覆盖 Res/Raw/Concat/Separator 的构造与嵌套解析顺序；
- * asString(context) 需 Android 资源环境，由真机轮覆盖。
+ * asString(context) 需 Android 资源环境，由设备轮覆盖。
  */
 class UiTextStructureTest {
 

@@ -17,6 +17,7 @@ androidxAnnotation = "1.9.0"
 soraEditor = "0.23.5"
 markwon = "4.6.2"
 kxml2 = "2.3.0"
+bcpg = "1.78.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -43,6 +44,7 @@ sora-editor = { group = "io.github.Rosemoe.sora-editor", name = "editor", versio
 markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "markwon" }
 markwon-ext-tables = { group = "io.noties.markwon", name = "ext-tables", version.ref = "markwon" }
 kxml2 = { group = "net.sf.kxml", name = "kxml2", version.ref = "kxml2" }
+bcpg = { group = "org.bouncycastle", name = "bcpg-jdk18on", version.ref = "bcpg" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }

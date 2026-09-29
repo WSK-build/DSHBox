@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 首页入口卡 -->
+    <string name="pm_home_entry_title">Cordis</string>
+    <string name="pm_home_entry_subtitle">插件管理·市场</string>
+
+    <!-- 面板页 -->
+    <string name="pm_panel_title">Cordis 插件面板</string>
+    <string name="pm_panel_hint">插件加载失败时如何处置。</string>
+    <string name="pm_safety_mode">安全模式</string>
+    <string name="pm_safety_mode_desc">加载失败时自动跳过出错插件</string>
+    <string name="pm_absolute_mode">绝对安全模式</string>
+    <string name="pm_absolute_mode_desc">不加载任何第三方插件启动</string>
+    <string name="pm_absolute_on_hint">绝对安全模式已开启：不会加载任何第三方插件。</string>
+    <string name="pm_load_log_row">插件加载记录</string>
+    <string name="pm_isolation_row">失败隔离清单</string>
+    <string name="pm_market_row">插件市场</string>
+
+    <!-- 插件加载记录 -->
+    <string name="pm_load_log_title">插件加载记录</string>
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_current">本次启动</string> -->
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_previous">上次启动</string> -->
+    <string name="pm_load_log_empty">暂无记录</string>
+    <string name="pm_load_log_hint">保留最近 %1$d 次启动记录，循环覆盖。</string>
+    <string name="pm_load_log_too_long">日志过长，仅显示末尾部分；完整日志可在诊断页「运行日志」里导出。</string>
+    <string name="pm_repair_row">插件崩溃修复辅助</string>
+    <string name="pm_repair_card_title">opencode 终端 Agent</string>
+    <string name="pm_repair_install">安装</string>
+    <string name="pm_repair_update">更新</string>
+    <string name="pm_repair_remove">删除</string>
+    <string name="pm_repair_note_1">opencode 是开源终端 agent 工具，可帮助你在终端工作。</string>
+    <string name="pm_repair_note_2">opencode 每日有一定免费额度。</string>
+    <string name="pm_repair_note_3">DSH 插件崩溃问题，可通过终端使用此工具进行修复。</string>
+    <string name="pm_repair_note_4">使用方法：点击安装，然后终端输入 opencode 即可使用。</string>
+    <string name="pm_repair_state_installed">已安装 v%1$s</string>
+    <string name="pm_repair_state_installed_no_version">已安装</string>
+    <string name="pm_repair_state_missing">未安装</string>
+    <string name="pm_repair_working">正在下载安装，请保持网络连接并耐心等待。</string>
+    <string name="pm_repair_retrying">网络不稳定，正在重试。</string>
+    <string name="pm_repair_done">已完成</string>
+    <string name="pm_repair_failed">操作失败：%1$s</string>
+    <string name="pm_repair_failed_unknown">未知错误</string>
+    <string name="pm_repair_retry">重试</string>
+    <string name="pm_repair_remove_confirm_body">opencode本体、配置、用户数据均会被清除</string>
+
+    <!-- 失败隔离清单 -->
+    <string name="pm_isolation_title">失败隔离清单</string>
+    <string name="pm_isolation_hint">启动时加载失败、已被跳过；恢复启用后下次启动生效。</string>
+    <string name="pm_isolation_empty">暂无被跳过的插件</string>
+    <string name="pm_isolation_restore">恢复启用</string>
+    <string name="pm_isolation_badge">已跳过</string>
+
+    <!-- 通用 -->
+    <string name="pm_back">返回</string>
+    <string name="pm_refresh">刷新</string>
+    <string name="pm_copy">复制</string>
+    <string name="pm_copied">已复制到剪贴板</string>
+    <string name="pm_working">处理中…</string>
+
+    <!-- 市场 · 框架 -->
+    <string name="pm_market_title">插件市场</string>
+    <string name="pm_market_subtitle">发现社区为 DeepSeek Harness 开发的插件</string>
+    <string name="pm_market_tab_discover">发现</string>
+    <string name="pm_market_tab_favorites">收藏</string>
+    <string name="pm_market_tab_installed">已安装</string>
+
+    <!-- 市场 · 目录加载 -->
+    <string name="pm_market_loading">正在加载插件目录…</string>
+    <string name="pm_market_unavailable">插件目录暂时不可用。</string>
+    <string name="pm_market_load_failed_title">插件目录加载失败</string>
+    <string name="pm_market_load_failed_attempts">已尝试 %1$d 次</string>
+    <string name="pm_market_load_failed_elapsed">耗时 %1$d 毫秒</string>
+    <string name="pm_market_load_retry">重试</string>
+    <string name="pm_market_empty">没有匹配的插件</string>
+    <string name="pm_market_result_count">%1$d/%2$d</string>
+
+    <!-- 市场 · 发现 -->
+    <string name="pm_market_search_ph">搜索插件，例如：通知、终端、记忆…</string>
+    <string name="pm_market_category_all">全部</string>
+    <string name="pm_market_filter_host">仅显示兼容宿主</string>
+    <string name="pm_market_filter_host_hint">未声明或无法确认的插件仍会显示。</string>
+    <string name="pm_market_sort_field">排序字段</string>
+    <string name="pm_market_sort_downloads">下载量</string>
+    <string name="pm_market_sort_stars">星标</string>
+    <string name="pm_market_sort_added">新增</string>
+    <string name="pm_market_sort_desc">降序</string>
+    <string name="pm_market_sort_asc">升序</string>
+    <string name="pm_market_load_more">加载更多</string>
+
+    <!-- 市场 · 卡片字段 -->
+    <string name="pm_market_deprecated_badge">已废弃</string>
+    <string name="pm_market_deprecated_warn">该插件已被目录标记为废弃，不建议新用户安装。</string>
+    <string name="pm_market_replacement_hint">目录建议改用 %1$s</string>
+    <string name="pm_market_downloads_value">↓ %1$s</string>
+    <string name="pm_market_stars_value">★ %1$s</string>
+    <string name="pm_market_version_value">v%1$s</string>
+    <string name="pm_market_author_value">作者 %1$s</string>
+    <string name="pm_market_categories_label">分类</string>
+    <string name="pm_market_installed_badge">✓ 已安装</string>
+    <string name="pm_market_third_party_badge">第三方</string>
+    <string name="pm_market_local_dev_badge">本地开发</string>
+
+    <!-- 市场 · 宿主兼容 -->
+    <string name="pm_market_compat_compatible">兼容性已满足（声明满足）</string>
+    <string name="pm_market_compat_incompatible">确证与当前 DSH 不兼容</string>
+    <string name="pm_market_compat_unknown">宿主要求未知，仍可安装试用</string>
+    <string name="pm_market_compat_undeclared">未声明宿主要求</string>
+    <string name="pm_market_compat_unavailable">宿主要求无法读取</string>
+    <string name="pm_market_compat_requirement">要求 DSH %1$s</string>
+
+    <!-- 市场 · 安装与详情 -->
+    <string name="pm_market_install">安装</string>
+    <string name="pm_market_installing">安装中…</string>
+    <string name="pm_market_confirm_install">确认安装</string>
+    <string name="pm_market_confirm">确认</string>
+    <string name="pm_market_cancel">取消</string>
+    <string name="pm_market_confirm_warn">插件是社区第三方代码。安装即表示你信任该来源；构建脚本默认被禁止执行。</string>
+    <string name="pm_market_detail_title">插件详情</string>
+    <string name="pm_market_detail_cmd">安装命令</string>
+    <string name="pm_market_detail_published">发布于 %1$s</string>
+    <string name="pm_market_detail_third_party">这是社区编写的第三方代码，不是我们写的。安装前请先看过源码。</string>
+    <string name="pm_market_detail_build_blocked">该插件需要运行构建脚本才能工作，出于安全考虑已默认阻止。确认来源可信后再放行。</string>
+    <string name="pm_market_detail_source">源码仓库</string>
+    <string name="pm_market_detail_install_anyway">仍然安装</string>
+    <string name="pm_market_incompatible_warn">该插件声明自己与当前 DSH 不兼容，装上去多半会直接报错。</string>
+    <string name="pm_market_close">关闭</string>
+
+    <!-- 市场 · 已安装 -->
+    <string name="pm_market_installed_empty">尚未安装社区插件</string>
+    <string name="pm_market_installed_empty_hint">可前往「发现」页浏览。</string>
+    <string name="pm_market_state_live">已生效</string>
+    <string name="pm_market_state_restart">已安装，重启后生效</string>
+    <string name="pm_market_state_inert">已安装，未生效</string>
+    <string name="pm_market_state_broken">已安装，校验未通过</string>
+    <string name="pm_market_state_missing">清单里有，但文件不在</string>
+    <string name="pm_market_state_disabled">已停用</string>
+    <string name="pm_market_act_why">详情</string>
+    <string name="pm_market_act_why_empty">该状态没有留下判定说明。</string>
+    <string name="pm_market_toggle_on">启用中</string>
+    <string name="pm_market_toggle_off">已停用</string>
+    <string name="pm_market_toggle_restart_notice">已切换，下次启动生效。</string>
+    <string name="pm_market_update">更新</string>
+    <string name="pm_market_updating">更新中…</string>
+    <string name="pm_market_up_to_date">已是最新</string>
+    <string name="pm_market_update_channel_switch">可切换至 %1$s 通道，这不是版本升级</string>
+    <string name="pm_market_uninstall">卸载</string>
+    <string name="pm_market_uninstall_confirm">确认卸载？</string>
+    <string name="pm_market_uninstall_confirm_desc">将从当前 profile 中移除该插件，且无法回退。</string>
+    <string name="pm_market_note_add">添加备注</string>
+    <string name="pm_market_note_edit">编辑备注</string>
+    <string name="pm_market_note_mine">我的备注</string>
+    <string name="pm_market_note_ph">用你自己的话描述这个插件，将代替作者简介显示。</string>
+    <string name="pm_market_note_save">保存</string>
+    <string name="pm_market_note_clear">清除备注</string>
+    <string name="pm_market_note_limit">备注最多 200 字。</string>
+    <string name="pm_market_spec_label">安装来源</string>
+
+    <!-- 市场 · 任务面板 -->
+    <string name="pm_market_ops_title">任务</string>
+    <string name="pm_market_ops_busy">正在处理 %1$d/%2$d</string>
+    <string name="pm_market_ops_attention">%1$d 项需处理</string>
+    <string name="pm_market_ops_leave_hint">可离开本页面，完成后会告知你。</string>
+    <string name="pm_market_ops_empty">暂无进行中的操作</string>
+    <string name="pm_market_ops_empty_hint">安装、更新与卸载的进度将显示在这里。</string>
+    <string name="pm_market_ops_close">收起</string>
+    <string name="pm_market_ops_clear">清空已完成</string>
+    <string name="pm_market_ops_running">正在处理</string>
+    <string name="pm_market_ops_done">已完成</string>
+    <string name="pm_market_ops_failed">失败</string>
+    <string name="pm_market_ops_retry">重试</string>
+    <string name="pm_market_ops_progress">已完成 %1$d/%2$d</string>
+    <string name="pm_market_ops_kind_install">安装</string>
+    <string name="pm_market_ops_kind_update">更新</string>
+    <string name="pm_market_ops_kind_uninstall">卸载</string>
+    <string name="pm_market_ops_reason">失败原因</string>
+    <string name="pm_market_ops_output">输出</string>
+    <string name="pm_market_ops_no_output">暂无输出</string>
+    <string name="pm_market_ops_unsupported">取消与「放行构建脚本」需要数据层提供接口，本版本尚未支持。</string>
+    <string name="pm_market_busy_wait">已有操作正在进行，请等待其完成（同一时间只执行一个安装/更新/卸载）。</string>
+
+    <!-- 市场 · 收藏 -->
+    <string name="pm_market_fav_empty">还没有收藏</string>
+    <string name="pm_market_fav_empty_hint">收藏保存在市场状态文件里，与其它插件设置放在一起。</string>
+    <string name="pm_market_fav_unavailable">收藏暂不可用：数据层尚未提供该接口。</string>
+    <string name="pm_market_fav_count">共 %1$d 个收藏</string>
+
+    <!-- 市场 · 未检测原因 / 列表读取失败 -->
+    <string name="pm_market_update_unchecked">未检测（原因：%1$s）</string>
+    <string name="pm_market_update_unchecked_source">该来源不支持更新检测</string>
+    <string name="pm_market_update_unchecked_query">查询失败或没有可用结果</string>
+    <string name="pm_market_installed_failed_title">已安装清单读不出来</string>
+    <string name="pm_market_updates_failed_title">更新检测失败</string>
+    <string name="pm_market_notice_dismiss">关闭提示</string>
+
+    <!-- 市场 · 更新检测进行中 / 状态文件恢复 -->
+    <string name="pm_market_update_checking">更新检测中…</string>
+    <string name="pm_market_state_broken_title">市场状态文件读不出来</string>
+    <string name="pm_market_state_broken_message">磁盘上的市场状态文件（你的停用开关与备注）无法解析。为免覆盖它，当前改动不会保存。</string>
+    <string name="pm_market_state_rebuild">备份并重建状态文件</string>
+    <string name="pm_market_state_rebuilt">状态文件已重建，原文件已留作备份。</string>
+
+    <!-- 安全模式的提示（走 app 统一的 Toast；系统会自动带上应用图标） -->
+    <string name="pm_guard_toast_attempt_title">安全模式正在自动跳过出错插件（第 %1$d 次）</string>
+    <string name="pm_guard_toast_attempt_skipped">已跳过 %1$d 个插件：%2$s</string>
+    <string name="pm_guard_toast_recovered_title">安全模式已跳过 %1$d 个插件，DSH 已启动</string>
+    <string name="pm_guard_toast_recovered_skipped">已跳过：%1$s</string>
+    <string name="pm_guard_toast_absolute">已开启绝对安全模式</string>
+    <string name="pm_guard_toast_failed">DSH 未能启动，已停止重试</string>
+
+    <!-- DSHBox 专属适配插件（原设置页装配行迁移至此） -->
+    <string name="pm_adapt_section_title">DSHBox专属适配插件</string>
+    <string name="pm_adapt_mobile">DSH移动端页面适配</string>
+    <string name="pm_adapt_mobile_pilot">DSH连接手机</string>
+    <string name="pm_adapt_restart_hint">，重启 DSH 后生效</string>
+    <string name="pm_adapt_ok">装配成功</string>
+    <string name="pm_adapt_fail">装配失败，已回滚</string>
+    <!-- DSH官方插件（上游默认关闭的内置能力） -->
+    <string name="pm_official_section">DSH官方插件</string>
+    <string name="pm_official_desc_ui_sidebar_browser">右侧栏内置浏览器</string>
+    <string name="pm_official_note">改动 .dsh/dshbox/dsh-official-plugin/dsh-official-plugin-overlay.yml，改动后重启 DSH 生效。</string>
+    <string name="pm_official_on">%1$s 已开启，重启 DSH 后生效</string>
+    <string name="pm_official_off">%1$s 已关闭，重启 DSH 后生效</string>
+    <string name="pm_official_fail">设置失败：%1$s</string>
+    <!-- 市场 · 数据源 -->
+    <string name="pm_market_source_label">数据源</string>
+    <string name="pm_market_source_switch">切换</string>
+    <string name="pm_market_source_title">数据源</string>
+    <string name="pm_market_source_current">当前</string>
+    <string name="pm_market_source_pick">选择</string>
+    <string name="pm_market_source_intro">选择插件目录的来源。切换后会重新加载目录。</string>
+    <string name="pm_market_source_foot">已安装的插件不受切换影响。</string>
+    <string name="pm_market_source_mobile_desc">DeepSeek Harness 移动端插件合集，专为手机端使用场景打造。
+
+DSHBox 刚刚建立起来的收录仓库，便于扩展移动端场景的插件适配。欢迎大家向仓库提交 PR，分享自己的想法和创意！</string>
+    <string name="pm_market_source_official_desc">DeepSeek Harness 社区最大插件精选列表！但主要面向电脑端使用，部分插件在移动端会存在页面不适配和兼容性问题。</string>
+    <string name="pm_market_source_open_failed">没有可以打开这个链接的应用</string>
+</resources>
+

@@ -8,7 +8,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 内容指纹单测（1.2.0 §10.1）：同内容同摘要、首/尾 64KB 变化可检出、size/mtime 敏感。
+ * 内容指纹单测：同内容同摘要、首/尾 64KB 变化可检出、size/mtime 敏感。
  */
 class ContentFingerprintTest {
 
@@ -45,7 +45,7 @@ class ContentFingerprintTest {
 
     @Test
     fun tailChangeDetected() {
-        // 300KB：尾部变化落在最后 64KB 窗口（§6.4.3：日志追加等场景）
+        // 300KB：尾部变化落在最后 64KB 窗口（日志追加等场景）
         val bytes = ByteArray(300_000) { 0x41 }
         val f = tempFile(bytes)
         val before = ContentFingerprint.of(f)!!

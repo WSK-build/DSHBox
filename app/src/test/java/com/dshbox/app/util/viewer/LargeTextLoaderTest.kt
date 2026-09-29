@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 大文本分块装载回归（返工修正 #3 锁定）：行对齐窗口边界正确、超长单行不丢内容
+ * 大文本分块装载用例：行对齐窗口边界正确、超长单行不丢内容
  * （扫描封顶后窗口边界落在字节位而非行首，prev/next 仍可无缝遍历全文）。
  */
 class LargeTextLoaderTest {

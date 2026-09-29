@@ -5,7 +5,7 @@ import java.io.RandomAccessFile
 import kotlin.math.log2
 
 /**
- * 十六进制转储（1.2.0 §6.9，纯 JVM 格式化逻辑 + 文件随机读）。
+ * 十六进制转储（纯 JVM 格式化逻辑 + 文件随机读）。
  *
  * 三栏：偏移量 | 每行 16 字节 hex | ASCII（不可见显示 `.`）。
  * UI 侧按 [BLOCK_SIZE]（64KB）块随机读取（[readBlock]），LazyColumn 只渲染可视块，
@@ -16,7 +16,7 @@ object HexDumper {
     /** 每行字节数（经典 16 列）。 */
     const val ROW_BYTES = 16
 
-    /** 随机读块大小：64KB（§6.9）。 */
+    /** 随机读块大小：64KB。 */
     const val BLOCK_SIZE = 64 * 1024
 
     /** 单行转储结果：[offset] 为行首字节偏移，[hex] 与 [ascii] 按 [ROW_BYTES] 对齐（不足补齐）。 */
@@ -113,7 +113,14 @@ object HexDumper {
         val size = file.length()
         if (size <= BLOCK_SIZE) return entropy(readBlock(file, 0))
         val blocks = sortedSetOf(0, blockOf(size / 2), blockOf(size - BLOCK_SIZE))
-        val sample = blocks.flatMap { readBlock(file, it).toList() }.toByteArray()
+        // 按块索引升序拼成一个采样数组：直接按字节复制，避免逐字节装箱产生临时对象。
+        val parts = blocks.map { readBlock(file, it) }
+        val sample = ByteArray(parts.sumOf { it.size })
+        var offset = 0
+        for (part in parts) {
+            System.arraycopy(part, 0, sample, offset, part.size)
+            offset += part.size
+        }
         return entropy(sample)
     }
 

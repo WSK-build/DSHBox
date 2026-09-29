@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * `clearUploadAccept` 脚本的单测（1.3.1 复查 M30）。
+ * `clearUploadAccept` 脚本的单测。
  *
  * ## 被测对象
  *
@@ -27,7 +27,7 @@ import org.junit.Test
  * 但这段脚本的失效模式恰恰都是**结构性**的 —— 少一个分号、选错 API、
  * 漏掉 try/catch —— 都由字符串断言即可锁住。
  * 真实 DOM 行为已在 `tools/webview_upload_accept_test.html` 里
- * 用浏览器夹具实测（含负向对照）。
+ * 用浏览器夹具核对（含负向对照）。
  */
 class ClearUploadAcceptScriptTest {
 

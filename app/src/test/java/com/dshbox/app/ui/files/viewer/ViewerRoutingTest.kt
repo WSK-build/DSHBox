@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * 查看器路由决策单测（纯 JVM）。
  *
- * M3 返工 A 回归：路由决策此前内嵌 Composable 无法单测，OFFICE 抽文本视图未接通
+ * 路由决策若内嵌 Composable 就无法单测，OFFICE 抽文本视图曾因此漏检
  * （抽取成功的 docx/xlsx 落信息卡，只有手动「按文本打开」可见）而 147 例全绿漏检——
  * 决策抽为 [resolveBodyMode] 纯函数后由此类锁定。
  */
@@ -34,7 +34,7 @@ class ViewerRoutingTest {
         assertEquals(ViewerMode.INFO, auto(FileTypeClassifier.FileKind.OFFICE, "pptx", "pptx", hasFull = false))
     }
 
-    // ---------------- M3 路由表全量锁定 ----------------
+    // ---------------- 路由表全量锁定 ----------------
 
     @Test
     fun pdfAndArchiveRouting() {
@@ -79,8 +79,8 @@ class ViewerRoutingTest {
         assertEquals(ViewerMode.HEX, resolveBodyMode(ViewerMode.HEX, FileTypeClassifier.FileKind.OFFICE, "docx", "docx", true))
     }
 
-    // ---------------- 返工：INFO 显式覆盖短路（阻断缺陷回归，逐 kind 全量） ----------------
-    // onFallback 降级写 viewMode=INFO；此前缺 INFO 短路，PDF/ARCHIVE/MARKUP 的 kind 分支
+    // ---------------- INFO 显式覆盖短路（逐 kind 全量） ----------------
+    // onFallback 降级写 viewMode=INFO；缺 INFO 短路时，PDF/ARCHIVE/MARKUP 的 kind 分支
     // 无视 INFO → 查看器重组、错误态/密码框无限重弹、全屏透明层关不掉吃触摸。
     // 修复要求：显式覆盖断言必须逐枚举值覆盖，不能只测 TEXT/HEX 两个捷径。
 

@@ -6,6 +6,30 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- DSH Web 侧能力的运行时权限：语音输入需要录音，附件来源菜单的「拍照/录像」
+         需要相机。两者都在使用时按需请求，未授予时只有对应功能不可用。
+         注意：本应用一旦声明 CAMERA，系统会要求 ACTION_IMAGE_CAPTURE 调用方持有
+         该权限，因此相机入口必须先确保权限已授予再发起拍摄。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- 普通权限（安装即授，无运行时弹窗）。Chromium 的录音设备检查要求它与
+         RECORD_AUDIO **同时**具备，否则 WebView 内拿不到录音设备：
+         日志表现为 `Requires MODIFY_AUDIO_SETTINGS and RECORD_AUDIO. No audio
+         device will be available for recording`，页面侧则表现为语音输入启动失败。 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- 无摄像头/麦克风的设备仍可安装：声明为非必需，避免被装机过滤 -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
     <!-- targetSdk 30+ 包可见性——外部打开/编辑/分享的目标应用查询签名 -->
     <queries>
         <intent>
@@ -27,8 +51,8 @@
         android:extractNativeLibs="true"
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:icon="@mipmap/brand_icon"
+        android:roundIcon="@mipmap/brand_icon"
         android:label="@string/app_name"
         android:localeConfig="@xml/locales_config"
         android:networkSecurityConfig="@xml/network_security_config"
@@ -71,7 +95,7 @@
              src/debug/AndroidManifest.xml——release 不再注册该接收器，
              消除 exported 外部触发面。 -->
 
-        <!-- 1.2.0 §6.11：外部应用调用（VIEW/EDIT/SEND）的 content URI 支持，
+        <!-- 外部应用调用（VIEW/EDIT/SEND）的 content URI 支持，
              四根精确 files-path 见 res/xml/file_paths.xml -->
         <provider
             android:name="androidx.core.content.FileProvider"

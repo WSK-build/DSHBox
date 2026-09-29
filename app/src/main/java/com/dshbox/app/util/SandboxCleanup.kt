@@ -8,7 +8,7 @@ import java.io.File
 import java.io.RandomAccessFile
 
 /**
- * 沙盒存储扫描与清理（1.1.0，M12；M12.1 评审修正）。
+ * 沙盒存储扫描与清理。
  *
  * 统计口径：**分配块**（lstat st_blocks × 512），与系统「应用存储」/ du 同口径。
  * 符号链接跳过；硬链接（st_nlink > 1）按 (dev,ino) 只计一次。**scan 与 clean
@@ -24,8 +24,11 @@ import java.io.RandomAccessFile
  * 在沙箱或 DSH 运行中时只清理超过 [AGE_GUARD_MS] 的条目；scan 与 clean 均传
  * guardActive，调用方用同一状态。
  *
- * 并发互斥：本类不感知后台任务；调用方必须在 count>0（[BackgroundOps]）时禁用清理，
- * 参见 M12.1 P1③。
+ * [Category.APT] 另有一道独立的让路判定：终端里跑着 apt/dpkg 时（见 [PackageToolProbe]，
+ * 它们不在 [BackgroundOps] 的忙判断范围内）scan 不计入、clean 不删除——否则会删掉
+ * 正在下载中的 `.deb`。判定在 scan 与 clean 各自现取一次，故两边口径一致。
+ *
+ * 并发互斥：本类不感知后台任务；调用方必须在 count>0（[BackgroundOps]）时禁用清理。
  */
 object SandboxCleanup {
 
@@ -48,9 +51,15 @@ object SandboxCleanup {
             "runtime-bundle-staging" to Category.CACHE,
             "bundled-runtime-staging" to Category.CACHE,
             "bundled-runtime-staging.tar.gz" to Category.CACHE,
+            // 在线导入的组装暂存（进程被杀时残留可达数百 MB；正常路径的 finally 会清，
+            // 这里兜底「失败/中断后残留」可被「应用缓存」一键清理）。
+            "online-runtime-staging" to Category.CACHE,
+            "online-node-staging" to Category.CACHE,
             "runtime/dsh-staging" to Category.CACHE,
+            // 终端 Agent 的安装暂存：装完即被搬走；中途被杀时残留可达上百 MB，由这里兜底。
+            "guest-cache/.staging-opencode" to Category.CACHE,
             // proot 临时目录真实位置：PROOT_TMP_DIR = runtime-current/tmp/<role>；
-            // 旧版写成 runtime/tmp，是凭空臆造的路径，永远匹配不到。
+            // 不能写成 runtime/tmp：该路径并不存在，永远匹配不到。
             "runtime/runtime-current/tmp" to Category.GUEST_TMP,
             "runtime/runtime-current/base/tmp" to Category.GUEST_TMP,
             "runtime/runtime-current/base/var/cache/apt/archives" to Category.APT,
@@ -75,7 +84,7 @@ object SandboxCleanup {
         !isAgeGuarded(category) || !guardActive || lastModified <= now - AGE_GUARD_MS
 
     /**
-     * 扩展名过滤（scan 与 clean 共用，保证口径一致，M12.1 P2⑥⑦）：
+     * 扩展名过滤（scan 与 clean 共用，保证口径一致）：
      * APT 只认 .deb（等价 apt clean，不动 lock/partial，避免打断进行中的下载）；
      * LOGS 只认 .log。
      */
@@ -85,8 +94,15 @@ object SandboxCleanup {
         else -> true
     }
 
-    /** 单个条目的统计快照（scan 从 Os.lstat 翻译而来；测试可直接构造）。 */
-    data class EntryStat(
+    /**
+     * APT 缓存本次是否可清（纯函数，JVM 可测）：勾了该清理项，且**没有**包管理工具在跑。
+     * 终端里的 apt/dpkg 不在 [BackgroundOps] 的忙判断范围内，只能靠 [PackageToolProbe] 辨认；
+     * 有工具在跑时让路，避免删掉它正在下载的 `.deb`。
+     */
+    fun aptCacheEligible(categories: Set<Category>, packageToolBusy: Boolean): Boolean =
+        Category.APT in categories && !packageToolBusy
+
+    /** 单个条目的统计快照（scan 从 Os.lstat 翻译而来；测试可直接构造）。 */    data class EntryStat(
         val name: String,
         val relPath: String,
         val isDir: Boolean,
@@ -101,12 +117,16 @@ object SandboxCleanup {
     }
 
     /**
-     * 逐条目归账器（纯逻辑，JVM 可测，M12.1 P2⑧）：硬链接去重 + 分类 + 年龄过滤 +
+     * 逐条目归账器（纯逻辑，JVM 可测）：硬链接去重 + 分类 + 年龄过滤 +
      * 扩展名过滤。scan 对 filesDir 与 cacheDir 两个根**共用同一个账本**（cache 根
      * 条目传 isCacheRoot = true 不参与分类）——跨根的硬链接也能去重；账本内
      * 硬链接 (dev,ino) 只计一次。
      */
-    class UsageLedger(private val now: Long, private val guardActive: Boolean) {
+    class UsageLedger(
+        private val now: Long,
+        private val guardActive: Boolean,
+        private val aptBusy: Boolean = false,
+    ) {
         private val seenHardlinks = HashSet<String>()
         private val reclaimable = mutableMapOf<Category, Long>()
 
@@ -120,6 +140,7 @@ object SandboxCleanup {
             val bytes = entry.bytes
             val category = if (isCacheRoot) null else categorize(entry.relPath)
             if (category != null && !entry.isDir &&
+                !(category == Category.APT && aptBusy) &&
                 fileEligible(category, entry.name) &&
                 passesAgeGuard(category, entry.lastModifiedMs, now, guardActive)
             ) {
@@ -142,7 +163,7 @@ object SandboxCleanup {
 
     /**
      * 一遍遍历 filesDir + cacheDir，同时得出两行占用与各清理项可回收大小。
-     * 每个条目只 stat 一次（isDir/isSymlink/mtime 全部取自同一次 lstat，M12.1 P2⑤）。
+     * 每个条目只 stat 一次（isDir/isSymlink/mtime 全部取自同一次 lstat）。
      * reclaimable 只按文件计（目录 inode 忽略）——clean 侧按目录整删时实际释放
      * 会略大于显示值，宁少勿多。
      *
@@ -152,7 +173,8 @@ object SandboxCleanup {
         val now = System.currentTimeMillis()
         var dataBytes = 0L
         var cacheBytes = 0L
-        val ledger = UsageLedger(now, guardActive)
+        // 与 clean 各自现取一次：若期间终端里开始了 apt/dpkg，清理也会同步让路，两边不会打架。
+        val ledger = UsageLedger(now, guardActive, aptBusy = PackageToolProbe.isRunning())
 
         fun walk(dir: File, rel: String, isCacheRoot: Boolean) {
             checkCancelled()
@@ -207,12 +229,17 @@ object SandboxCleanup {
     }
 
     /**
-     * 执行清理，返回实际释放的字节数（与 scan 同为分配块口径，M12.1 P1①）。
+     * 执行清理，返回实际释放的字节数（与 scan 同为分配块口径）。
      * 全部为宿主侧文件操作（所有目标都在 filesDir/cacheDir 下，不需要 guest 命令）。
      * 只处理 [categories] 中出现且调用方确认的项；调用方须先用 [BackgroundOps]
      * 确认没有并发安装/导入。
      */
-    fun clean(context: Context, guardActive: Boolean, categories: Set<Category>): Long {
+    fun clean(
+        context: Context,
+        guardActive: Boolean,
+        categories: Set<Category>,
+        isPackageToolBusy: () -> Boolean = { PackageToolProbe.isRunning() },
+    ): Long {
         val cutoff = System.currentTimeMillis() - AGE_GUARD_MS
         var freed = 0L
         val seenHardlinks = HashSet<String>()
@@ -268,7 +295,7 @@ object SandboxCleanup {
                     .onSuccess { freed += bytes }
             }
         }
-        if (Category.APT in categories) {
+        if (aptCacheEligible(categories, isPackageToolBusy())) {
             File(filesDir, "runtime/runtime-current/base/var/cache/apt/archives")
                 .listFiles()?.forEach { f ->
                     // 只删 .deb（等价 apt clean）；lock 与 partial/ 留给 apt 自己管理，

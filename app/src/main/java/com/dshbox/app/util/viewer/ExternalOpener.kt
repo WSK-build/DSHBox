@@ -8,15 +8,15 @@ import com.dshbox.app.util.FileOpException
 import java.io.File
 
 /**
- * 外部应用调用三路径（1.2.0 §6.11）：ACTION_VIEW / ACTION_EDIT / ACTION_SEND。
+ * 外部应用调用三路径：ACTION_VIEW / ACTION_EDIT / ACTION_SEND。
  *
  * - content URI 经 FileProvider（Manifest 注册 `com.dshbox.app.fileprovider`，
  *   res/xml/file_paths.xml 四根精确 files-path 最小授权）；
  * - MIME 用「扩展名 + 魔数」双重判定（[mimeFor]），未知给 application/octet-stream；
- * - 无应用响应 → [openView] 返回 false，调用方降级引导「导出后打开」（§6.11.1）；
+ * - 无应用响应 → [openView] 返回 false，调用方降级引导「导出后打开」；
  * - VIEW/SEND 仅授只读授权；EDIT 授读写授权，返回后的变更检测与 rootfs 权限位恢复
  *   由调用方（FileViewerScreen）在 ActivityResult 回调中执行；
- * - 风险确认（§4.2/§6.11）：风险层文件由 UI 先弹强确认再调这里；普通文件直接放行。
+ * - 风险确认：风险层文件由 UI 先弹强确认再调这里；普通文件直接放行。
  */
 object ExternalOpener {
 
@@ -28,7 +28,7 @@ object ExternalOpener {
         FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file)
     }.getOrNull()
 
-    /** MIME 判定：扩展名表 + 魔数兜底（§6.11.1）。 */
+    /** MIME 判定：扩展名表 + 魔数兜底。 */
     fun mimeFor(name: String, type: FileTypeClassifier.FileType?): String {
         val ext = FileTypeClassifier.extensionOf(name)
         MIME_BY_EXT[ext]?.let { return it }

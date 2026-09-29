@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 悬浮确认卡与提问卡由本模块的两条悬浮呈现通路创建，要压在用户当时所在的应用之上，
+         因此需要悬浮窗授权；未授予时确认框退回本模块界面内呈现，功能不静默失效而是明确报「无法呈现」。
+         能力所需的运行时权限与前台服务类型权限由核心模块的清单声明，清单合并后统一生效。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 通知栏上的审批卡由本模块投递：Android 13 起运行期通知权限随声明走。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+
+        <!-- 手机助手界面。不导出：只由宿主入口动作在本应用内启动。
+             主题直接取 AppCompat 的日夜无标题栏一档，不引用宿主私有样式，
+             拔掉本模块时宿主不必留下任何资源。 -->
+        <activity
+            android:name="dshbox.adapter.entry.PilotActivity"
+            android:exported="false"
+            android:label="@string/pilot_module_title"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+
+        <!-- 通知栏确认框上那三个按钮的落点。导出关闭：答复只由本应用自己发的那三个
+             PendingIntent 递回来，外部若能广播这条动作，就等于能替用户点「允许」。 -->
+        <receiver
+            android:name="dshbox.adapter.surfaces.PilotApprovalReceiver"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

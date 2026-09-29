@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * 进程级「后台维护操作」计数（1.1.0，M12.1 评审修正 P1③）。
+ * 进程级「后台维护操作」计数。
  *
  * 清理功能（SandboxCleanup.clean）绝不能与下列写文件的操作并发——它们写入的目录
  * 恰好是清理目标（cacheDir、bundled-runtime-staging、dsh-staging、base/tmp 等）：

@@ -19,21 +19,21 @@ class ArchiveErrorsTest {
 
     @Test
     fun truncatedArchiveMapsToIncompleteMessage() {
-        // 实测：截断 zip 在读取条目数据时抛 EOFException("Unexpected end of ZLIB input stream")。
+        // 截断 zip 在读取条目数据时抛 EOFException("Unexpected end of ZLIB input stream")。
         val result = ArchiveErrors.describe(EOFException("Unexpected end of ZLIB input stream"))
         assertTrue(result is UiText.Res && result.id == R.string.archiveerr_truncated)
     }
 
     @Test
     fun encryptedZipMapsToEncryptionHint() {
-        // 实测：加密 zip 抛 ZipException("encrypted ZIP entry not supported")。
+        // 加密 zip 抛 ZipException("encrypted ZIP entry not supported")。
         val result = ArchiveErrors.describe(ZipException("encrypted ZIP entry not supported"))
         assertTrue(result is UiText.Res && result.id == R.string.archiveerr_encrypted)
     }
 
     @Test
     fun crcCorruptionMapsToCorruptedMessage() {
-        // 实测：压缩数据损坏在 closeEntry 的 CRC 校验处抛 ZipException("invalid entry CRC ...")。
+        // 压缩数据损坏在 closeEntry 的 CRC 校验处抛 ZipException("invalid entry CRC ...")。
         val result = ArchiveErrors.describe(ZipException("invalid entry CRC (expected 0x6c847f2b but got 0xed22312a)"))
         assertTrue(result is UiText.Res && result.id == R.string.archiveerr_zip_corrupted)
         val args = (result as UiText.Res).args

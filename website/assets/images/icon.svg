@@ -1,0 +1,51 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>胶囊循环压叠·绿白·基础静态</title>
+  <desc>绿底白胶囊；使用已验证的 +60° 循环局部遮罩基底。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a8a66"/>
+      <stop offset="1" stop-color="#034b3a"/>
+    </linearGradient>
+
+    <path id="petal" d="M370.9 317.8 A240 240 0 0 0 653.1 317.8"/>
+
+    <clipPath id="ringClip" clipPathUnits="userSpaceOnUse">
+      <path fill-rule="evenodd" d="M856 512 a344 344 0 1 1 -688 0 a344 344 0 1 1 688 0 Z M648 512 a136 136 0 1 1 -272 0 a136 136 0 1 1 272 0 Z"/>
+    </clipPath>
+
+    <!-- 当前胶囊整体减去后一个胶囊（+60°）的轮廓，建立循环穿插关系 -->
+    <mask id="underAtStart" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024" style="mask-type:luminance">
+      <rect width="1024" height="1024" fill="white"/>
+      <use href="#petal" transform="rotate(60 512 512)" fill="none" stroke="black" stroke-width="216" stroke-linecap="round"/>
+    </mask>
+  </defs>
+
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+
+  <g clip-path="url(#ringClip)" stroke-linecap="round">
+    <g transform="rotate(0 512 512)" mask="url(#underAtStart)">
+      <use href="#petal" stroke="#075e48" stroke-width="213"/>
+      <use href="#petal" stroke="#ffffff" stroke-width="208"/>
+    </g>
+    <g transform="rotate(60 512 512)" mask="url(#underAtStart)">
+      <use href="#petal" stroke="#075e48" stroke-width="213"/>
+      <use href="#petal" stroke="#ffffff" stroke-width="208"/>
+    </g>
+    <g transform="rotate(120 512 512)" mask="url(#underAtStart)">
+      <use href="#petal" stroke="#075e48" stroke-width="213"/>
+      <use href="#petal" stroke="#ffffff" stroke-width="208"/>
+    </g>
+    <g transform="rotate(180 512 512)" mask="url(#underAtStart)">
+      <use href="#petal" stroke="#075e48" stroke-width="213"/>
+      <use href="#petal" stroke="#ffffff" stroke-width="208"/>
+    </g>
+    <g transform="rotate(240 512 512)" mask="url(#underAtStart)">
+      <use href="#petal" stroke="#075e48" stroke-width="213"/>
+      <use href="#petal" stroke="#ffffff" stroke-width="208"/>
+    </g>
+    <g transform="rotate(300 512 512)" mask="url(#underAtStart)">
+      <use href="#petal" stroke="#075e48" stroke-width="213"/>
+      <use href="#petal" stroke="#ffffff" stroke-width="208"/>
+    </g>
+  </g>
+</svg>

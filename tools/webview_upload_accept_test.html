@@ -1,21 +1,25 @@
 <!doctype html>
 <!--
-  M17 回归夹具：验证「上传来源菜单挂在回形针、而非 + 命令按钮」。
+  回归夹具：验证「上传来源菜单」的挂载点与四个来源的哨兵传递。
 
-  背景（真机实测根因）：M5 把上传菜单挂在了 composer 的「+」按钮上
-  （`button[aria-haspopup="listbox"]`）——那是 dsh 的**斜杠命令面板**入口。
-  结果点「+」弹出的是上传菜单，命令面板被顶掉。
+  背景（真机实测根因）：0.1.7 上游把附件入口收进了「+」唤起的**命令面板**
+  （其中一项叫「文件」），tools 行里不再有独立的回形针按钮。于是旧版
+  「取隐藏 input 的前一个兄弟按钮」这一识别方式命中的是「+」本身，
+  上传菜单被挂到「+」上、并在捕获阶段吞掉事件，把命令面板整个顶掉。
 
-  修正后：菜单挂**回形针**（`aria-label = t("file.attach")` 即「添加附件」），
-  「+」完全不碰。
+  现行做法：**不挂任何按钮**，改为拦隐藏 <input type="file"> 的 click ——
+  无论用户从哪个入口触发 input，都在默认动作（系统选择器）之前接管，
+  弹出自己的来源菜单。这样既不依赖命令面板的 DOM 结构，也不碰「+」。
 
-  本夹具构造 dsh 真实的 DOM 结构（来自 dsh-client-ui-conversation 源码），
-  加载**真实的** plugin/lib/client.js，断言：
-    A. 点「+」→ 不弹上传菜单、且 + 的 click 不被吞（命令面板不受影响）
-    B. 点回形针 → 弹出上传菜单、原生 fileInput.click() 未被触发
-    C. 回形针菜单里选「沙箱」→ input.accept = 哨兵，且 click 恰好一次
-    D. 点回形针内联 svg（触摸常落在图标上）同样能弹出菜单
-    E. 手机路径 → accept 被清空
+  本夹具构造 0.1.7 的 DOM 结构，加载**真实的** plugin/lib/client.js，断言：
+    A. 点「+」不弹上传菜单、且「+」的 click 不被吞（命令面板不受影响）
+    B. dsh 自有入口触发 input.click() → 弹出菜单，且该次 click 的默认动作被拦
+    C. 菜单含四个来源行（手机 / 沙箱 / 拍照 / 录像）
+    D. 选「沙箱」→ accept = 沙箱哨兵，且 click 正常传递（不被拦）
+    E. 选「手机」→ accept 被清空
+    F. 选「拍照」→ accept = 拍照哨兵
+    G. 选「录像」→ accept = 录像哨兵
+    H. change 之后哨兵被复位
 
   用法：cd source && python -m http.server 8793
        浏览器开 http://127.0.0.1:8793/tools/webview_upload_accept_test.html
@@ -23,7 +27,7 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>DSHBox 回形针上传菜单回归夹具</title>
+<title>DSHBox 上传来源菜单回归夹具</title>
 <style>
   body { font: 13px/1.6 monospace; padding: 16px; }
   #log div { white-space: pre-wrap; }
@@ -36,20 +40,14 @@
 <div id="summary">running…</div>
 <div id="log"></div>
 
-<!-- dsh 真实 DOM 结构（按 dsh-client-ui-conversation/lib/client.js 还原）：
-     div.tools > [ button(+ 命令) , Tooltip>button(回形针) , input[type=file] ] -->
+<!-- 0.1.7 的 composer 结构：tools 行里只有「+」命令按钮与那个隐藏 file input。
+     「附件」入口在「+」唤起的命令面板内部，不在这里。 -->
 <div class="FDk7aW_frame" data-composer-card>
   <div class="InputBar_module_css_default_tools" id="tools">
     <button id="cmdBtn" type="button" class="InputBar_module_css_default_add"
-            aria-label="指令" aria-haspopup="listbox" aria-expanded="false">
+            aria-label="添加文件或调用指令" aria-haspopup="listbox" aria-expanded="false">
       <svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 3v10M3 8h10"/></svg>
     </button>
-    <span class="Tooltip_wrap">
-      <button id="attachBtn" type="button" class="InputBar_module_css_default_add"
-              aria-label="添加附件">
-        <svg id="clipIcon" viewBox="0 0 16 16" width="14" height="14"><path d="M4 8l4-4 4 4"/></svg>
-      </button>
-    </span>
     <input type="file" id="fileInput" multiple hidden>
   </div>
 </div>
@@ -73,24 +71,25 @@ window.__pluginLoaded = new Promise(function (resolve, reject) {
 <script>
 (function () {
   var cmdBtn = document.getElementById("cmdBtn");
-  var attachBtn = document.getElementById("attachBtn");
-  var clipIcon = document.getElementById("clipIcon");
   var input = document.getElementById("fileInput");
 
-  var inputClicks = 0;
-  var nativeSeenAccept = [];
+  var inputClicks = 0;          // input.click() 被调用次数
+  var nativeSeenAccept = [];    // 每次 click 时原生会读到的 accept
+  var lastEvent = null;         // 最近一次由 click() 派发的事件（用于看默认动作是否被拦）
   var cmdClicks = 0;
-  var realClick = HTMLInputElement.prototype.click;
+
+  // 替身：不真的走浏览器默认动作（合成事件没有用户激活，本也不会弹选择器），
+  // 而是派发一个等价的可取消 click 事件，供夹具观察 defaultPrevented。
   input.click = function () {
     inputClicks++;
-    var ret = realClick.apply(this, arguments);
-    nativeSeenAccept.push(input.getAttribute("accept"));
-    return ret;
+    var ev = new MouseEvent("click", { bubbles: true, cancelable: true });
+    lastEvent = ev;
+    this.dispatchEvent(ev);
+    nativeSeenAccept.push(this.getAttribute("accept"));
   };
 
-  // dsh 自己的 handler：+ 打开命令面板；回形针触发 file input
+  // dsh 自己的 handler：「+」打开命令面板
   cmdBtn.addEventListener("click", function () { cmdClicks++; });
-  attachBtn.addEventListener("click", function () { input.click(); });
 
   function fire(el, type) {
     el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
@@ -107,6 +106,10 @@ window.__pluginLoaded = new Promise(function (resolve, reject) {
     return true;
   }
   function menuPresent() { return !!document.getElementById("dsh-upload-menu"); }
+  function rowCount() {
+    var m = document.getElementById("dsh-upload-menu");
+    return m ? m.querySelectorAll("button[data-source]").length : 0;
+  }
 
   function report() {
     var log = document.getElementById("log");
@@ -124,51 +127,87 @@ window.__pluginLoaded = new Promise(function (resolve, reject) {
     s.className = failed === 0 ? "pass" : "fail";
   }
 
+  function boot() {
+    window.__captured.factory(function () { return {}; })
+      .apply({ layout: { toggleSidebar: function () {} }, slots: {} });
+  }
+
   function run() {
     var def = window.__captured;
     check("插件已注册", !!def && typeof def.factory === "function");
     if (!def) { report(); return; }
-    var plugin = def.factory(function () { return {}; });
-    plugin.apply({ layout: { toggleSidebar: function () {} }, slots: {} });
+    boot();
 
-    // ---------- A. 「+」不得触发上传菜单，命令面板不受影响 ----------
+    // ---------- A. 「+」不得被劫持（本次修复的核心） ----------
     cmdClicks = 0;
     pointerdown(cmdBtn);
     check("A1 点「+」不弹上传菜单", !menuPresent());
     fire(cmdBtn, "click");
     check("A2 「+」的 click 未被吞（命令面板可开）", cmdClicks === 1, "cmdClicks=" + cmdClicks);
 
-    // ---------- B. 点回形针 → 弹菜单，且不直接触发 input.click() ----------
-    inputClicks = 0;
-    pointerdown(attachBtn);
-    check("B1 点回形针弹出上传菜单", menuPresent());
-    check("B2 未直接触发 input.click()（交给菜单决定来源）", inputClicks === 0, "clicks=" + inputClicks);
-    fire(attachBtn, "click");
-    check("B3 回形针 click 被吞（不弹系统选择器）", inputClicks === 0, "clicks=" + inputClicks);
+    // ---------- B. dsh 自有入口（命令面板「文件」）触发 input.click() ----------
+    inputClicks = 0; nativeSeenAccept = []; lastEvent = null;
+    input.click();                       // 模拟 inputHub.pickFiles()
+    check("B1 dsh 自有入口触发后弹出上传菜单", menuPresent());
+    check("B2 该次 click 的默认动作被拦（系统选择器不会打开）",
+          !!lastEvent && lastEvent.defaultPrevented === true,
+          "prevented=" + (lastEvent ? lastEvent.defaultPrevented : "n/a"));
 
-    // ---------- C. 菜单选「沙箱」→ accept=哨兵，click 恰好一次 ----------
-    var tapped = tapRow("sandbox");
-    check("C1 菜单含沙箱行", tapped);
-    check("C2 沙箱路径触发 input.click() 恰好一次", inputClicks === 1, "clicks=" + inputClicks);
-    check("C3 原生读到 accept = 哨兵",
+    // ---------- C. 四个来源行齐全 ----------
+    check("C1 菜单含 4 个来源行", rowCount() === 4, "rows=" + rowCount());
+    ["phone", "sandbox", "camera-photo", "camera-video"].forEach(function (s) {
+      check("C2 含来源行 " + s,
+            !!document.querySelector('#dsh-upload-menu button[data-source="' + s + '"]'));
+    });
+
+    // ---------- D. 沙箱 ----------
+    inputClicks = 0; nativeSeenAccept = []; lastEvent = null;
+    check("D1 菜单含沙箱行", tapRow("sandbox"));
+    check("D2 沙箱路径触发 input.click() 恰好一次", inputClicks === 1, "clicks=" + inputClicks);
+    check("D3 原生读到 accept = 沙箱哨兵",
           nativeSeenAccept[0] === "application/x-dshbox-sandbox-upload",
           "accept=" + nativeSeenAccept[0]);
-    fire(input, "change");   // 复位
+    check("D4 该次 click 默认动作未被拦（哨兵要正常传给原生）",
+          !!lastEvent && lastEvent.defaultPrevented === false,
+          "prevented=" + (lastEvent ? lastEvent.defaultPrevented : "n/a"));
+    fire(input, "change");               // 复位
 
-    // ---------- D. 触摸落在内联 svg 上也要能开菜单 ----------
-    inputClicks = 0;
-    var m = document.getElementById("dsh-upload-menu");
-    if (m) m.parentNode.removeChild(m);
-    window.__captured.factory(function () { return {}; }).apply({ layout: { toggleSidebar: function () {} }, slots: {} });
-    pointerdown(clipIcon);
-    check("D1 点回形针内联 svg 也能弹菜单", menuPresent());
-
-    // ---------- E. 手机路径 → accept 清空 ----------
+    // ---------- E. 手机 ----------
     input.setAttribute("accept", "application/x-dshbox-sandbox-upload");
     inputClicks = 0; nativeSeenAccept = [];
     tapRow("phone");
     check("E1 手机路径触发 input.click() 恰好一次", inputClicks === 1, "clicks=" + inputClicks);
     check("E2 手机路径原生读到「无 accept」", nativeSeenAccept[0] === null, "accept=" + nativeSeenAccept[0]);
+    fire(input, "change");
+
+    // ---------- F. 拍照 ----------
+    inputClicks = 0; nativeSeenAccept = [];
+    tapRow("camera-photo");
+    check("F1 拍照路径触发 input.click() 恰好一次", inputClicks === 1, "clicks=" + inputClicks);
+    check("F2 原生读到 accept = 拍照哨兵",
+          nativeSeenAccept[0] === "application/x-dshbox-camera-photo",
+          "accept=" + nativeSeenAccept[0]);
+    fire(input, "change");
+
+    // ---------- G. 录像 ----------
+    inputClicks = 0; nativeSeenAccept = [];
+    tapRow("camera-video");
+    check("G1 录像路径触发 input.click() 恰好一次", inputClicks === 1, "clicks=" + inputClicks);
+    check("G2 原生读到 accept = 录像哨兵",
+          nativeSeenAccept[0] === "application/x-dshbox-camera-video",
+          "accept=" + nativeSeenAccept[0]);
+    fire(input, "change");
+
+    // ---------- H. change 之后哨兵复位 ----------
+    check("H1 change 后 accept 被清空（不污染 dsh 自有上传入口）",
+          input.getAttribute("accept") === null, "accept=" + input.getAttribute("accept"));
+
+    // ---------- I. 菜单在输入框禁用时给出提示而非静默失败 ----------
+    input.disabled = true;
+    inputClicks = 0;
+    tapRow("sandbox");
+    check("I1 输入框禁用时不触发 click", inputClicks === 0, "clicks=" + inputClicks);
+    input.disabled = false;
 
     report();
   }

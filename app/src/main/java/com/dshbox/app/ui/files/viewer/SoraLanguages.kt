@@ -10,7 +10,7 @@ import io.github.rosemoe.sora.lang.styling.TextStyle
 import io.github.rosemoe.sora.widget.schemes.EditorColorScheme
 
 /**
- * 自研高亮的 Sora 适配层（1.2.0 §6.4）。
+ * 自研高亮的 Sora 适配层。
  *
  * 分词逻辑全部在纯 JVM [com.dshbox.app.util.viewer.highlight.HighlightEngine]；
  * 本文件只做两件事：

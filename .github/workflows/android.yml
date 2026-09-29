@@ -66,8 +66,8 @@ jobs:
           done
           echo "官网资源版本号已同步"
 
-      # v1.3.1：阻断「本机路径/用户名/凭据」随仓库公开
-      # （实测踩到 docs/BUILD_RUNBOOK.md 带着开发机 JDK 路径并已公开）
+      # 阻断「本机路径/用户名/凭据」随仓库公开
+      # （构建文档曾带着开发机 JDK 路径并进入公开仓库）
       - name: Run privacy audit
         run: python3 tools/privacy_audit.py
 

@@ -2,7 +2,7 @@ package com.dshbox.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Semantic tokens centralized per UI/visual spec (docs/3 and docs/5).
+// Semantic tokens centralized here.
 // Light
 val LightBackground = Color(0xFFFFFFFF)
 val LightSurface = Color(0xFFFFFFFF)

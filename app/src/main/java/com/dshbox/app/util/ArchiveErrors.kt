@@ -4,9 +4,9 @@ import com.dshbox.app.R
 import com.dshbox.app.common.UiText
 
 /**
- * 把解压/复制所选包时的异常翻译为用户可读的失败原因（1.1.0，M11）。
+ * 把解压/复制所选包时的异常翻译为用户可读的失败原因。
  *
- * 文案依据 JVM 实测（JBR 21，复刻 ZipInputStream 读取循环）：
+ * 文案依据 JVM 行为（JBR 21，复刻 ZipInputStream 读取循环）：
  * - 截断 zip（传输中断最常见）      -> java.io.EOFException: Unexpected end of ZLIB input stream
  * - 压缩数据损坏                    -> java.util.zip.ZipException: invalid entry CRC (…)
  * - 加密 zip                        -> java.util.zip.ZipException: encrypted ZIP entry not supported

@@ -19,11 +19,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.outlined.InsertDriveFile
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.automirrored.filled.ArrowBack
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Close
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Folder
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,14 +60,19 @@ import com.dshbox.app.ui.files.SelectedRowBg
 import com.dshbox.app.ui.files.TextHint
 import com.dshbox.app.ui.files.TextPrimary
 import com.dshbox.app.ui.files.TextSecondary
+import com.dshbox.app.util.MAX_DIRECTORY_FILES
+import com.dshbox.app.util.capDirectoryFiles
 import com.dshbox.app.util.formatFileSize
 import com.dshbox.app.util.viewer.ExternalOpener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.dshbox.app.common.R as CommonR
 
 /**
- * 沙箱文件选择器（1.3.1 M5）。
+ * 沙箱文件选择器。
  *
  * ## 为什么需要它
  *
@@ -113,33 +118,43 @@ internal fun SandboxFilePickerDialog(
     var entries by remember { mutableStateOf<List<File>?>(null) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
     var failed by remember { mutableStateOf(false) }
+    /** 文件数超过上限被截断（目录不受限）；仅在真的截断时提示。 */
+    var truncated by remember { mutableStateOf(false) }
 
     // 目录列表在 IO 线程读取；切目录时重置为 null 触发 loading。
     LaunchedEffect(currentDir) {
         entries = null
         failed = false
-        val list = withContext(Dispatchers.IO) {
+        truncated = false
+        val result = withContext(Dispatchers.IO) {
             runCatching {
-                (currentDir.listFiles() ?: emptyArray())
-                    .filter { it.exists() }
-                    .sortedWith(
+                val children = (currentDir.listFiles() ?: emptyArray()).filter { it.exists() }
+                val dirs = children.filter { it.isDirectory }
+                val files = children.filter { !it.isDirectory }
+                // 与文件页同口径：目录全保留，文件按名称取前 N 条（复用同一封顶判据）。
+                val (keptFiles, over) = capDirectoryFiles(files)
+                Pair(
+                    (dirs + keptFiles).sortedWith(
                         compareByDescending<File> { it.isDirectory }
                             .thenBy { it.name.lowercase() },
-                    )
+                    ),
+                    over,
+                )
             }.getOrNull()
         }
-        if (list == null) {
+        if (result == null) {
             failed = true
             entries = emptyList()
         } else {
-            entries = list
+            truncated = result.second
+            entries = result.first
         }
     }
 
     // 进入子目录后，选择集合保留（跨目录多选是常见诉求），但父目录的同名文件不会冲突
     // —— 选择集合按绝对路径记录，天然唯一。
     //
-    // `isFile` 是一次 stat（磁盘 IO），此前直接在组合体里 map/filter —— 每次重组
+    // `isFile` 是一次 stat（磁盘 IO）：若直接在组合体里 map/filter，每次重组
     // （滚动、勾选连带的重组）都会对每个选中项重新 stat 一遍。改为随 selected 变化
     // 在 IO 线程算一次，与本文件目录列举（LaunchedEffect(currentDir)）口径一致。
     //
@@ -186,7 +201,7 @@ internal fun SandboxFilePickerDialog(
                         },
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_arrow_left),
                             contentDescription = stringResource(R.string.webview_upload_up),
                             tint = TextPrimary(),
                         )
@@ -208,7 +223,7 @@ internal fun SandboxFilePickerDialog(
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(
-                            imageVector = Icons.Filled.Close,
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_x),
                             contentDescription = stringResource(R.string.files_close),
                             tint = TextPrimary(),
                         )
@@ -228,6 +243,18 @@ internal fun SandboxFilePickerDialog(
                 }
 
                 HorizontalDivider(color = DividerColor())
+
+                // 文件数超限提示：目录始终完整，只有文件被截断才出现。
+                if (truncated) {
+                    Text(
+                        text = stringResource(R.string.files_list_truncated, MAX_DIRECTORY_FILES),
+                        fontSize = 12.sp,
+                        color = TextHint(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
 
                 // ── 列表 ─────────────────────────────────────
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -408,7 +435,7 @@ private fun PickerRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = if (isDir) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
+            imageVector = if (isDir) ImageVector.vectorResource(CommonR.drawable.ic_folder) else ImageVector.vectorResource(CommonR.drawable.ic_file),
             contentDescription = null,
             tint = if (isDir) MaterialTheme.colorScheme.primary else TextHint(),
             modifier = Modifier.size(22.dp),

@@ -124,6 +124,7 @@
     };
     lastRelease = release;
     applyReleaseNotes(release);
+    applyFacts(release);
     renderDynamic();
   }
 
@@ -325,6 +326,111 @@
         list.appendChild(buildNoteItem(reshapeNote(note, limits.len)));
       });
       section.removeAttribute("data-state");
+    });
+  }
+
+  /* ---------------------------------------------------------
+     2c. 统计栏「构建事实」—— 能自动取的自动取，取不到就保留 HTML 静态值
+     ---------------------------------------------------------
+     与上面两节共用同一次 Release 请求、同一份 30 分钟缓存，
+     因此**不额外打 API、也不需要第二个数据文件**。
+
+     来源分两类：
+
+     ① Release 资源（每次发版自动变，零维护）
+        · version      ← tag_name（本身带 v 前缀，与静态兜底同形）
+        · apkSize      ← `.apk` 资源的体积
+        · runtimeSize  ← 名字含 runtime 的 `.zip` 资源体积（运行环境包）
+        · dshVersion   ← DSH 层资源名去掉 `.tar.zst`
+                         该资源按 DSH 版本命名（如 `0.1.5-rc.2.tar.zst`），
+                         版本号因此直接从文件名得来，不必另立一处事实源。
+
+     ② Release 说明里的一行注释标记（**可选**）
+        · testCount / moduleCount 没有公开的机器可读来源
+          （公开仓库是发版投影，不含测试结果；测试数只在本地跑得出来）。
+          约定在发布说明里写一行 `facts: tests=1203, modules=11`，
+          外面套 HTML 注释记号即可 —— Releases 页面上读者看不到它。
+          没有这一行 → 这两个数字保留 HTML 静态值，**不猜**。
+
+     覆盖规则：只改写本次真的取到的键；取不到的保持原样
+     （与下载按钮失败时保留静态兜底同一策略）。
+     只写带 `data-fact` 的元素，不触碰第 2 / 2b 节已有的渲染目标。 */
+
+  var FACT_SELECTOR = "[data-fact]";
+
+  /** 运行环境包：名字含 runtime 的 `.zip`（如 dshapp-runtime-debian-arm64-0.1.0.zip）。 */
+  function selectRuntimeBundle(assets) {
+    return (
+      (assets || []).find(function (asset) {
+        return /\.zip$/i.test(asset.name) && /runtime/i.test(asset.name);
+      }) || null
+    );
+  }
+
+  /** DSH 层：按 DSH 版本命名的 `.tar.zst`（如 0.1.5-rc.2.tar.zst）。 */
+  function selectDshLayer(assets) {
+    return (
+      (assets || []).find(function (asset) {
+        return /\.tar\.zst$/i.test(asset.name);
+      }) || null
+    );
+  }
+
+  /** `0.1.5-rc.2.tar.zst` → `0.1.5-rc.2`；取得不到则 null。 */
+  function dshVersionOf(asset) {
+    if (!asset) return null;
+    var m = /^(.+)\.tar\.zst$/i.exec(asset.name);
+    return m ? m[1] : null;
+  }
+
+  /**
+   * 发布说明里的事实标记（可缺），形如 `facts: tests=1203, modules=11`（套 HTML 注释记号）。
+   * @returns {Object} 键值对；没有标记时为空对象。
+   */
+  function parseFactMarker(body) {
+    var m = /<!--\s*facts\s*:\s*([\s\S]*?)-->/i.exec(String(body || ""));
+    if (!m) return {};
+    var out = {};
+    m[1].split(/[,;\n]/).forEach(function (pair) {
+      var eq = pair.indexOf("=");
+      if (eq < 1) return;
+      var key = pair.slice(0, eq).trim();
+      var value = pair.slice(eq + 1).trim();
+      if (key && value) out[key] = value;
+    });
+    return out;
+  }
+
+  /** 本次真正可用的事实；取不到的键**不出现在结果里**，渲染时据此跳过。 */
+  function collectFacts(release) {
+    var facts = {};
+    var assets = (release && release.assets) || [];
+
+    if (release && release.tag_name) facts.version = release.tag_name;
+
+    var apk = selectApk(assets);
+    if (apk && formatBytes(apk.size)) facts.apkSize = formatBytes(apk.size);
+
+    var bundle = selectRuntimeBundle(assets);
+    if (bundle && formatBytes(bundle.size)) facts.runtimeSize = formatBytes(bundle.size);
+
+    var dsh = dshVersionOf(selectDshLayer(assets));
+    if (dsh) facts.dshVersion = dsh;
+
+    var marker = parseFactMarker(release && release.body);
+    if (marker.tests) facts.testCount = marker.tests;
+    if (marker.modules) facts.moduleCount = marker.modules;
+
+    return facts;
+  }
+
+  function applyFacts(release) {
+    var facts = collectFacts(release);
+    var nodes = document.querySelectorAll(FACT_SELECTOR);
+    Array.prototype.forEach.call(nodes, function (el) {
+      var value = facts[el.getAttribute("data-fact")];
+      if (value === undefined) return;   /* 取不到 → 保留静态兜底，不清空 */
+      el.textContent = value;
     });
   }
 

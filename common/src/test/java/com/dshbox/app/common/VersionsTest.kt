@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Tests for the shared version comparator (1.1.0, M6 — previously duplicated in
+ * Tests for the shared version comparator (previously duplicated in
  * DshLayer and RuntimeUpdateManager). Covers the exact strings that flow through
  * the DSH update arbitration.
  */
@@ -84,7 +84,7 @@ class VersionsTest {
     }
 
     /**
-     * 本次升级（0.1.1-rc.2 → 0.1.5-rc.2）在真实仲裁条件下的判定。
+     * 该次升级（0.1.1-rc.2 → 0.1.5-rc.2）在真实仲裁条件下的判定。
      *
      * `DshLayer.installFromBundle` 的跳过条件是 `compareVersions(current, incoming) >= 0`，
      * 这里锁定各真实场景都不被误跳过（除刻意不降级的场景）。

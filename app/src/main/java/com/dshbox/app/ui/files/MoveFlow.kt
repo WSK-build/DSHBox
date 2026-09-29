@@ -29,7 +29,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 进度对话框状态（§7.3 自 FilesScreen 迁出为 internal，供移动编排与文件页操作共用）。 */
+/** 进度对话框状态（自 FilesScreen 迁出为 internal，供移动编排与文件页操作共用）。 */
 internal data class ProgressUi(
     val active: Boolean = false,
     val stage: UiText = UiText.Raw(""),
@@ -37,7 +37,7 @@ internal data class ProgressUi(
     val total: Long = -1L,
 )
 
-/** 移动冲突决策的进行中状态（1.2.0 §5.1：逐项决策 +「应用到其余全部」）。 */
+/** 移动冲突决策的进行中状态（逐项决策 +「应用到其余全部」）。 */
 internal data class PendingMove(
     val sources: List<File>,
     val targetDir: File,
@@ -49,11 +49,11 @@ internal data class PendingMove(
     val decisions: Map<String, ConflictMode>,
 )
 
-/** §5.4 阶段二跨层强确认（目标落点已知、计划生成后弹出）。 */
+/** 阶段二跨层强确认（目标落点已知、计划生成后弹出）。 */
 internal data class MatrixConfirm(val message: String, val plan: MovePlan)
 
 /**
- * 移动流程编排状态（1.2.0 §7.3：自 FilesScreen 收敛为单一数据类，行为零变化）。
+ * 移动流程编排状态（自 FilesScreen 收敛为单一数据类，行为不变）。
  * 展示层经 [MoveFlow.state] 读取；对话框渲染见 MoveDialogs.kt。
  */
 internal data class MoveFlowState(
@@ -65,18 +65,18 @@ internal data class MoveFlowState(
     /** 冲突对话框「应用到其余全部」勾选状态。 */
     val applyConflictsToAll: Boolean = false,
     val showMoveConflictDialog: Boolean = false,
-    /** §5.4 阶段二：跨层强确认（消费 plan.layerRisks）。 */
+    /** 阶段二：跨层强确认（消费 plan.layerRisks）。 */
     val pendingMatrixConfirm: MatrixConfirm? = null,
     val showMoveResultDialog: Boolean = false,
     val lastMoveResult: MoveResult? = null,
     val lastMoveSkippedByDecision: Int = 0,
-    /** 结果对话框中的跨视图提示文案（§5.6：目标在另一视图时非空）。 */
+    /** 结果对话框中的跨视图提示文案（目标在另一视图时非空）。 */
     val moveCrossViewHint: String? = null,
 )
 
 /**
- * 「移动到指定文件夹」全流程编排（1.2.0 §7.3 自 FilesScreen 迁出，行为零变化）：
- * startMove → FolderPickerScreen → planMove → 冲突决策 → §5.4 矩阵确认 → executeMove → 结果。
+ * 「移动到指定文件夹」全流程编排（自 FilesScreen 迁出，行为不变）：
+ * startMove → FolderPickerScreen → planMove → 冲突决策 → 跨层矩阵确认 → executeMove → 结果。
  *
  * 与 FilesScreen 的边界：磁盘 IO 之外的全部页面状态（选择态/搜索态/进度对话框/风险弹窗）
  * 仍归 FilesScreen 所有，经构造回调委托；本类只持有移动流程自身的状态 [state]。
@@ -86,9 +86,9 @@ internal class MoveFlow(
     private val scope: CoroutineScope,
     private val mapper: PathMapper,
     private val layerRoots: LayerRoots,
-    /** 沙盒运行中标记（NODE/DSH 层移动文案追加停机建议，§4.2/§5.4）。 */
+    /** 沙盒运行中标记（NODE/DSH 层移动文案追加停机建议）。 */
     private val sandboxRunning: () -> Boolean,
-    /** 当前逻辑目录提供者（§5.6 刷新集合比较、跨视图提示）。 */
+    /** 当前逻辑目录提供者（刷新集合比较、跨视图提示）。 */
     private val currentDir: () -> File,
     // ---- FilesScreen 页面状态回调 ----
     private val exitSelection: () -> Unit,
@@ -115,9 +115,9 @@ internal class MoveFlow(
     private fun entryLayer(entry: FileEntry): Layer =
         layerOf(mapper.resolvePhysical(File(entry.logicalPath)).absolutePath, layerRoots)
 
-    // ---------------- 入口（§5.1） ----------------
+    // ---------------- 入口 ----------------
 
-    /** 「移动到…」入口：源侧风险预检（§5.1）——系统目录直接拒绝（§5.4），其余风险强确认后进选择器。 */
+    /** 「移动到…」入口：源侧风险预检——系统目录直接拒绝，其余风险强确认后进选择器。 */
     fun startMove(targets: List<FileEntry>) {
         if (targets.isEmpty()) return
         val sources = targets.map { mapper.resolvePhysical(File(it.logicalPath)) }
@@ -147,9 +147,9 @@ internal class MoveFlow(
         update { it.copy(showFolderPicker = false) }
     }
 
-    // ---------------- 计划与决策（§5.2 / §5.4） ----------------
+    // ---------------- 计划与决策 ----------------
 
-    /** 选择器确认：目标侧预检（§5.4 系统目录禁令）→ 生成计划（§5.2）。 */
+    /** 选择器确认：目标侧预检（系统目录禁令）→ 生成计划。 */
     fun onMoveTargetPicked(targetLogical: File) {
         update { it.copy(showFolderPicker = false) }
         val resolved = mapper.resolvePhysical(targetLogical)
@@ -162,8 +162,8 @@ internal class MoveFlow(
     }
 
     /**
-     * 生成移动计划并分流（§5.2 校验序）：防环/系统目录 → 错误中止；
-     * 无操作 → 提示；冲突 → 冲突对话框逐项决策；无阻塞 → §5.4 阶段二跨层确认 → 执行。
+     * 生成移动计划并分流（按校验序）：防环/系统目录 → 错误中止；
+     * 无操作 → 提示；冲突 → 冲突对话框逐项决策；无阻塞 → 阶段二跨层确认 → 执行。
      */
     private fun planMove(sources: List<File>, targetDir: File, targetLogical: File, decisions: Map<String, ConflictMode>) {
         val plan = MovePlanner.planMove(
@@ -197,11 +197,11 @@ internal class MoveFlow(
         }
         if (noOps.isNotEmpty()) showToastRes(R.string.files_move_no_op)
         if (plan.items.isEmpty()) return
-        // §5.4 阶段二：跨层语义矩阵确认（消费 plan.layerRisks，目标落点已知）
+        // 阶段二：跨层语义矩阵确认（消费 plan.layerRisks，目标落点已知）
         maybeMatrixConfirm(targetLogical, plan)
     }
 
-    /** 冲突决策（§5.1）：mode 应用到当前冲突；勾选「应用到其余全部」时应用到全部剩余冲突。 */
+    /** 冲突决策：mode 应用到当前冲突；勾选「应用到其余全部」时应用到全部剩余冲突。 */
     fun resolveMoveConflict(mode: ConflictMode) {
         val snapshot = state
         val pending = snapshot.pendingMove ?: return
@@ -234,8 +234,8 @@ internal class MoveFlow(
     }
 
     /**
-     * §5.4 跨层语义矩阵的阶段二确认（此前 UI 从不消费 layerRisks，
-     * workspace→base/node/dsh、base→任意层、目标入 .dsh 等格全部静默通过——复查第五轮修正）。
+     * 跨层语义矩阵的阶段二确认：不消费 layerRisks 时，
+     * workspace→base/node/dsh、base→任意层、目标入 .dsh 等格会全部静默通过。
      *
      * 免确认组合：
      * - 全部源在 workspace 且目标在 workspace（矩阵唯一 ✅ 格；.dsh 段自动排除）；
@@ -244,7 +244,7 @@ internal class MoveFlow(
      */
     private fun maybeMatrixConfirm(targetLogical: File, plan: MovePlan) {
         val risks = plan.layerRisks
-        // §5.4 判定抽为纯函数（MovePlanner.needsCrossLayerConfirm）供单测覆盖
+        // 判定抽为纯函数（MovePlanner.needsCrossLayerConfirm）供单测覆盖
         if (!MovePlanner.needsCrossLayerConfirm(risks, sourcePrecheckFired = state.moveRiskCount > 0)) {
             executeMove(plan)
             return
@@ -275,9 +275,9 @@ internal class MoveFlow(
         update { it.copy(pendingMatrixConfirm = null) }
     }
 
-    // ---------------- 执行与结果（§5.3 / §5.6） ----------------
+    // ---------------- 执行与结果 ----------------
 
-    /** §5.6：目标视图与当前视图不同时，结果对话框提示「已移动到工作区/沙盒」。 */
+    /** 目标视图与当前视图不同时，结果对话框提示「已移动到工作区/沙盒」。 */
     private fun crossViewHintText(dest: File?): String? {
         if (dest == null) return null
         val currentWorkspace = layerOf(mapper.resolvePhysical(currentDir()).absolutePath, layerRoots) == Layer.WORKSPACE
@@ -288,7 +288,7 @@ internal class MoveFlow(
         )
     }
 
-    /** §5.6：刷新集合 = 所有源父目录 ∪ 目标目录（去重，由 [MovePlanner.computeMoveRefreshDirs] 计算）；
+    /** 刷新集合 = 所有源父目录 ∪ 目标目录（去重，由 [MovePlanner.computeMoveRefreshDirs] 计算）；
      *  清除搜索态；单源停在原目录。 */
     private fun afterMoveRefresh(plan: MovePlan) {
         exitSelection()
@@ -302,7 +302,7 @@ internal class MoveFlow(
         }
     }
 
-    /** 执行计划（§5.3 moveWithin）并展示结果对话框（§5.6 刷新）。 */
+    /** 执行计划（moveWithin）并展示结果对话框（完成后刷新）。 */
     private fun executeMove(plan: MovePlan) {
         cancelProgressJob()
         val job = scope.launch {

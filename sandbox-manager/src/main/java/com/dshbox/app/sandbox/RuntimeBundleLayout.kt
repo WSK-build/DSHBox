@@ -1,7 +1,7 @@
 package com.dshbox.app.sandbox
 
 /**
- * Pure analysis of a runtime-bundle ZIP layout (1.1.0, M1/M2 — ).
+ * Pure analysis of a runtime-bundle ZIP layout.
  *
  * Deliberately free of android.* imports so the ZIP-matching rules are unit-testable
  * on the JVM. Encodes the two import bugs fixed in 1.1.0:

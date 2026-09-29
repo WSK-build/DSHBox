@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sandbox_not_running_debian">Песочница не запущена. Сначала запустите Debian-песочницу.</string>
-    <string name="dsh_not_ready_timeout">DSH не стал готовым в установленное время</string>
+    <string name="dsh_not_ready_timeout">Не удалось запустить DSH</string>
     <string name="dsh_stopped_retry">DSH был остановлен. Попробуйте позже.</string>
     <string name="dsh_ready_timeout">Время ожидания готовности DSH истекло</string>
     <string name="bundle_empty">Архив не содержит файлов</string>
+    <string name="bundle_sandbox_running">Песочница запущена. Остановите её перед этой операцией.</string>
+    <string name="dsh_start_need_node">Сначала импортируйте слой node (Настройки → Импортировать среду онлайн → слой node)</string>
     <string name="bundle_unsafe_path_rel">Архив содержит недопустимый путь (..); заблокировано: %1$s</string>
     <string name="bundle_unsafe_path_escape">Путь архива выходит за пределы целевого каталога; заблокировано: %1$s</string>
     <string name="bundle_no_profile">Пакет среды выполнения не содержит runtime-profile.json (невозможно проверить целостность слоя; импорт отклонён)</string>

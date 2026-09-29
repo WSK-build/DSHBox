@@ -71,21 +71,21 @@ internal class TextEditController {
     /** 外壳菜单「编码切换」触发信号。 */
     var encodingSignal by mutableIntStateOf(0)
 
-    /** 换行目标：null = 保存时按原文件风格还原（§6.4 默认）；用户显式转换后为具体风格。 */
+    /** 换行目标：null = 保存时按原文件风格还原（默认）；用户显式转换后为具体风格。 */
     var newlineTarget by mutableStateOf<TextEncoding.NewlineStyle?>(null)
 
     /** 返工 P1：有损解码标记（存在无法解码的字节）——UI 禁编辑并常驻警告。 */
     var lossy by mutableStateOf(false)
 
     /**
-     * M3（§6.7）：当前编辑文本读取桥——MarkupViewer 预览用它反映未保存的编辑；
+     * 当前编辑文本读取桥——MarkupViewer 预览用它反映未保存的编辑；
      * 由 TextCodeViewer 进入组合时挂载、离开时清除。null = 无活动文本视图。
      */
     var textProvider: (() -> String)? by mutableStateOf(null)
 }
 
 /**
- * 文本/代码查看与编辑（1.2.0 §6.4）。
+ * 文本/代码查看与编辑。
  *
  * - 编辑态：Sora `CodeEditor`（AndroidView 嵌入，撤销/行号/搜索自带）+ 自研高亮；
  *   工厂异常降级 BasicTextField——第三方组件崩溃不得让文件打不开；
@@ -131,7 +131,7 @@ internal fun TextCodeViewer(
     var originalNewline by remember(file, fullBytes) {
         mutableStateOf(TextEncoding.detectNewlines(decodedFull.text).style)
     }
-    // 换行保存目标：用户未显式转换时按原文件风格还原（§6.4 默认原样保留）
+    // 换行保存目标：用户未显式转换时按原文件风格还原（默认原样保留）
     val newlineTarget = controller.newlineTarget ?: originalNewline
     var editorInstance by remember(file, fullBytes) { mutableStateOf<CodeEditor?>(null) }
     var soraFailed by remember(file, fullBytes) { mutableStateOf(false) }
@@ -172,7 +172,7 @@ internal fun TextCodeViewer(
         controller.dirty = false
     }
 
-    // M3（§6.7）：向 MarkupViewer 暴露当前文本（预览反映未保存编辑）；离开组合即拆除
+    // 向 MarkupViewer 暴露当前文本（预览反映未保存编辑）；离开组合即拆除
     DisposableEffect(file, fullBytes) {
         val provider: () -> String = { currentText() }
         controller.textProvider = provider
@@ -293,7 +293,7 @@ internal fun TextCodeViewer(
                 )
             }
         } else {
-            // 大文件分块只读（§6.4 大文件策略）。
+            // 大文件分块只读（大文件策略）。
             // 返工修正 #7：SelectionContainer + Text——只读内容可长按选择/复制
             // （BasicTextField 只读态在部分版本选择行为不可靠），并加纵向滚动。
             window?.let { win ->
@@ -462,7 +462,7 @@ internal fun TextCodeViewer(
         )
     }
 
-    // ---- 外部变更三选一（§6.4.3：用我的覆盖 / 重新载入 / 另存） ----
+    // ---- 外部变更三选一（用我的覆盖 / 重新载入 / 另存） ----
     pendingExternalChange?.let { _ ->
         AlertDialog(
             onDismissRequest = { pendingExternalChange = null },
@@ -512,7 +512,7 @@ internal fun TextCodeViewer(
 }
 
 /**
- * Sora 编辑器嵌入（§6.4：AndroidView）。工厂异常不向外抛——返回空占位 View 并通知
+ * Sora 编辑器嵌入（AndroidView）。工厂异常不向外抛——返回空占位 View 并通知
  * 调用方降级 BasicTextField，保证文件一定能打开。
  */
 @Composable

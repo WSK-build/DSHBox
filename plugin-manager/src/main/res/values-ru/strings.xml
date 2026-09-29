@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Карточка на главном экране -->
+    <string name="pm_home_entry_title">Cordis</string>
+    <string name="pm_home_entry_subtitle">Менеджер плагинов · Магазин</string>
+
+    <!-- Панель -->
+    <string name="pm_panel_title">Плагины Cordis</string>
+    <string name="pm_panel_hint">Что делать с плагинами, которые не загружаются.</string>
+    <string name="pm_safety_mode">Безопасный режим</string>
+    <string name="pm_safety_mode_desc">Пропускает плагины, которые не загрузились</string>
+    <string name="pm_absolute_mode">Абсолютно безопасный режим</string>
+    <string name="pm_absolute_mode_desc">Запуск без загрузки сторонних плагинов</string>
+    <string name="pm_absolute_on_hint">Абсолютно безопасный режим включён: сторонние плагины не загружаются.</string>
+    <string name="pm_load_log_row">Журнал загрузки</string>
+    <string name="pm_isolation_row">Пропущенные плагины</string>
+    <string name="pm_market_row">Магазин плагинов</string>
+
+    <!-- Журнал загрузки -->
+    <string name="pm_load_log_title">Журнал загрузки</string>
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_current">Текущий запуск</string> -->
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_previous">Предыдущий запуск</string> -->
+    <string name="pm_load_log_empty">Записей нет</string>
+    <string name="pm_load_log_hint">Хранятся последние %1$d запусков, по кругу.</string>
+    <string name="pm_load_log_too_long">Журнал слишком длинный — показан только конец. Полный журнал можно экспортировать в разделе «Журналы запуска» диагностики.</string>
+    <string name="pm_repair_row">Помощник восстановления после сбоев плагинов</string>
+    <string name="pm_repair_card_title">Терминальный агент opencode</string>
+    <string name="pm_repair_install">Установить</string>
+    <string name="pm_repair_update">Обновить</string>
+    <string name="pm_repair_remove">Удалить</string>
+    <string name="pm_repair_note_1">opencode — открытый терминальный агент, который помогает работать в терминале.</string>
+    <string name="pm_repair_note_2">У opencode есть ограниченная бесплатная квота на каждый день.</string>
+    <string name="pm_repair_note_3">Если плагины DSH падают, их можно починить из терминала этим инструментом.</string>
+    <string name="pm_repair_note_4">Как пользоваться: нажмите «Установить», затем введите opencode в терминале.</string>
+    <string name="pm_repair_state_installed">Установлено v%1$s</string>
+    <string name="pm_repair_state_installed_no_version">Установлено</string>
+    <string name="pm_repair_state_missing">Не установлено</string>
+    <string name="pm_repair_working">Идёт загрузка и установка. Держите сеть подключённой и подождите.</string>
+    <string name="pm_repair_retrying">Сеть нестабильна — повторная попытка.</string>
+    <string name="pm_repair_done">Готово</string>
+    <string name="pm_repair_failed">Ошибка: %1$s</string>
+    <string name="pm_repair_failed_unknown">неизвестная ошибка</string>
+    <string name="pm_repair_retry">Повторить</string>
+    <string name="pm_repair_remove_confirm_body">Будут удалены сам opencode, его настройки и ваши данные.</string>
+
+    <!-- Список исключённых -->
+    <string name="pm_isolation_title">Пропущенные плагины</string>
+    <string name="pm_isolation_hint">Не загрузился при запуске и был пропущен. Включение подействует при следующем запуске.</string>
+    <string name="pm_isolation_empty">Пропущенных плагинов нет</string>
+    <string name="pm_isolation_restore">Включить</string>
+    <string name="pm_isolation_badge">Пропущен</string>
+
+    <!-- Общее -->
+    <string name="pm_back">Назад</string>
+    <string name="pm_refresh">Обновить</string>
+    <string name="pm_copy">Копировать</string>
+    <string name="pm_copied">Скопировано в буфер обмена</string>
+    <string name="pm_working">Обработка…</string>
+
+    <!-- Магазин · каркас -->
+    <string name="pm_market_title">Магазин плагинов</string>
+    <string name="pm_market_subtitle">Плагины сообщества для DeepSeek Harness</string>
+    <string name="pm_market_tab_discover">Обзор</string>
+    <string name="pm_market_tab_favorites">Избранное</string>
+    <string name="pm_market_tab_installed">Установленные</string>
+
+    <!-- Магазин · загрузка каталога -->
+    <string name="pm_market_loading">Загрузка каталога плагинов…</string>
+    <string name="pm_market_unavailable">Каталог плагинов сейчас недоступен.</string>
+    <string name="pm_market_load_failed_title">Не удалось загрузить каталог плагинов</string>
+    <string name="pm_market_load_failed_attempts">Попыток: %1$d</string>
+    <string name="pm_market_load_failed_elapsed">Заняло %1$d мс</string>
+    <string name="pm_market_load_retry">Повторить</string>
+    <string name="pm_market_empty">Подходящих плагинов нет</string>
+    <string name="pm_market_result_count">%1$d/%2$d</string>
+
+    <!-- Магазин · обзор -->
+    <string name="pm_market_search_ph">Поиск плагинов, например: уведомления, терминал, память…</string>
+    <string name="pm_market_category_all">Все</string>
+    <string name="pm_market_filter_host">Только совместимые с хостом</string>
+    <string name="pm_market_filter_host_hint">Плагины без объявленных требований и непроверяемые остаются видимыми.</string>
+    <string name="pm_market_sort_field">Сортировка</string>
+    <string name="pm_market_sort_downloads">Загрузки</string>
+    <string name="pm_market_sort_stars">Звёзды</string>
+    <string name="pm_market_sort_added">Добавлено</string>
+    <string name="pm_market_sort_desc">По убыванию</string>
+    <string name="pm_market_sort_asc">По возрастанию</string>
+    <string name="pm_market_load_more">Показать ещё</string>
+
+    <!-- Магазин · поля карточки -->
+    <string name="pm_market_deprecated_badge">Устарел</string>
+    <string name="pm_market_deprecated_warn">Каталог помечает этот плагин как устаревший; новым пользователям его ставить не советуют.</string>
+    <string name="pm_market_replacement_hint">Каталог предлагает вместо него %1$s</string>
+    <string name="pm_market_downloads_value">↓ %1$s</string>
+    <string name="pm_market_stars_value">★ %1$s</string>
+    <string name="pm_market_version_value">v%1$s</string>
+    <string name="pm_market_author_value">автор %1$s</string>
+    <string name="pm_market_categories_label">Категории</string>
+    <string name="pm_market_installed_badge">✓ Установлен</string>
+    <string name="pm_market_third_party_badge">Сторонний</string>
+    <string name="pm_market_local_dev_badge">Локальная разработка</string>
+
+    <!-- Магазин · совместимость с хостом -->
+    <string name="pm_market_compat_compatible">Требование хоста выполнено</string>
+    <string name="pm_market_compat_incompatible">Подтверждена несовместимость с этим DSH</string>
+    <string name="pm_market_compat_unknown">Требование хоста неизвестно — установить всё равно можно</string>
+    <string name="pm_market_compat_undeclared">Требование хоста не объявлено</string>
+    <string name="pm_market_compat_unavailable">Не удалось прочитать требование хоста</string>
+    <string name="pm_market_compat_requirement">Требуется DSH %1$s</string>
+
+    <!-- Магазин · установка и подробности -->
+    <string name="pm_market_install">Установить</string>
+    <string name="pm_market_installing">Установка…</string>
+    <string name="pm_market_confirm_install">Подтвердить установку</string>
+    <string name="pm_market_confirm">Подтвердить</string>
+    <string name="pm_market_cancel">Отмена</string>
+    <string name="pm_market_confirm_warn">Плагины — сторонний код сообщества. Устанавливая, вы доверяете этому источнику; сборочные скрипты по умолчанию запрещены.</string>
+    <string name="pm_market_detail_title">О плагине</string>
+    <string name="pm_market_detail_cmd">Команда установки</string>
+    <string name="pm_market_detail_published">Опубликовано %1$s</string>
+    <string name="pm_market_detail_third_party">Это сторонний код, написанный сообществом, а не нами. Проверьте исходники перед установкой.</string>
+    <string name="pm_market_detail_build_blocked">Этому плагину нужно выполнить сборочные скрипты; в целях безопасности они запрещены по умолчанию. Разрешайте их только доверяя источнику.</string>
+    <string name="pm_market_detail_source">Репозиторий исходников</string>
+    <string name="pm_market_detail_install_anyway">Всё равно установить</string>
+    <string name="pm_market_incompatible_warn">Плагин объявляет себя несовместимым с текущим DSH. Установка, скорее всего, его сломает.</string>
+    <string name="pm_market_close">Закрыть</string>
+
+    <!-- Магазин · установленные -->
+    <string name="pm_market_installed_empty">Плагинов сообщества пока нет</string>
+    <string name="pm_market_installed_empty_hint">Загляните во вкладку «Обзор».</string>
+    <string name="pm_market_state_live">Активен</string>
+    <string name="pm_market_state_restart">Установлен, подействует после перезапуска</string>
+    <string name="pm_market_state_inert">Установлен, не используется</string>
+    <string name="pm_market_state_broken">Установлен, проверка не пройдена</string>
+    <string name="pm_market_state_missing">В списке есть, но файлов нет</string>
+    <string name="pm_market_state_disabled">Отключён</string>
+    <string name="pm_market_act_why">Подробности</string>
+    <string name="pm_market_act_why_empty">Для этого состояния объяснение не сохранено.</string>
+    <string name="pm_market_toggle_on">Включён</string>
+    <string name="pm_market_toggle_off">Отключён</string>
+    <string name="pm_market_toggle_restart_notice">Переключено. Подействует при следующем запуске.</string>
+    <string name="pm_market_update">Обновить</string>
+    <string name="pm_market_updating">Обновление…</string>
+    <string name="pm_market_up_to_date">Актуальная версия</string>
+    <string name="pm_market_update_channel_switch">Доступен переход на канал %1$s — это не обновление версии</string>
+    <string name="pm_market_uninstall">Удалить</string>
+    <string name="pm_market_uninstall_confirm">Удалить?</string>
+    <string name="pm_market_uninstall_confirm_desc">Плагин будет удалён из текущего profile. Отменить это нельзя.</string>
+    <string name="pm_market_note_add">Добавить заметку</string>
+    <string name="pm_market_note_edit">Изменить заметку</string>
+    <string name="pm_market_note_mine">Моя заметка</string>
+    <string name="pm_market_note_ph">Опишите плагин своими словами. Это заменит описание автора.</string>
+    <string name="pm_market_note_save">Сохранить</string>
+    <string name="pm_market_note_clear">Очистить заметку</string>
+    <string name="pm_market_note_limit">Заметка ограничена 200 символами.</string>
+    <string name="pm_market_spec_label">Источник установки</string>
+
+    <!-- Магазин · панель задач -->
+    <string name="pm_market_ops_title">Задачи</string>
+    <string name="pm_market_ops_busy">Обработка %1$d/%2$d</string>
+    <string name="pm_market_ops_attention">Требуют вас: %1$d</string>
+    <string name="pm_market_ops_leave_hint">Страницу можно покинуть; по завершении вам сообщат.</string>
+    <string name="pm_market_ops_empty">Активных операций нет</string>
+    <string name="pm_market_ops_empty_hint">Здесь показывается ход установки, обновления и удаления.</string>
+    <string name="pm_market_ops_close">Свернуть</string>
+    <string name="pm_market_ops_clear">Убрать завершённые</string>
+    <string name="pm_market_ops_running">Выполняется</string>
+    <string name="pm_market_ops_done">Готово</string>
+    <string name="pm_market_ops_failed">Ошибка</string>
+    <string name="pm_market_ops_retry">Повторить</string>
+    <string name="pm_market_ops_progress">Готово %1$d из %2$d</string>
+    <string name="pm_market_ops_kind_install">Установка</string>
+    <string name="pm_market_ops_kind_update">Обновление</string>
+    <string name="pm_market_ops_kind_uninstall">Удаление</string>
+    <string name="pm_market_ops_reason">Причина</string>
+    <string name="pm_market_ops_output">Вывод</string>
+    <string name="pm_market_ops_no_output">Вывода пока нет</string>
+    <string name="pm_market_ops_unsupported">Отмена и разрешение сборочных скриптов требуют поддержки со стороны слоя данных, которой пока нет.</string>
+    <string name="pm_market_busy_wait">Уже выполняется другая операция — дождитесь её завершения (одновременно только одна установка/обновление/удаление).</string>
+
+    <!-- Магазин · избранное -->
+    <string name="pm_market_fav_empty">В избранном пока пусто</string>
+    <string name="pm_market_fav_empty_hint">Избранное хранится в файле состояния магазина, рядом с другими настройками.</string>
+    <string name="pm_market_fav_unavailable">Избранное пока недоступно: слой данных его не предоставляет.</string>
+    <string name="pm_market_fav_count">В избранном: %1$d</string>
+
+    <!-- Магазин · причина отсутствия проверки / сбой чтения списка -->
+    <string name="pm_market_update_unchecked">Не проверено (%1$s)</string>
+    <string name="pm_market_update_unchecked_source">этот источник не поддерживает проверку обновлений</string>
+    <string name="pm_market_update_unchecked_query">запрос не удался или ничего не вернул</string>
+    <string name="pm_market_installed_failed_title">Не удалось прочитать список установленных плагинов</string>
+    <string name="pm_market_updates_failed_title">Не удалось проверить обновления</string>
+    <string name="pm_market_notice_dismiss">Скрыть уведомление</string>
+
+    <!-- Магазин · идёт проверка / восстановление файла состояния -->
+    <string name="pm_market_update_checking">Проверка обновлений…</string>
+    <string name="pm_market_state_broken_title">Не удалось прочитать файл состояния магазина</string>
+    <string name="pm_market_state_broken_message">Файл состояния магазина (ваши отключённые переключатели и заметки) не удаётся разобрать. Чтобы не перезаписать его, изменения не сохраняются.</string>
+    <string name="pm_market_state_rebuild">Сохранить копию и пересоздать</string>
+    <string name="pm_market_state_rebuilt">Файл состояния пересоздан; оригинал сохранён как резервная копия.</string>
+    <string name="pm_adapt_section_title">Плагины адаптации DSHBox</string>
+    <string name="pm_adapt_mobile">Адаптация страницы DSH для мобильных</string>
+    <string name="pm_adapt_mobile_pilot">Подключить телефон к DSH</string>
+    <string name="pm_adapt_ok">Собрано</string>
+    <string name="pm_adapt_fail">Сборка не удалась; откат выполнен</string>
+    <string name="pm_adapt_restart_hint">(Вступит в силу после перезапуска DSH)</string>
+    <string name="pm_guard_toast_attempt_title">Безопасный режим пропускает сбойные плагины (попытка %1$d)</string>
+    <string name="pm_guard_toast_attempt_skipped">Пропущено плагинов: %1$d — %2$s</string>
+    <string name="pm_guard_toast_recovered_title">Безопасный режим пропустил плагинов: %1$d; DSH запущен</string>
+    <string name="pm_guard_toast_recovered_skipped">Пропущены: %1$s</string>
+    <string name="pm_guard_toast_absolute">Абсолютно безопасный режим включён</string>
+    <string name="pm_guard_toast_failed">DSH не запустился; автоповтор остановлен</string>
+    <!-- Официальные плагины DSH (встроенные возможности, отключённые в источнике по умолчанию) -->
+    <string name="pm_official_section">Официальные плагины DSH</string>
+    <string name="pm_official_desc_ui_sidebar_browser">Встроенный браузер в правой боковой панели</string>
+    <string name="pm_official_note">Запись в .dsh/dshbox/dsh-official-plugin/dsh-official-plugin-overlay.yml; перезапустите DSH для применения.</string>
+    <string name="pm_official_on">%1$s включено; перезапустите DSH для применения</string>
+    <string name="pm_official_off">%1$s отключено; перезапустите DSH для применения</string>
+    <string name="pm_official_fail">Не удалось применить: %1$s</string>
+    <!-- 市场 · 数据源 -->
+    <string name="pm_market_source_label">Источник данных</string>
+    <string name="pm_market_source_switch">Сменить</string>
+    <string name="pm_market_source_title">Источник данных</string>
+    <string name="pm_market_source_current">Текущий</string>
+    <string name="pm_market_source_pick">Выбрать</string>
+    <string name="pm_market_source_intro">Выберите источник каталога плагинов. При смене он загрузится заново.</string>
+    <string name="pm_market_source_foot">На установленные плагины это не влияет.</string>
+    <string name="pm_market_source_mobile_desc">Подборка плагинов DeepSeek Harness для экранов телефонов.
+
+Новый каталог DSHBox — чтобы проще расширять поддержку мобильных сценариев. Присылайте pull requests и идеи!</string>
+    <string name="pm_market_source_official_desc">Самый большой список плагинов DeepSeek Harness — но он рассчитан на компьютер: часть плагинов на телефоне имеет проблемы с вёрсткой или совместимостью.</string>
+    <string name="pm_market_source_open_failed">Нет приложения, которое может открыть эту ссылку</string>
+</resources>

@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 文件类型识别器单测（1.2.0 §10.1）：每格式最小魔数样本集、文本/二进制嗅探边界、
+ * 文件类型识别器单测：每格式最小魔数样本集、文本/二进制嗅探边界、
  * BOM、zip 与 docx 二级区分、扩展名兜底。
  */
 class FileTypeClassifierTest {
@@ -49,7 +49,7 @@ class FileTypeClassifierTest {
         assertEquals(FileKind.PDF, classify("a.pdf", *("%PDF-1.7".map { it.code }).toIntArray()).kind)
         val pk = intArrayOf(0x50, 0x4B, 0x03, 0x04)
         assertEquals(FileKind.ARCHIVE, classify("a.zip", *pk).kind)
-        // ZIP 族二级区分（§6.2/§6.3）：OOXML 文档 → OFFICE；
+        // ZIP 族二级区分：OOXML 文档 → OFFICE；
         // 返工修正 #2：jar/apk/aar/war/epub 应用容器归 ARCHIVE，不归 OFFICE
         assertEquals(FileKind.OFFICE, classify("a.docx", *pk).kind)
         assertEquals(FileKind.OFFICE, classify("a.xlsx", *pk).kind)
@@ -95,7 +95,7 @@ class FileTypeClassifierTest {
 
     @Test
     fun textSniffing() {
-        // 普通文本（无扩展名脚本、Makefile 等，§6.2）
+        // 普通文本（无扩展名脚本、Makefile 等）
         assertEquals(FileKind.TEXT, classifyText("Makefile", "#!/bin/sh\necho hi\n").kind)
         assertEquals(FileKind.TEXT, classifyText("Dockerfile", "FROM debian\n").kind)
         // GBK 高位字节不算二进制特征
@@ -113,7 +113,7 @@ class FileTypeClassifierTest {
         // UTF-8 BOM 文本
         val utf8Bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + "hello".toByteArray()
         assertEquals(FileKind.TEXT, FileTypeClassifier.classify("a.txt", utf8Bom, utf8Bom.size.toLong()).kind)
-        // §6.2：UTF-16 BOM 直接定文本（编码判定由 TextEncoding 承接）——
+        // UTF-16 BOM 直接定文本（编码判定由 TextEncoding 承接）——
         // 虽然 UTF-16 内容含 NUL，但 BOM 优先于嗅探
         val utf16 = byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0x68, 0x00, 0x69, 0x00)
         assertEquals(FileKind.TEXT, FileTypeClassifier.classify("a.txt", utf16, utf16.size.toLong()).kind)

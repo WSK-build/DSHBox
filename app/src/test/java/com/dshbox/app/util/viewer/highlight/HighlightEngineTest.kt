@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 自研高亮引擎回归（返工修正 #1 锁定）：未命中字符（标识符/普通词）必须归 NORMAL，
+ * 自研高亮引擎用例：未命中字符（标识符/普通词）必须归 NORMAL，
  * 不得兜成 OPERATOR——否则 `int count = 42;` 里变量名与运算符同色。
  */
 class HighlightEngineTest {

@@ -252,7 +252,7 @@ class MovePlannerTest {
 
     @Test
     fun renameBatchDeduplicatesReservedDestinations() {
-        // 复查修正回归：同批两个同名源（不同目录）都选 RENAME，落点去重为 a-1 与 a-2，
+        // 同批两个同名源（不同目录）都选 RENAME 时，落点去重为 a-1 与 a-2，
         // 而不是双方都拿到 a-1 后在执行期撞「目标已存在」
         val dirA = tmp.newFolder("ren-a")
         val dirB = tmp.newFolder("ren-b")
@@ -354,7 +354,7 @@ class MovePlannerTest {
         assertNull(p.issues.singleOrNull { it.kind == IssueKind.CONFLICT_FILE })
     }
 
-    // ---------- §5.6 刷新集合（复查修正回归） ----------
+    // ---------- 刷新集合 ----------
 
     @Test
     fun refreshDirsCoverSourceParentsAndTarget() {
@@ -398,7 +398,7 @@ class MovePlannerTest {
         assertEquals(setOf(home.canonicalFile.absolutePath), dirs)
     }
 
-    // ---------- §5.4 阶段二跨层确认判定（复查第五轮回归） ----------
+    // ---------- 阶段二跨层确认判定 ----------
 
     private fun risk(source: Layer, target: Layer) = LayerRiskReport(
         source = File("s"), target = File("t"), sourceLayer = source, targetLayer = target,
@@ -442,7 +442,7 @@ class MovePlannerTest {
 
     @Test
     fun mixedLayerBatchStillNeedsConfirm() {
-        // 复查第八轮修正回归：/usr 下 local(NODE)+bin(BASE) 同目录混选移向 workspace——
+        // /usr 下 local(NODE)+bin(BASE) 同目录混选移向 workspace——
         // 去重仅对「全部源已涉险」生效，混合批中 BASE 项必须有矩阵确认（不可静默移出 rootfs）
         val mixed = listOf(risk(Layer.NODE, Layer.WORKSPACE), risk(Layer.BASE, Layer.WORKSPACE))
         assertTrue(MovePlanner.needsCrossLayerConfirm(mixed, sourcePrecheckFired = true))

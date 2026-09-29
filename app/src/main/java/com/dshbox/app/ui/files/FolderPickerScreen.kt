@@ -20,11 +20,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.FolderOpen
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Close
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Folder
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.CreateNewFolder
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -65,15 +65,18 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.dshbox.app.common.R as CommonR
 
 /**
- * 移动目标选择器（1.2.0 §5.1，覆盖式全屏二级页）。
+ * 移动目标选择器（覆盖式全屏二级页）。
  *
  * - 顶栏：沙盒/工作区分段切换（[SegmentedSwitch]）+ 面包屑（[Breadcrumb]）；
  * - 主体：仅显示文件夹（文件隐藏），点击进入；
- * - 源自身/源子孙目录：置灰、不可进入（防环可视化）；系统绑定目录同样置灰（§5.4 禁止作为目标）；
+ * - 源自身/源子孙目录：置灰、不可进入（防环可视化）；系统绑定目录同样置灰（禁止作为目标）；
  * - 底部主按钮「移动到当前文件夹（N 项）」+ 次按钮「新建文件夹」（名称消毒 + 风险检查）；
- * - 目标落点经 PathMapper 重定向时，确认按钮下方小字提示真实落点（§4.4）。
+ * - 目标落点经 PathMapper 重定向时，确认按钮下方小字提示真实落点。
  */
 @Composable
 internal fun FolderPickerScreen(
@@ -84,7 +87,7 @@ internal fun FolderPickerScreen(
     moveCount: Int,
     /** 源中为目录的物理路径（防环置灰用）。 */
     sourceDirs: List<File>,
-    /** 沙盒运行中（NODE/DSH 层内新建文件夹的风险文案追加停机建议，§4.2）。 */
+    /** 沙盒运行中（NODE/DSH 层内新建文件夹的风险文案追加停机建议）。 */
     sandboxRunning: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (targetLogical: File) -> Unit,
@@ -104,7 +107,7 @@ internal fun FolderPickerScreen(
     var dirs by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
-    // 新建文件夹前的风险强确认（风险目录内创建，§5.1 名称消毒 + 风险检查）。
+    // 新建文件夹前的风险强确认（风险目录内创建：名称消毒 + 风险检查）。
     // 复查修正：保存 Layer 而非 RiskLevel，文案与层判定同源（NODE/DSH 显示运行环境层语义）
     var pendingRiskForNewFolder by remember { mutableStateOf<Layer?>(null) }
 
@@ -119,7 +122,8 @@ internal fun FolderPickerScreen(
         scope.launch {
             val all = withContext(Dispatchers.IO) { scanDirectory(dir, mapper, isTop) }
             if (dir.absolutePath != currentDir.absolutePath) return@launch
-            dirs = all.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
+            // 本页只列目录；目录不受条数上限影响（见 scanDirectory），故无需提示截断。
+            dirs = all.entries.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
         }
     }
 
@@ -135,7 +139,7 @@ internal fun FolderPickerScreen(
         }
     }
 
-    /** 目标目录是否可选中：不能是源目录本身/位于源目录内部，也不能是系统绑定目录（§5.4）。
+    /** 目标目录是否可选中：不能是源目录本身/位于源目录内部，也不能是系统绑定目录。
      *  纯路径字符串比较（不在组合期做 canonicalFile 等磁盘 IO；防环以 planner 的 canonical 校验兜底）。 */
     fun isDisabled(physical: File): Pair<Boolean, String?> {
         for (src in sourceDirs) {
@@ -176,7 +180,7 @@ internal fun FolderPickerScreen(
                 )
                 IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
                     Icon(
-                        imageVector = Icons.Filled.Close,
+                        imageVector = ImageVector.vectorResource(CommonR.drawable.ic_x),
                         contentDescription = stringResource(R.string.files_cancel),
                         tint = TextSecondary(),
                         modifier = Modifier.size(20.dp),
@@ -217,9 +221,9 @@ internal fun FolderPickerScreen(
 
             // ---------- 目录列表（仅文件夹） ----------
             if (dirs.isEmpty()) {
-                // 返工 #6：空态用 weight(1f) 而非 fillMaxSize——fillMaxSize 会把底部
+                // 空态用 weight(1f) 而非 fillMaxSize：fillMaxSize 会把底部
                 // 「移动到当前文件夹」按钮挤出可视区（无子目录的文件夹正是最该可落地的目标，
-                // 用户实测「点进去落地不了、下方没有按钮」即此根因）
+                // 「点进去落地不了、下方没有按钮」即由此而来）
                 Column(
                     // weight 只控高度；须补 fillMaxWidth，否则宽度仅包内容、在默认左对齐
                     // 的 Column 里整体偏左（用户反馈「文字图标靠中间偏左」）
@@ -228,7 +232,7 @@ internal fun FolderPickerScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.FolderOpen,
+                        imageVector = ImageVector.vectorResource(CommonR.drawable.ic_folder_open),
                         contentDescription = null,
                         tint = Color(0xFFE5E7EB),
                         modifier = Modifier.size(56.dp),
@@ -292,7 +296,7 @@ internal fun FolderPickerScreen(
                         modifier = Modifier.size(44.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.CreateNewFolder,
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_folder_plus),
                             contentDescription = stringResource(R.string.files_new_folder),
                             tint = PrimaryGreen,
                             modifier = Modifier.size(22.dp),
@@ -352,7 +356,7 @@ internal fun FolderPickerScreen(
                         if (created.isSuccess) {
                             newFolderName = ""
                             showNewFolderDialog = false
-                            // 真机清单 #4：建出目录后立即进入（currentDir 变化触发 LaunchedEffect 重扫）
+                            // 建出目录后立即进入（currentDir 变化触发 LaunchedEffect 重扫）
                             currentDir = File(currentDir, safeName)
                         }
                     },
@@ -369,7 +373,7 @@ internal fun FolderPickerScreen(
         )
     }
 
-    // ---------- 风险目录内新建文件夹的强确认（§4.2 处置语义，Layer 同源文案） ----------
+    // ---------- 风险目录内新建文件夹的强确认（处置语义与 Layer 文案同源） ----------
     if (pendingRiskForNewFolder != null) {
         val layer = pendingRiskForNewFolder!!
         AlertDialog(
@@ -418,7 +422,7 @@ private fun PickerDirRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Filled.Folder,
+            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_folder),
             contentDescription = null,
             tint = if (enabled) PrimaryGreen else TextHint(),
             modifier = Modifier.size(24.dp),
@@ -451,7 +455,7 @@ private fun PickerDirRow(
     )
 }
 
-/** 挂载点遮蔽提示（§4.4）：逻辑落点经重定向时，小字提示真实物理落点。 */
+/** 挂载点遮蔽提示：逻辑落点经重定向时，小字提示真实物理落点。 */
 @Composable
 private fun pickerTargetHint(mapper: PathMapper, logical: File): String? {
     val lp = logical.absolutePath.trimEnd('/')

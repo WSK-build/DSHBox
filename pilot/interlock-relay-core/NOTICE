@@ -1,0 +1,51 @@
+Interlock Relay core
+Copyright 2026 WSK-build
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party dependencies
+========================
+
+Main code
+---------
+- AndroidX / Jetpack artifacts, pulled transitively by androidx.core:core-ktx
+  (androidx.annotation and androidx.annotation:annotation-jvm, androidx.collection,
+  androidx.lifecycle, androidx.arch.core, androidx.tracing, androidx.startup,
+  androidx.concurrent, androidx.interpolator, androidx.profileinstaller,
+  androidx.versionedparcelable, androidx.annotation:annotation-experimental) —
+  The Android Open Source Project, licensed under the Apache License, Version 2.0.
+- kotlinx-coroutines (org.jetbrains.kotlinx:kotlinx-coroutines-android, plus the
+  core and core-jvm artifacts it pulls in) — JetBrains, licensed under the Apache
+  License, Version 2.0.
+- Kotlin standard library and annotations (org.jetbrains.kotlin:kotlin-stdlib,
+  org.jetbrains:annotations) — JetBrains, licensed under the Apache License,
+  Version 2.0.
+- Shizuku API and provider (dev.rikka.shizuku:api, dev.rikka.shizuku:provider, plus
+  the aidl and shared artifacts they pull in) — RikkaApps. The published artifacts
+  declare the MIT License in their POM metadata and ship no license text of their
+  own; upstream project and license text:
+  https://github.com/RikkaApps/Shizuku-API
+- listenablefuture (com.google.guava:listenablefuture), pulled transitively by
+  androidx.concurrent:concurrent-futures — Google. The artifact belongs to Guava and
+  is licensed under the Apache License, Version 2.0; its POM carries no license block.
+
+Test code only (absent from the runtime dependency graph)
+--------------------------------------------------------
+- JUnit (junit:junit) — Eclipse Public License 1.0.
+- Hamcrest core (org.hamcrest:hamcrest-core), pulled transitively by JUnit —
+  BSD 3-Clause.
+- org.json (org.json:json:20240303) — JSON License (MIT-style with the
+  "Good, not evil" clause). This artifact is NOT OSI-approved and is used
+  exclusively in JVM unit tests, where the Android platform's bundled
+  org.json implementation is unavailable as a stub. No runtime dependency:
+  production builds use the org.json implementation shipped with Android.
+
+Build tooling (not distributed)
+-------------------------------
+- Gradle — Gradle Inc., licensed under the Apache License, Version 2.0.
+- Android Gradle Plugin (com.android.tools.build:gradle) — The Android Open Source
+  Project, licensed under the Apache License, Version 2.0.
+- Kotlin Gradle Plugin (org.jetbrains.kotlin:kotlin-gradle-plugin) — JetBrains,
+  licensed under the Apache License, Version 2.0.
+
+No runtime dependency of this library is licensed under a copyleft license.

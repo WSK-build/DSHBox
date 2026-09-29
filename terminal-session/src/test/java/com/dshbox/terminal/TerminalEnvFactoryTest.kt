@@ -39,6 +39,15 @@ class TerminalEnvFactoryTest {
         assertEquals("/root", env["HOME"])
         assertEquals("xterm-256color", env["TERM"])
         assertTrue(env["PATH"]!!.contains("/usr/bin"))
+        // DSH CLI：包装脚本目录必须在 PATH **头部**（`dsh` / `pnpm` 靠它找到），
+        // 且 profile 相关的三个变量与 app 启动网页端时同值。
+        assertTrue(env["PATH"]!!.startsWith("/root/projects/.dsh/dshbox/bin:"))
+        assertEquals("/root/projects/.dsh", env["DSH_HOME"])
+        assertEquals(
+            "/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
+            env["DSH_BIN"],
+        )
+        assertEquals("danger-full-access", env["DSH_PERMISSION_MODE"])
         assertNotNull(env["LANG"])
         assertNotNull(env["TMPDIR"])
     }

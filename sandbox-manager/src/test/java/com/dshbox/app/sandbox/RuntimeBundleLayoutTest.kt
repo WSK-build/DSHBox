@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * Regression tests for the 1.1.0 runtime-bundle ZIP layout analysis .
  *
- * The M1 case reproduces the 1.0.0 fatal bug exactly: the official zip lists
+ * One case reproduces the 1.0.0 fatal bug exactly: the official zip lists
  * `base.tar.zst` BEFORE `base.tar.zst.sha256`, and the old startsWith() matching
  * let the sidecar overwrite the archive — every official import failed with
  * "Not in GZIP format".

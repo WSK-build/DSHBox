@@ -14,11 +14,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.outlined.Lock
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Close
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Folder
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.InsertDriveFile
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +62,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.dshbox.app.common.R as CommonR
 
 /** 条目预览上限（抽到 cache 临时文件的字节预算；超出拒绝预览引导导出）。 */
 private const val ARCHIVE_PREVIEW_MAX_BYTES = 10L * 1024 * 1024
@@ -70,7 +73,7 @@ private const val ARCHIVE_PREVIEW_MAX_BYTES = 10L * 1024 * 1024
 private const val ARCHIVE_PREVIEW_PREFIX = "dshbox-archive-preview-"
 
 /**
- * 压缩包只读浏览（1.2.0 §6.8，数据来自 [ArchiveBrowser] 纯 JVM 枚举）。
+ * 压缩包只读浏览（数据来自 [ArchiveBrowser] 纯 JVM 枚举）。
  *
  * - 树形列表：名称/大小/时间/层级（目录可折叠）；加密 ZIP 仅列条目名（🔒 标记，
  *   点击提示不支持内建预览）；
@@ -137,7 +140,7 @@ internal fun ArchiveViewer(
         }
     }
 
-    // 查看器退出：清理当前预览临时文件（§6.8「退出即删」）
+    // 查看器退出：清理当前预览临时文件（「退出即删」）
     DisposableEffect(Unit) {
         onDispose {
             deleteTemp(previewFile)
@@ -145,7 +148,7 @@ internal fun ArchiveViewer(
         }
     }
 
-    // ---- SAF 出口（§6.8：单条目 / 全部导出复用既有 SAF） ----
+    // ---- SAF 出口（单条目 / 全部导出复用既有 SAF） ----
     val exportEntryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { uri ->
@@ -347,7 +350,7 @@ internal fun ArchiveViewer(
                         previewDetection = null
                     }) {
                         Icon(
-                            imageVector = Icons.Filled.Close,
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_x),
                             contentDescription = stringResource(R.string.files_close),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
@@ -418,9 +421,9 @@ private fun ArchiveEntryRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = when {
-                    entry.isDirectory -> Icons.Filled.Folder
-                    entry.isEncrypted -> Icons.Outlined.Lock
-                    else -> Icons.Filled.InsertDriveFile
+                    entry.isDirectory -> ImageVector.vectorResource(CommonR.drawable.ic_folder)
+                    entry.isEncrypted -> ImageVector.vectorResource(CommonR.drawable.ic_lock)
+                    else -> ImageVector.vectorResource(CommonR.drawable.ic_file)
                 },
                 contentDescription = null,
                 tint = if (entry.isDirectory) {

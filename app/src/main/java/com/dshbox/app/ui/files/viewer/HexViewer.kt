@@ -38,7 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 十六进制查看（1.2.0 §6.9）：三栏（偏移 | hex | ASCII），按 64KB 块随机读取，
+ * 十六进制查看：三栏（偏移 | hex | ASCII），按 64KB 块随机读取，
  * LazyColumn 只渲染可视块，内存恒定。只读；「按文本打开」等出口由外壳顶栏提供。
  */
 @Composable
@@ -84,7 +84,7 @@ internal fun HexViewer(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        // ---- 顶部信息（§6.9：大小 / 魔数 / 熵） ----
+        // ---- 顶部信息（大小 / 魔数 / 熵） ----
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(
                 text = stringResource(R.string.files_hex_size, formatFileSize(file.length())),

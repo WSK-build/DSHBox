@@ -1,0 +1,8 @@
+# Patch layer for @local/mobile-pilot.
+# 这里只把宿主半注册成一个 cordis Loader 条目（id 与 name 都等于包名），形态与
+# dsh-mobile-adapt 包的 cordis.patch.yml 一致；本包不发布自己的 service。
+# 行为在两处：lib/index.js 的 apply 里注册 13 条 phone_* 工具，
+# bin/mobile-pilot 把命令行原样转发给手机助手入口脚本。
+- insert:
+    - id: '@local/mobile-pilot'
+      name: '@local/mobile-pilot'

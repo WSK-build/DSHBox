@@ -22,7 +22,7 @@ import java.io.File
  *   runtime-current/dsh/.dshbox/version
  *
  * **DSH 源码永不被改写**（1.3.1 起）：本类只做「解包 / 校验 / 原子换入 / 记录版本」。
- * 曾经的 Android 硬链接兼容补丁会就地改写 DSH 的 JS 文件，但补丁锚点必须与上游
+ * 就地改写 DSH 的 JS 文件不可行：补丁锚点必须与上游
  * 逐字节匹配，上游一重构就整块静默跳过；现在该职责已移交**运行期垫片**
  * （启动时 `--import` 预加载，见 [SandboxProcessRunner.buildProotDshCommand]），
  * 因此本类对任何版本的 DSH 都保持形态无关。
@@ -65,7 +65,7 @@ class DshLayer(
      *     (or equal) and [allowDowngrade] is false, keep the installed copy
      *     (installed-newer wins) -> changed=false;
      *   - otherwise the bundle is extracted into a STAGING directory first
-     *     (1.1.0, M4): the staged tree is shape-validated (bin.js present) and
+     *     the staged tree is shape-validated (bin.js present) and
      *     its version discovered BEFORE the live layer is touched; only then the
      *     old layer moves to previous/dsh (single copy) and staging renames into
      *     dsh/. A corrupt or WRONG file (e.g. a runtime zip's base.tar.zst picked
@@ -137,7 +137,7 @@ class DshLayer(
             }
             // Stage 3: version record.
             //
-            // Android 硬链接兼容**不在这里做**（1.3.1 起）：曾经的做法是改写 DSH 的
+            // Android 硬链接兼容**不在这里做**：改写 DSH 的
             // JS 源码（link -> rename/copyFile），但补丁锚点必须与上游逐字节匹配，
             // 上游每次重构（插入一个 import、拆分发布点）都会让整块补丁静默跳过。
             // 现在改由**运行期垫片**承担：启动 DSH 时以 `--import` 预加载
@@ -147,9 +147,9 @@ class DshLayer(
             // ⚠️ 垫片的已知限制（勿误以为全量兜底）：它**只替换异步的
             // `node:fs/promises`.link**，不覆盖 `fs.linkSync` 与回调版 `fs.link`。
             // 当前 DSH 的三条链路（会话/写工具/附件）均使用异步具名导入，故够用；
-            // 若上游改用同步版，会在真机上重新出现硬链接 EACCES 且**无任何告警**。
+            // 若上游改用同步版，硬链接会重新出现 EACCES 且**无任何告警**。
             // 排查入口：在解出的层里 `grep -rn "linkSync" node_modules/@deepseek-ai/<包>/lib/`。
-            // 完整边界说明见 link-shim.mjs 顶部注释与 DSH_COMPAT_NOTES.md #1。
+            // 完整边界说明见 link-shim.mjs 顶部注释。
             val version = newVersion?.takeIf { it.isNotBlank() } ?: discovered ?: "unknown"
             runCatching {
                 val vf = File(dsh, VERSION_FILE)
@@ -195,7 +195,7 @@ class DshLayer(
 
     /**
      * Best-effort semantic-ish version comparison. Kept for source compatibility;
-     * the implementation lives in common [Versions] (1.1.0, M6 — was duplicated
+     * the implementation lives in common [Versions] (was duplicated
      * here and in RuntimeUpdateManager with identical bodies).
      */
     fun compareVersions(a: String, b: String): Int = Versions.compare(a, b)

@@ -17,6 +17,14 @@ interface SandboxManager {
     val sandboxState: StateFlow<SandboxState>
     val dshState: StateFlow<DshState>
 
+    /**
+     * 最近一次健康探测持续失败是否已达展示阈值（[DshHealthPolicy.UNRESPONSIVE_HINT_MS]）。
+     *
+     * 仅供展示层提示「实例可能无响应」；是否重启仍由健康循环按不应答窗口独立判定，
+     * 两者不耦合。任何一次探测成功都会立即复位。
+     */
+    val dshUnresponsive: StateFlow<Boolean>
+
     /** Currently installed DSH layer version (runtime-current/dsh), or null. */
     val dshVersion: StateFlow<String?>
 
@@ -27,7 +35,7 @@ interface SandboxManager {
      * DSH 0.1.2-rc.1 起 web 服务使用进程级 launchToken 认证
      * （`dsh web:` 启动 URL 携带）。app 从 DSH 进程原始输出解析后经此暴露给
      * WebView：首次加载 `/?token=<值>` 完成 token→签名 cookie 交换，
-     * 此后凭持久 cookie 访问。null = 尚未解析到（旧版 DSH 无认证，忽略）。
+     * 之后凭持久 cookie 访问。null = 尚未解析到（无认证的 DSH 版本可忽略）。
      */
     val dshLaunchToken: StateFlow<String?>
 
@@ -69,6 +77,13 @@ interface SandboxManager {
 
     /** Returns true when runtime-current contains both PRoot and the Debian rootfs. */
     fun isRuntimeInstalled(): Boolean
+
+    /**
+     * node 层是否已导入（runtime-current/node/bin/node 在位）。
+     * 在线导入拆分后 base 与 node 是两步：仅装 Linux 层时运行环境视为已安装，
+     * 但 DSH 无法启动——UI 以此给出"还需导入 node 层"的引导，startDsh 也以此快速拒绝。
+     */
+    fun isNodeLayerInstalled(): Boolean
 
     /** Scans the updates dir for the first .tar.gz with a valid .sha256 sidecar and installs it. */
     suspend fun installFirstAvailableBundle(): AppResult<java.io.File>
@@ -133,6 +148,27 @@ interface SandboxManager {
      * (user-data / user-data/.dsh). Sandbox must be stopped first.
      */
     suspend fun importRuntimeBundle(source: java.io.File): AppResult<Unit>
+
+    /**
+     * 在线组装专用（OnlineRuntimeImportManager）：把设备上组装完成的分层 body
+     * （[staging] 下须含 base/、node/、android-side/ 目录与 runtime-profile.json）
+     * 按 [importRuntimeBundle] 同款语义替换 runtime-current：旧 body → previous/
+     * （单副本），dsh 层与 user-data 全程不碰。沙箱必须先停止。
+     *
+     * 与离线导入的差异只在来源：staging 不是解包 zip 得到，而是组装流水线的产物
+     * （profile 的 hash 为安装期现算）。各层完整性哨兵由调用方在 staging 内写好。
+     */
+    suspend fun installAssembledRuntime(staging: java.io.File): AppResult<Unit>
+
+    /**
+     * 在线导入 node 层专用（OnlineRuntimeImportManager）：把 [stagingNodeDir]
+     * （须为已解包并写好 `.dshbox/layer-node.sha256` 哨兵的 node 层目录）装入
+     * runtime-current/node——旧 node → previous/node（单副本），随后**按当前实际
+     * 在位的层目录重建 runtime-profile.json**（base/node/android-side 缺哪层就不
+     * 声明哪层，hash 现算，与哨兵自洽）。要求 base 层已在位（先导入 Linux 层），
+     * 沙箱必须先停止。dsh 层与 user-data 全程不碰。
+     */
+    suspend fun installNodeLayer(stagingNodeDir: java.io.File): AppResult<Unit>
 
     /**
      * Inject a one-off command into the DSH guest (fresh PRoot process) and

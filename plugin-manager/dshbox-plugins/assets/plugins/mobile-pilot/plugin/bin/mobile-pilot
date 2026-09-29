@@ -1,0 +1,186 @@
+#!/usr/bin/env node
+'use strict'
+
+/**
+ * mobile-pilot - one command in front of the phone-assistant tool pack.
+ *
+ * The pack (call entry, capability manifest, guide, mailbox) is produced by the
+ * host app and bind-mounted into the sandbox. This wrapper resolves where it
+ * landed and forwards the arguments to that entry unchanged, so the exit codes
+ * and the reply shape the agent sees are the entry's own - there is no second
+ * protocol implementation here to drift out of sync with the first.
+ *
+ * Local subcommands: help, doctor. Everything else is forwarded verbatim.
+ */
+
+const { spawnSync } = require('node:child_process')
+const { resolvePack, readManifest } = require('../lib/mount')
+
+/**
+ * The entry script is a Node program. Where the mount does not carry an usable
+ * executable bit, run it through the current interpreter instead of refusing to
+ * answer - the guide's own fallback, and what the host does for its own entry.
+ * Off-device (Windows) there is no shebang handling at all, so the interpreter
+ * path is the only one that works there.
+ */
+function execEntry (entry, argv) {
+  const viaNode = () => spawnSync(process.execPath, [entry, ...argv], { stdio: 'inherit' })
+  if (process.platform === 'win32') return viaNode()
+  const direct = spawnSync(entry, argv, { stdio: 'inherit' })
+  const unrunnable = direct.error != null &&
+    ['ENOENT', 'ENOEXEC', 'EACCES', 'EPERM'].includes(direct.error.code)
+  return unrunnable ? viaNode() : direct
+}
+
+const USAGE = [
+  'usage: mobile-pilot <command> [options]',
+  '',
+  'commands:',
+  '  doctor [--probe]                report the resolved pack, the tools API, and what is missing;',
+  '                                    --probe adds a v2 control-channel ping answered by the',
+  '                                    entry script, without changing the static verdict',
+  '  capabilities                    list capabilities and gate state (JSON)',
+  '  ui [--json]                     the UI-control surface: which capabilities drive the',
+  '                                    phone screen, and whether each is usable right now',
+  '  call <capability> [--json A] [--out F] [--timeout MS]',
+  '                                  run one capability; arguments and exit codes',
+  "                                  are the pack entry script's own. When the host's v2 control",
+  '                                  channel is present the request carries a request id; a wait',
+  '                                  that times out ends UNKNOWN - follow up with status/cancel,',
+  '                                  never by re-sending the same call.',
+  '  status <requestId>              v2: snapshot of one submitted request (forwarded verbatim)',
+  '  cancel <requestId>              v2: ask the host to cancel one submitted request (forwarded verbatim)',
+  '  help                            this text',
+  '',
+  'environment:',
+  '  MOBILE_PILOT_HOME               pack root; overrides the cached mount.json and /opt/pilot',
+  '',
+].join('\n')
+
+function internal (message) {
+  process.stderr.write(`mobile-pilot: ${message}\n`)
+  return EXIT_INTERNAL
+}
+
+function describe (tried) {
+  return tried.map((t) => `  ${t.source}: ${t.dir} (entry=${t.hasEntry ? 'y' : 'n'}, manifest=${t.hasManifest ? 'y' : 'n'})`).join('\n')
+}
+
+/**
+ * --probe 的端到端心跳：交给入口自己的 doctor --probe 去问 v2 控制通道，本层只把
+ * 结论原样并进输出。拿不到结论就照实说拿不到 —— 编一个 channelLive:false 冒充测过，
+ * 与测过但不通是两回事。
+ */
+function probeChannel (resolved) {
+  if (!resolved.root) return { ran: false, reason: 'pack not mounted; the ping needs the entry script' }
+  const child = spawnSync(process.execPath, [resolved.info.entry, 'doctor', '--probe'], { encoding: 'utf8' })
+  if (child.error) return { ran: false, reason: child.error.message }
+  if (typeof child.status !== 'number') return { ran: false, reason: `terminated by signal ${child.signal || 'unknown'}` }
+  try {
+    const parsed = JSON.parse(child.stdout)
+    return { ran: true, exitCode: child.status, channelLive: parsed.channelLive === true }
+  } catch {
+    return { ran: false, reason: `entry doctor --probe did not answer with JSON (exit ${child.status})` }
+  }
+}
+
+function doctor (argv) {
+  const probeRequested = Array.isArray(argv) && argv.includes('--probe')
+  const resolved = resolvePack()
+  const out = { command: 'doctor', root: resolved.root, source: resolved.source, tried: resolved.tried }
+  // "phone_* 为什么不在工具列表里"的第一问是 dsh-tools 解析得到吗；这条与挂载点在不在是两件事，
+  // 所以屏没挂载时也要报 —— 那一档下它仍是唯一能给出来的答案。
+  try {
+    out.toolsApi = require('../lib/index.js').probeToolsApi()
+  } catch (error) {
+    out.toolsApi = { ok: false, via: null, stage: 'probe', message: String(error && error.message) }
+  }
+  // 静态结论与端到端心跳分层：--probe 的结果附在 probe 字段里，不改动 ok 的判据。
+  if (probeRequested) out.probe = probeChannel(resolved)
+  if (!resolved.root) {
+    out.ok = false
+    out.error = 'pack not mounted: start the assistant page once, then enable the sandbox'
+    process.stdout.write(`${JSON.stringify(out, null, 2)}\n`)
+    return EXIT_INTERNAL
+  }
+  const info = resolved.info
+  const manifest = readManifest(info.manifest)
+  const caps = manifest && Array.isArray(manifest.capabilities) ? manifest.capabilities : null
+  out.ok = info.hasRun && !!caps
+  out.entry = { path: info.entry, executable: info.entryExecutable }
+  out.runInbox = info.hasRun
+  out.guide = { path: info.guide, present: info.hasGuide }
+  out.manifest = {
+    path: info.manifest,
+    present: !!caps,
+    generatedAt: manifest && manifest.generatedAt,
+    capabilities: caps && caps.length,
+    usable: caps && caps.filter((c) => c.usable === true).length,
+  }
+  process.stdout.write(`${JSON.stringify(out, null, 2)}\n`)
+  return out.ok ? 0 : EXIT_INTERNAL
+}
+
+/**
+ * UI 层面的操控接口：从能力清单里取 `ui.` 那一组，报每一条此刻能不能用。
+ *
+ * 名单读的是清单自己的字段，不在这里另抄一份 —— 宿主新加一条界面能力时，
+ * 这里跟着长，不需要动插件。
+ */
+function uiSurface (argv) {
+  const resolved = resolvePack()
+  if (!resolved.root) {
+    return internal(`cannot find the phone-assistant pack. tried:\n${describe(resolved.tried)}`)
+  }
+  const manifest = readManifest(resolved.info.manifest)
+  const caps = (manifest && Array.isArray(manifest.capabilities) ? manifest.capabilities : [])
+    .filter((c) => typeof c.id === 'string' && c.id.startsWith('ui.'))
+    .map((c) => ({
+      id: c.id,
+      usable: c.usable === true,
+      tier: c.assistantTier,
+      system: c.systemPermission,
+      surfaces: c.surfaces,
+    }))
+  if (argv.includes('--json')) {
+    process.stdout.write(`${JSON.stringify({ root: resolved.root, ui: caps }, null, 2)}\n`)
+    return 0
+  }
+  if (caps.length === 0) {
+    return internal(`the capability manifest at ${resolved.root} lists no ui.* capabilities`)
+  }
+  const usable = caps.filter((c) => c.usable).length
+  process.stdout.write(`UI control surface: ${usable}/${caps.length} usable right now (root ${resolved.root})\n`)
+  for (const c of caps) {
+    process.stdout.write(`  ${c.usable ? 'ok' : 'no '} ${c.id.padEnd(14)} tier=${c.tier} system=${c.system} surfaces=${(c.surfaces || []).join('|')}\n`)
+  }
+  return 0
+}
+
+function main (argv) {
+  const command = argv[0]
+  if (!command || command === 'help' || command === '--help' || command === '-h') {
+    process.stdout.write(`${USAGE}\n`)
+    return command ? 0 : EXIT_INTERNAL
+  }
+  if (command === 'doctor') return doctor(argv.slice(1))
+  if (command === 'ui') return uiSurface(argv.slice(1))
+
+  const resolved = resolvePack()
+  if (!resolved.root) {
+    return internal(`cannot find the phone-assistant pack. tried:\n${describe(resolved.tried)}\nSet MOBILE_PILOT_HOME to the mounted directory if it lives elsewhere.`)
+  }
+  const child = execEntry(resolved.info.entry, argv)
+  if (child.error) return internal(`${child.error.message} while running ${resolved.info.entry}`)
+  if (typeof child.status === 'number') return child.status
+  return internal(`${resolved.info.entry} terminated by signal ${child.signal || 'unknown'}`)
+}
+
+/** Matches the entry script's own table: 6 = internal, not 1 = usage error. */
+const EXIT_INTERNAL = 6
+
+if (require.main === module) {
+  process.exitCode = main(process.argv.slice(2))
+} else {
+  module.exports = { main, USAGE, EXIT_INTERNAL }
+}

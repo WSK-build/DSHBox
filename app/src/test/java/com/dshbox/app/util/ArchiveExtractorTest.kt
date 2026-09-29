@@ -13,7 +13,7 @@ import java.io.FileOutputStream
 import kotlinx.coroutines.runBlocking
 
 /**
- * 解压链路编码回归（2026-09-08 修复）：zip 解压条目名与浏览侧同口径（字节级 CEN 判定，
+ * 解压链路编码用例：zip 解压条目名与浏览侧同口径（字节级 CEN 判定，
  * GBK 中文包解压后文件名不乱码）；tar.gz 统一 UTF-8（沙盒主场景）。
  */
 class ArchiveExtractorTest {

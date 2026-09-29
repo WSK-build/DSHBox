@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 1.2.0 §6.11：FileProvider 四个物理根各声明精确 files-path（最小授权，不暴露整个 filesDir）。
+<!-- FileProvider 四个物理根各声明精确 files-path（最小授权，不暴露整个 filesDir）。
      legacy debian 单层根（旧安装回退）不在授权范围：该形态下外部打开返回空后自动降级导出。 -->
 <paths>
     <files-path
@@ -14,4 +14,10 @@
     <files-path
         name="user_data"
         path="user-data/" />
+    <!-- 「拍照 / 录像」的输出暂存（cacheDir 之下）：相机应用需要一个可写的 content URI
+         作为 EXTRA_OUTPUT，拍完由本应用读回并作为附件上传。
+         必须与 DshWebViewScreen.CAPTURE_DIR_NAME 保持一致。 -->
+    <cache-path
+        name="camera_capture"
+        path="camera-capture/" />
 </paths>

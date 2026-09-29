@@ -24,14 +24,15 @@
   <meta name="twitter:description" content="Run the full DeepSeek Harness locally on Android phones and tablets.">
   <meta name="twitter:image" content="https://wsk-build.github.io/DSHBox/assets/images/hero-product-crop.jpg">
 
-  <link rel="icon" type="image/png" href="./assets/images/app-icon.png">
-  <link rel="apple-touch-icon" href="./assets/images/app-icon.png">
+  <link rel="icon" type="image/svg+xml" href="./assets/images/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="./assets/images/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/images/icon-180.png">
   <link rel="manifest" href="./site.webmanifest">
   <!-- 发版时把下面两处 ?v= 同步改成新的版本号：
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.3.1">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.4.0">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -53,7 +54,7 @@
         "applicationCategory": "MobileApplication",
         "applicationSubCategory": "Local AI / LLM assistant",
         "operatingSystem": "Android (ARM64, Android 10+)",
-        "softwareVersion": "1.3.1",
+        "softwareVersion": "1.4.0",
         "inLanguage": ["en", "zh-CN"],
         "description": "DSHBox is the Android mobile client for DeepSeek Harness (DSH). It runs the full DeepSeek Harness entirely on-device on Android phones and tablets, bundling Debian, Node.js, the DSH layer, PRoot and an embedded WebView into a single APK. No root access, no separate Termux installation and no other software are required. 中文：DSHBox 是 DeepSeek Harness（DSH）的安卓移动端，在安卓手机与平板上用一个 APK 本地完整运行 DeepSeek Harness——内置 Debian、Node.js、DSH 层、PRoot 与 WebView，无需 Root、无需单独安装 Termux、不依赖任何其他软件。",
         "featureList": [
@@ -88,7 +89,7 @@
   <header class="site-header" id="top">
     <div class="container header-inner">
       <a class="brand" href="#top" aria-label="DSHBox home">
-        <img class="brand-mark" src="./assets/images/app-icon.png" width="192" height="192" alt="DSHBox app icon">
+        <img class="brand-mark" src="./assets/images/icon.svg" width="1024" height="1024" alt="DSHBox brand mark">
         <span class="brand-name">DSHBox</span>
       </a>
 
@@ -124,7 +125,7 @@
       <div class="container hero-inner">
         <div class="hero-copy">
           <p class="hero-badge reveal">
-            <img src="./assets/images/app-icon.png" width="192" height="192" alt="DSHBox app icon">
+            <img src="./assets/images/icon.svg" width="1024" height="1024" alt="DSHBox brand mark">
             <span class="lang-en">Open source · GPL-3.0 · Community project</span>
             <span class="lang-zh">开源 · GPL-3.0 · 社区项目</span>
           </p>
@@ -176,16 +177,16 @@
               <h2 class="whats-new-title" id="whats-new-hero-title">
                 <span class="lang-en">What's new</span><span class="lang-zh">最新版本变化</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.3.1</span>
+              <span class="whats-new-badge" data-release-tag>v1.4.0</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>DSH 0.1.5-rc.2 support</strong> — session persistence, file tools, attachments and the right-hand preview all work on mobile.</span>
-                <span class="lang-zh"><strong>适配 DSH 0.1.5-rc.2</strong> — 会话持久化、文件工具、附件发布、右栏预览在移动端全部打通。</span>
+                <span class="lang-en"><strong>Phone assistant (DshPilot)</strong> — 39 device-control capabilities over a mailbox channel.</span>
+                <span class="lang-zh"><strong>手机助手（DshPilot）</strong> — 39 项操控能力，经信箱通道让 DSH 安全操控手机。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Runtime hard-link shim</strong> — no DSH source is modified.</span>
-                <span class="lang-zh"><strong>运行期硬链接垫片</strong> — DSH 源码零改写。</span>
+                <span class="lang-en"><strong>Runtime fetched online</strong> — no longer bundled; the APK drops from ~236 MB to ~111 MB.</span>
+                <span class="lang-zh"><strong>运行环境改为在线获取</strong> — 不再随包内嵌，APK 由约 236 MB 降至约 111 MB。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -213,15 +214,19 @@
     </section>
 
     <!-- ============ STATS STRIP ============ -->
+    <!-- 本区块的数字不再手工维护：带 data-fact 的元素由 assets/js/main.js 从最新 Release 自动填入。
+         取值来源与覆盖规则见 main.js 第 2c 节。下面的静态值是「取不到时」的兜底，不是唯一事实源。
+         两个没有公开机器可读来源的项（单元测试数 / 模块数）需要发布说明里带一行事实标记才会上新，
+         具体写法同样见 main.js 第 2c 节；没有该标记时此处静态值原样保留。 -->
     <section class="stats" aria-label="Current release facts">
       <div class="container">
         <dl class="stats-strip reveal">
-          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd>v1.3.1</dd></div>
-          <div class="stat" style="--i:1"><dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt><dd>237 MB</dd></div>
-          <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime after setup</span><span class="lang-zh">初始化后运行环境</span></dt><dd>193 MB</dd></div>
+          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.4.0</dd></div>
+          <div class="stat" style="--i:1"><dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt><dd data-fact="apkSize">110.7 MB</dd></div>
+          <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime after setup</span><span class="lang-zh">初始化后运行环境</span></dt><dd data-fact="runtimeSize">193 MB</dd></div>
           <div class="stat" style="--i:3"><dt><span class="lang-en">Android</span><span class="lang-zh">系统要求</span></dt><dd>10+ (ARM64)</dd></div>
-          <div class="stat" style="--i:4"><dt><span class="lang-en">Unit tests</span><span class="lang-zh">单元测试</span></dt><dd>214</dd></div>
-          <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd>0.1.1-rc.2</dd></div>
+          <div class="stat" style="--i:4"><dt><span class="lang-en">Unit tests</span><span class="lang-zh">单元测试</span></dt><dd data-fact="testCount">1203</dd></div>
+          <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd data-fact="dshVersion">0.2.0-rc.2</dd></div>
         </dl>
       </div>
     </section>
@@ -325,8 +330,8 @@
             </div>
             <h3><span class="lang-en">Open Source</span><span class="lang-zh">开源</span></h3>
             <p>
-              <span class="lang-en">GPL-3.0 licensed, 172 unit tests across 8 Gradle modules. Audit it, build it, fork it.</span>
-              <span class="lang-zh">GPL-3.0 协议，8 个 Gradle 模块、172 个单元测试。可审计、可构建、可复用。</span>
+              <span class="lang-en">GPL-3.0 licensed, <span data-fact="testCount">1203</span> unit tests across <span data-fact="moduleCount">11</span> Gradle modules. Audit it, build it, fork it.</span>
+              <span class="lang-zh">GPL-3.0 协议，<span data-fact="moduleCount">11</span> 个 Gradle 模块、<span data-fact="testCount">1203</span> 个单元测试。可审计、可构建、可复用。</span>
             </p>
           </article>
         </div>
@@ -343,27 +348,48 @@
             <span class="lang-zh">来自真实运行设备</span>
           </h2>
           <p>
-            <span class="lang-en">Real captures from a running device — the WebUI, terminal, file manager and settings.</span>
-            <span class="lang-zh">真机实拍画面——WebUI、终端、文件管理器与设置。</span>
+            <span class="lang-en">Real captures from a running device — how DSHBox hosts and extends the DSH ecosystem, and the facilities that keep it usable every day.</span>
+            <span class="lang-zh">真机实拍画面——DSHBox 对 DSH 生态的容纳与扩充，以及让它日常好用的配套设施。</span>
           </p>
         </header>
 
+        <p class="eyebrow"><span class="lang-en">The DSH ecosystem — hosted and extended</span><span class="lang-zh">DSH 生态：容纳与扩充</span></p>
         <div class="shot-grid">
           <figure class="shot-card reveal" style="--i:0">
-            <img src="./assets/images/phone-02-dsh-webui.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="DSH WebUI chat session running inside DSHBox on a phone">
-            <figcaption><span class="lang-en">DSH WebUI</span><span class="lang-zh">DSH WebUI</span></figcaption>
+            <img src="./assets/images/phone-01-dsh.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="DSH chat session running inside DSHBox on a phone">
+            <figcaption><span class="lang-en">DSH</span><span class="lang-zh">DSH</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:1">
-            <img src="./assets/images/phone-03-terminal.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Persistent terminal session inside DSHBox">
+            <img src="./assets/images/phone-02-plugin-market.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Plugin market browsing DSH plugins inside DSHBox">
+            <figcaption><span class="lang-en">Plugin Market</span><span class="lang-zh">插件市场</span></figcaption>
+          </figure>
+          <figure class="shot-card reveal" style="--i:2">
+            <img src="./assets/images/phone-03-plugin-management.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Cordis plugin panel with per-entry switches">
+            <figcaption><span class="lang-en">Plugin Management</span><span class="lang-zh">插件管理</span></figcaption>
+          </figure>
+          <figure class="shot-card reveal" style="--i:3">
+            <img src="./assets/images/phone-04-phone-assistant.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Phone assistant settings with permission gates and diagnostics">
+            <figcaption><span class="lang-en">Phone Assistant</span><span class="lang-zh">手机助手</span></figcaption>
+          </figure>
+        </div>
+
+        <p class="eyebrow" style="margin-top: 40px"><span class="lang-en">Everything around it — ready out of the box</span><span class="lang-zh">配套设施：开箱即用</span></p>
+        <div class="shot-grid">
+          <figure class="shot-card reveal" style="--i:0">
+            <img src="./assets/images/phone-05-files.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Built-in file manager browsing the sandbox workspace">
+            <figcaption><span class="lang-en">File Manager</span><span class="lang-zh">文件管理器</span></figcaption>
+          </figure>
+          <figure class="shot-card reveal" style="--i:1">
+            <img src="./assets/images/phone-06-terminal.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Terminal session running the opencode agent inside DSHBox">
             <figcaption><span class="lang-en">Terminal</span><span class="lang-zh">终端</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:2">
-            <img src="./assets/images/phone-04-files.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Built-in file manager browsing a workspace in DSHBox">
-            <figcaption><span class="lang-en">File Manager</span><span class="lang-zh">文件管理器</span></figcaption>
+            <img src="./assets/images/phone-07-update-dsh.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Updating the DSH runtime from an npm source inside DSHBox">
+            <figcaption><span class="lang-en">Update DSH</span><span class="lang-zh">更新 DSH</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:3">
-            <img src="./assets/images/phone-06-settings.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="DSHBox settings and update page">
-            <figcaption><span class="lang-en">Settings &amp; Updates</span><span class="lang-zh">设置与更新</span></figcaption>
+            <img src="./assets/images/phone-08-update-runtime.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Importing the Linux and Node runtime layers inside DSHBox">
+            <figcaption><span class="lang-en">Update Runtime</span><span class="lang-zh">更新运行环境</span></figcaption>
           </figure>
         </div>
       </div>
@@ -459,8 +485,8 @@
           <div class="req-card reveal" style="--i:1">
             <h3><span class="lang-en">Storage &amp; Network</span><span class="lang-zh">存储与网络</span></h3>
             <ul>
-              <li><span class="lang-en">237 MB for the APK download</span><span class="lang-zh">APK 下载占 237 MB</span></li>
-              <li><span class="lang-en">193 MB runtime environment after first setup</span><span class="lang-zh">首次初始化后运行环境占 193 MB</span></li>
+              <li><span class="lang-en"><span data-fact="apkSize">110.7 MB</span> for the APK download</span><span class="lang-zh">APK 下载占 <span data-fact="apkSize">110.7 MB</span></span></li>
+              <li><span class="lang-en"><span data-fact="runtimeSize">193 MB</span> runtime environment after first setup</span><span class="lang-zh">首次初始化后运行环境占 <span data-fact="runtimeSize">193 MB</span></span></li>
               <li><span class="lang-en">Network needed for first-time initialization</span><span class="lang-zh">首次初始化需要网络</span></li>
             </ul>
           </div>
@@ -469,7 +495,7 @@
             <ul>
               <li><span class="lang-en">Debian user-space via PRoot</span><span class="lang-zh">PRoot 提供的 Debian 用户态</span></li>
               <li><span class="lang-en">Node.js runtime</span><span class="lang-zh">Node.js 运行时</span></li>
-              <li><span class="lang-en">DSH 0.1.1-rc.2</span><span class="lang-zh">DSH 0.1.1-rc.2</span></li>
+              <li><span class="lang-en">DSH <span data-fact="dshVersion">0.2.0-rc.2</span></span><span class="lang-zh">DSH <span data-fact="dshVersion">0.2.0-rc.2</span></span></li>
               <li><span class="lang-en">Embedded WebView + local web server</span><span class="lang-zh">内嵌 WebView + 本地 Web 服务</span></li>
             </ul>
           </div>
@@ -518,29 +544,25 @@
                 <span class="lang-en">What's new in this version</span>
                 <span class="lang-zh">本次版本更新内容</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.3.1</span>
+              <span class="whats-new-badge" data-release-tag>v1.4.0</span>
               <span class="whats-new-date" data-release-date hidden></span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>DSH 0.1.5-rc.2 support</strong> — the mobile breakpoints of session persistence, file tools, attachments and the right-hand preview are all fixed.</span>
-                <span class="lang-zh"><strong>适配 DSH 0.1.5-rc.2</strong> — 会话持久化、文件工具、附件发布、右栏预览等移动端断点逐个打通。</span>
+                <span class="lang-en"><strong>Phone assistant (DshPilot)</strong> — 39 device-control capabilities over a mailbox channel, with three execution backends and two modes.</span>
+                <span class="lang-zh"><strong>手机助手（DshPilot）</strong> — 39 项操控能力，经信箱通道让 DSH 安全操控手机；三类执行通路 + 两种执行模式。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Runtime hard-link shim</strong> — hard links are rejected on Android data storage, which broke DSH's file publishing. Fixed at runtime; no DSH source is modified.</span>
-                <span class="lang-zh"><strong>运行期硬链接垫片</strong> — 安卓数据分区拒绝硬链接，会中断 DSH 的文件发布。改为运行期生效，DSH 源码零改写。</span>
+                <span class="lang-en"><strong>Plugin manager &amp; market</strong> — bundled, official and third-party plugins on one page, plus an absolute safe mode and opencode.</span>
+                <span class="lang-zh"><strong>插件管理面板与插件市场</strong> — 随包自制、官方与第三方插件集中管理；含绝对安全模式与终端 Agent opencode。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Cross-WebView compatibility</strong> — fixes the right-hand file preview reporting "file resource service unavailable" on older WebView kernels. Applied only where needed.</span>
-                <span class="lang-zh"><strong>跨 WebView 版本适配</strong> — 修复旧内核下右栏点文件报「文件资源服务不可用」，仅在异常内核上生效。</span>
+                <span class="lang-en"><strong>Runtime fetched online</strong> — no longer bundled; the APK drops from ~236 MB to ~111 MB, with per-layer mirror update and reset.</span>
+                <span class="lang-zh"><strong>运行环境改为在线获取</strong> — 不再随包内嵌，APK 由约 236 MB 降至约 111 MB；可按层多镜像源更新与重置。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Diagnostics &amp; Logs</strong> — adds a real WebView engine fingerprint and live CSS capability probes, for pinpointing kernel-related page issues.</span>
-                <span class="lang-zh"><strong>诊断与日志</strong> — 新增 WebView 内核指纹与 CSS 能力实机探测，用于定位页面异常。</span>
-              </li>
-              <li>
-                <span class="lang-en"><strong>Feedback entry</strong> — a new Feedback section in Settings links to GitHub for stars and issue reports.</span>
-                <span class="lang-zh"><strong>用户反馈</strong> — 设置新增入口，可一键前往 GitHub 点 Star 或提交问题。</span>
+                <span class="lang-en"><strong>DSH 0.2.0-rc.2 support</strong> — camera and video capture, voice input, the side-bar terminal and the in-sidebar browser are enabled.</span>
+                <span class="lang-zh"><strong>深度适配 DSH 0.2.0-rc.2</strong> — 开启拍照与录像、语音输入、右侧边栏终端与内嵌浏览器。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -643,8 +665,8 @@
               <span class="lang-zh">如何升级 DSH？</span>
             </summary>
             <p>
-              <span class="lang-en">DSHBox ships a pinned, tested DSH version (currently 0.1.1-rc.2). Updates arrive with new DSHBox releases — check the Releases page for details.</span>
-              <span class="lang-zh">DSHBox 内置经过测试的固定 DSH 版本（当前为 0.1.1-rc.2），随 DSHBox 新版本一起更新，详情见 Releases 页面。</span>
+              <span class="lang-en">DSHBox ships a pinned, tested DSH version (currently <span data-fact="dshVersion">0.2.0-rc.2</span>). Updates arrive with new DSHBox releases — check the Releases page for details.</span>
+              <span class="lang-zh">DSHBox 内置经过测试的固定 DSH 版本（当前为 <span data-fact="dshVersion">0.2.0-rc.2</span>），随 DSHBox 新版本一起更新，详情见 Releases 页面。</span>
             </p>
           </details>
           <details class="faq-item reveal" style="--i:7">
@@ -699,7 +721,7 @@
       <div class="footer-grid">
         <div class="footer-col footer-brand">
           <span class="footer-brand-row">
-            <img src="./assets/images/app-icon.png" width="192" height="192" alt="DSHBox app icon">
+            <img src="./assets/images/icon.svg" width="1024" height="1024" alt="DSHBox brand mark">
             <span class="brand-name">DSHBox</span>
           </span>
           <p>
@@ -747,6 +769,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.3.1" defer></script>
+  <script src="./assets/js/main.js?v=1.4.0" defer></script>
 </body>
 </html>

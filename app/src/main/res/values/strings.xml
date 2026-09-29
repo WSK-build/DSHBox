@@ -55,6 +55,8 @@
     <string name="diagnostics_empty">(empty)</string>
     <string name="diagnostics_export">Export logs</string>
     <string name="diagnostics_export_done">Logs exported</string>
+    <string name="diagnostics_copy">Copy</string>
+    <string name="diagnostics_copy_done">Copied to clipboard</string>
     <string name="diagnostics_log_dsh">DSH process log</string>
     <string name="diagnostics_log_guest">Guest command log</string>
     <string name="diagnostics_log_sandbox">Sandbox process log</string>
@@ -114,6 +116,7 @@
     <string name="fileops_err_open_input_stream">Cannot open the selected file (openInputStream returned null)</string>
     <string name="fileops_err_write_file">Cannot write the export file %1$s</string>
     <string name="files_archive_binary_entry">This entry is not text. Export it to view.</string>
+    <string name="files_dshbox_readonly">DSHBox app asset (read-only): this folder ships with the app and cannot be edited or deleted</string>
     <string name="files_archive_empty">The archive contains no entries</string>
     <string name="files_archive_encrypted_entry">Encrypted entries cannot be previewed in-app. Open externally instead.</string>
     <string name="files_archive_encrypted_hint">encrypted entries</string>
@@ -235,6 +238,8 @@
     <string name="files_new_folder">New folder</string>
     <string name="files_new_folder_confirm">Create</string>
     <string name="files_new_folder_hint">Enter folder name</string>
+    <string name="files_new_file">New file</string>
+    <string name="files_new_file_hint">Enter file name</string>
     <string name="files_newline_follow">Follow original</string>
     <string name="files_newline_hint">Choose the line-ending style used when saving. "Follow original" keeps the file as-is.</string>
     <string name="files_office_no_text">No text extracted: the document may be empty or unsupported. Try opening externally.</string>
@@ -302,6 +307,10 @@
     <string name="files_search_scanning">Searching the whole sandbox…</string>
     <string name="files_select_hint">Long-press to select files or folders to export</string>
     <string name="files_share">Export / share</string>
+    <string name="files_list_truncated">Only the first %1$d files are shown (folders are complete)</string>
+    <string name="files_install_deb">Install into sandbox</string>
+    <string name="files_install_deb_done">Installed</string>
+    <string name="files_install_deb_failed">Install failed</string>
     <string name="files_sort">Sort</string>
     <string name="files_sort_name">Sort by name</string>
     <string name="files_sort_size">Sort by size</string>
@@ -316,13 +325,10 @@
     <string name="files_viewer_loading">Opening…</string>
     <string name="files_viewer_read_failed">File is unreadable or has been deleted</string>
     <string name="files_viewer_retry">Retry</string>
-    <string name="home_address_caption">On-device only, no internet needed</string>
-    <string name="home_address_hint">Local access address</string>
-    <string name="home_copied">Copied</string>
-    <string name="home_copy">Copy</string>
     <string name="home_dsh_error">DSH error</string>
     <string name="home_dsh_needs_sandbox_hint">The sandbox must be running before DSH can start</string>
     <string name="home_dsh_ready">DSH ready</string>
+    <string name="home_dsh_unresponsive">DSH not responding, verifying…</string>
     <string name="home_dsh_restart">Restart DSH</string>
     <string name="home_dsh_start">Start DSH</string>
     <string name="home_dsh_stop">Stop DSH</string>
@@ -330,7 +336,13 @@
     <string name="home_dsh_stop_confirm_title">Stop DSH?</string>
     <string name="home_dsh_stopped">DSH stopped</string>
     <string name="home_open">Open DSH in browser</string>
+    <string name="home_browser">Browser</string>
+    <string name="home_pilot_title">DshPilot</string>
+    <string name="home_pilot_subtitle">Connects DSH and your phone</string>
+    <string name="home_open_browser_failed">Could not open a browser</string>
+    <string name="home_open_no_token">Launch token is not ready yet; try again in a moment</string>
     <string name="home_runtime_import">Go to Settings</string>
+    <string name="home_runtime_get_online">Import runtime online</string>
     <string name="home_runtime_installing">Installing runtime automatically</string>
     <string name="home_runtime_installing_hint">First run unpacks the bundled runtime automatically (about 1–3 minutes). No action needed.</string>
     <string name="home_runtime_missing">Runtime not installed</string>
@@ -344,7 +356,6 @@
     <string name="home_stop_cancel">Cancel</string>
     <string name="home_stop_confirm">Stop</string>
     <string name="home_uptime_format">Running for %1$s</string>
-    <string name="home_version_format">Version %1$s</string>
     <string name="move_err_copy_place_failed">Failed to place the copied item: %1$s</string>
     <string name="move_err_copy_verify_failed">Copy verification failed: %1$s (expected %2$d bytes, got %3$d bytes)</string>
     <string name="move_err_data_preserved">; source data preserved at %1$s</string>
@@ -477,6 +488,7 @@
     <string name="tab_terminal">Terminal</string>
     <string name="terminal_action_failsafe">Restricted shell</string>
     <string name="terminal_action_open_sandbox_terminal">Switch to sandbox terminal</string>
+    <string name="terminal_action_switch_to_sandbox">Terminal</string>
     <string name="terminal_action_restart">Restart session</string>
     <string name="terminal_action_start_sandbox">Start sandbox</string>
     <string name="terminal_banner_failsafe">Restricted shell — sandbox offline, basic commands only</string>
@@ -543,4 +555,70 @@
     <string name="webview_upload_partial_failed">%1$d of %2$d file(s) could not be read and were skipped</string>
 
     <string name="webview_settings_doc_missing">Configuration file not found: user-data/.dsh/settings.yaml</string>
+
+    <string name="online_import_title">Import runtime online</string>
+    <string name="online_import_slim_title">Slim Debian edition</string>
+    <string name="online_import_explain">Downloads and assembles a slim Debian: only non-essential locales, documents and manuals are removed; all functional components are kept. It does not affect normal use and reduces storage pressure.</string>
+    <string name="online_import_intro">Downloads the Debian base and Node.js from mirror sources and assembles the runtime on this device. The offline import stays available as a no-network fallback.</string>
+    <string name="online_import_sources_deb">Debian software sources</string>
+    <string name="online_import_sources_node">Node.js sources</string>
+    <string name="online_import_start">Get &amp; install</string>
+    <string name="online_import_reprobe">Re-probe</string>
+    <string name="online_import_confirm_title">Stop sandbox and get runtime online?</string>
+    <string name="online_import_confirm_msg">The import stops the sandbox first, then downloads and assembles the runtime from the selected mirrors (auto-failover on failure). Keep the device online; the deb cache makes retries cheap.</string>
+    <string name="online_import_confirm_action">Start</string>
+    <!-- Install-status probe (below "Get &amp; install"): tells the user whether this is a first install or a re-install -->
+    <string name="online_layer_status_title">Installation status</string>
+    <string name="online_layer_installed">Installed</string>
+    <string name="online_layer_installed_just_now">Installed · just updated</string>
+    <string name="online_layer_not_installed">Not installed</string>
+    <string name="online_layer_checking">Checking…</string>
+    <string name="online_layer_status_hint">Tap to check again</string>
+    <!-- Second confirm for users who already have the layer (same dialog template as the offline runtime import) -->
+    <string name="online_reinstall_title">Re-fetch and install</string>
+    <string name="online_reinstall_debian_msg">Installing Debian resets the base layer of the current runtime, but your workspace data and .dsh data are protected.</string>
+    <string name="online_reinstall_node_msg">Installing node resets the node layer of the current runtime, but your workspace data and .dsh data are protected.</string>
+    <string name="online_reinstall_action">Install</string>
+    <string name="online_import_cancel">Cancel</string>
+    <string name="online_import_back_to_list">Back to sources</string>
+    <string name="online_source_probing">Probing…</string>
+    <string name="online_source_ok_ms">%1$d ms</string>
+    <string name="online_source_unreachable">Unreachable</string>
+    <string name="online_source_unreachable_reason">Unreachable: %1$s</string>
+    <string name="online_stage_prepare">Preparing</string>
+    <string name="online_stage_index">Fetching package index</string>
+    <string name="online_stage_packages">Downloading packages</string>
+    <string name="online_stage_db">Building package database</string>
+    <string name="online_stage_fixes">Applying system configuration</string>
+    <string name="online_stage_trim">Trimming to the slim edition</string>
+    <string name="online_stage_verify">Verifying</string>
+    <string name="online_stage_node">Fetching Node.js</string>
+    <string name="online_stage_seal">Sealing runtime</string>
+    <string name="online_stage_install">Installing runtime</string>
+    <string name="online_stage_dsh">Provisioning DSH baseline</string>
+    <string name="online_stage_done">Done</string>
+    <string name="online_stage_failed">Failed</string>
+    <string name="online_err_low_storage">Not enough storage (need ~%1$s GB, only %2$s GB free)</string>
+    <string name="online_err_manifest">The built-in package manifest is missing or incompatible</string>
+    <string name="online_err_no_source">No usable mirror source</string>
+    <string name="online_err_index">Failed to fetch the package index: %1$s</string>
+    <string name="online_err_gpg">Package index signature verification failed (source is not a trusted Debian mirror)</string>
+    <string name="online_err_missing">Mirror lacks required packages: %1$s</string>
+    <string name="online_err_deb">Failed to download or verify package: %1$s</string>
+    <string name="online_err_node">Failed to fetch Node.js: %1$s</string>
+    <string name="online_err_need_debian">Import the Linux (slim Debian) layer first</string>
+    <string name="online_err_verify">Verification failed: %1$s</string>
+    <string name="online_err_ldconfig">Failed to generate the dynamic linker cache</string>
+    <string name="online_err_cancelled">Import cancelled</string>
+
+<string name="online_hub_debian">Import Linux (slim Debian) layer</string>
+<string name="online_hub_debian_desc">Probe mirrors, assemble the trimmed Debian base on this device, then install the bundled DSH baseline.</string>
+<string name="online_hub_node">Import node layer</string>
+<string name="online_hub_node_desc">Download and assemble the Node.js runtime layer; the Linux layer must be imported first.</string>
+<string name="online_source_no_target">Reachable, required content missing</string>
+<string name="online_node_intro">Downloads the Node.js runtime layer from mirrors and installs it. The Linux (slim Debian) layer must be imported first.</string>
+
+    <string name="home_node_missing">Node.js layer not imported</string>
+    <string name="home_node_missing_hint">The Linux layer is ready. Import the Node.js layer to start DSH.</string>
+    <string name="home_node_missing_action">Import runtime online</string>
 </resources>

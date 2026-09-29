@@ -5,6 +5,7 @@ import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.Constants
 import com.dshbox.app.common.UiText
 import com.dshbox.app.common.LogRedactor
+import com.dshbox.app.common.coroutineFailureHandler
 import com.dshbox.app.sandbox.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,18 +39,28 @@ import java.util.zip.ZipFile
 class DefaultSandboxManager(
     private val config: SandboxConfig,
     private val healthChecker: SandboxHealthChecker = HttpHealthChecker(config.dshHost, config.dshPort),
+    /**
+     * 设备是否处于交互状态（唤醒且亮屏）。健康循环据此区分探测失败的性质：设备休眠
+     * 时 guest 会被整体冻结，此时的失败是暂时状态，不该判为故障。
+     */
+    private val isDeviceInteractive: () -> Boolean = { true },
 ) : SandboxManager {
 
     private val bundleManager = BundleManager(config)
     private val processRunner = SandboxProcessRunner(config)
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + coroutineFailureHandler(TAG),
+    )
 
     private val _sandboxState = MutableStateFlow(SandboxState.UNINITIALIZED)
     override val sandboxState: StateFlow<SandboxState> = _sandboxState.asStateFlow()
 
     private val _dshState = MutableStateFlow(DshState.UNINITIALIZED)
     override val dshState: StateFlow<DshState> = _dshState.asStateFlow()
+
+    private val _dshUnresponsive = MutableStateFlow(false)
+    override val dshUnresponsive: StateFlow<Boolean> = _dshUnresponsive.asStateFlow()
 
     private val _dshVersion = MutableStateFlow<String?>(null)
     override val dshVersion: StateFlow<String?> = _dshVersion.asStateFlow()
@@ -67,8 +78,6 @@ class DefaultSandboxManager(
     @Volatile
     private var dshHealthLoopJob: Job? = null
     @Volatile
-    private var restartAttempts = 0
-    @Volatile
     private var sandboxProcess: SandboxProcessRunner.RunningProcess? = null
     @Volatile
     private var dshProcess: SandboxProcessRunner.RunningProcess? = null
@@ -84,7 +93,7 @@ class DefaultSandboxManager(
             return
         }
         // 一次性迁移——旧实现把 npm 下载缓存留在 base/root/.npm
-        // （运行环境本体红线区，清理功能清不到，实测膨胀 446MB）。此后 npm 缓存
+        // （运行环境本体红线区，清理功能清不到，可膨胀至数百 MB）。随后 npm 缓存
         // 由 runGuestCommand 的 bind 指向宿主 cacheDir/npm-cache，base 内不再写入；
         // 这里幂等删除旧残留以释放空间（缓存无状态，删除安全；无残留时为空操作）。
         runCatching { File(baseRootfs(), "root/.npm").deleteRecursively() }
@@ -177,6 +186,18 @@ class DefaultSandboxManager(
                 ),
             )
         }
+        // 在线导入拆分后 base/node 是两步：仅装 Linux 层时快速拒绝并指向 node 层导入，
+        // 避免落到 proot 层报"找不到 /usr/local/bin/node"的难懂错误。
+        if (!isNodeLayerInstalled()) {
+            return AppResult.Failure(
+                AppError(
+                    code = "NODE_LAYER_MISSING",
+                    message = "node layer not installed; import it before starting DSH",
+                    recoverable = true,
+                    userMessage = UiText.Res(R.string.dsh_start_need_node),
+                ),
+            )
+        }
 
         val shouldStart = lifecycleMutex.withLock {
             val activeNow =
@@ -191,6 +212,13 @@ class DefaultSandboxManager(
                 _dshState.value = DshState.STARTING
                 try {
                     ensureRuntimePresent()
+                    // 本进程尚未跟踪任何实例，但上一轮 App 进程可能留下仍占着 3080 的孤儿
+                    // dsh（句柄随进程回收一并丢失）。先按 cmdline 兜底清扫，否则新实例会因
+                    // 端口被占（EADDRINUSE）启动失败——与停机、就地重启两处相同的兜底。
+                    runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
+                    // Start 前清掉"持有者已不存在"的写者锁：dsh 的原子写只等 2 秒且
+                    // 不会清理别人留下的锁，一次强杀就能让之后的启动全部失败。
+                    sweepDeadWriterLocks()
                     val runtimeDir = runtimeCurrentDir()
                     val command = processRunner.buildProotDshCommand(
                         prootBinary = prootBinary().absolutePath,
@@ -199,6 +227,8 @@ class DefaultSandboxManager(
                         nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
                         dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
                         shimHostDir = linkShimHostDir(),
+                        dshPatchGuestPaths = dshOverlayGuestPaths(),
+                        pilotHostDir = pilotHostDir(),
                     )
                     val prootEnv = buildProotEnv(runtimeDir, "dsh")
                     Log.i(TAG, "starting dsh proot")
@@ -214,9 +244,8 @@ class DefaultSandboxManager(
         }
 
         if (shouldStart) {
-            restartAttempts = 0
-            // Fresh process: always (re)create the health loop. Any stale loop
-            // from a previous session is cancelled here.
+            // Fresh process: always (re)create the health loop with fresh window state.
+            // Any stale loop from a previous session is cancelled here.
             startDshHealthLoop()
         } else if (dshHealthLoopJob?.isActive != true) {
             // Already active path: only start a loop when none is watching.
@@ -265,13 +294,14 @@ class DefaultSandboxManager(
         dshHealthLoopJob?.cancel()
         dshHealthLoopJob = null
         dshProcess?.let { processRunner.stop(it) }
-        // 仅靠 dshProcess 句柄不可靠——真机实证句柄为 null 时旧 DSH
+        // 仅靠 dshProcess 句柄不可靠——句柄为 null 时旧 DSH
         // proot 继续存活、占着 3080，换层后新 DSH 反复 EADDRINUSE 起不来。
         // 按 cmdline marker（@deepseek-ai/dsh/lib/bin.js）兜底清扫旧 DSH 进程树，
         // 保证停机路径 3080 必然释放（安装/重启用，含句柄丢失场景）。
         runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
         dshProcess = null
         _dshState.value = DshState.STOPPED
+        _dshUnresponsive.value = false
         Log.i(TAG, "stopDsh(): dsh=STOPPED")
     }
 
@@ -298,6 +328,8 @@ class DefaultSandboxManager(
         _sandboxState.value = SandboxState.STOPPED
         _dshState.value = DshState.STOPPED
     }
+
+    override fun isNodeLayerInstalled(): Boolean = File(nodeLayerDir(), "bin/node").isFile
 
     override fun isRuntimeInstalled(): Boolean {
         val proot = prootBinary()
@@ -424,7 +456,7 @@ class DefaultSandboxManager(
     }
 
     /**
-     * Offline-import a layered runtime bundle (per plan §2.3) as EITHER:
+     * Offline-import a layered runtime bundle as EITHER:
      *  - a ZIP holding the body layer archives (base/node/android-side <layer>.tar.*
      *    + .sha256 sidecars + runtime-profile.json), flat or under ONE common
      *    top-level folder (Windows 右键压缩文件夹会产生该前缀), OR
@@ -525,7 +557,7 @@ class DefaultSandboxManager(
                 //  A) 快照布局：直接是 base/、node/、android-side/ 目录 + runtime-profile.json；
                 //  B) 层归档布局（tar of archives）：把官方 zip 的内容（base.tar.* 等层归档 +
                 //     profile）原样打成 tar —— 自动按 zip 同款逻辑识别层归档并解压，
-                //     消除「tar 里装的是归档文件就报缺少 base 层」的坑。
+                //     消除「tar 里装的是归档文件就报缺少 base 层」的误报。
                 when (val r = bundleManager.extractTarGz(source, staging)) {
                     is AppResult.Failure -> return@withLock r
                     is AppResult.Success -> Unit
@@ -572,29 +604,7 @@ class DefaultSandboxManager(
                 return@withLock AppResult.Failure(AppError("BUNDLE_NO_BASE", "Runtime bundle missing base layer",
                     userMessage = UiText.Res(R.string.bundle_no_base)))
             }
-            val runtimeDir = runtimeCurrentDir()
-            val previous = File(runtimeDir, "previous")
-            // Move CURRENT body -> previous/ (single copy). DSH layer + user-data untouched.
-            for (layer in layerNames) {
-                val curLayer = File(runtimeDir, layer)
-                val prevLayer = File(previous, layer)
-                if (prevLayer.exists()) prevLayer.deleteRecursively()
-                if (curLayer.exists() && !curLayer.renameTo(prevLayer)) curLayer.deleteRecursively()
-            }
-            val curProfile = File(runtimeDir, "runtime-profile.json")
-            val prevProfile = File(previous, "runtime-profile.json")
-            if (prevProfile.exists()) prevProfile.delete()
-            if (curProfile.exists()) curProfile.renameTo(prevProfile)
-            // Move the NEW body from staging into runtime-current.
-            for (layer in layerNames) {
-                val srcLayer = File(staging, layer)
-                if (srcLayer.isDirectory) {
-                    val destLayer = File(runtimeDir, layer)
-                    if (!srcLayer.renameTo(destLayer)) srcLayer.copyRecursively(destLayer, overwrite = true)
-                }
-            }
-            val stagedProfile = File(staging, "runtime-profile.json")
-            if (stagedProfile.isFile) stagedProfile.copyTo(File(runtimeDir, "runtime-profile.json"), overwrite = true)
+            swapRuntimeBody(staging, layerNames)
             Log.i(TAG, "importRuntimeBundle: layered body replaced (base/node/android-side + profile), dsh & user-data untouched")
             return@withLock AppResult.Success(Unit)
         } catch (t: Throwable) {
@@ -603,6 +613,149 @@ class DefaultSandboxManager(
         } finally {
             staging.deleteRecursively()
         }
+    }
+
+    override suspend fun installAssembledRuntime(staging: File): AppResult<Unit> = lifecycleMutex.withLock {
+        if (_sandboxState.value == SandboxState.RUNNING) {
+            return@withLock AppResult.Failure(
+                AppError("SANDBOX_RUNNING", "stop the sandbox before installing the assembled runtime",
+                    userMessage = UiText.Res(R.string.bundle_sandbox_running)),
+            )
+        }
+        // 必需层 = base + android-side；node 可选（由独立入口导入）——重装 Linux 层时
+        // **保留**已装 node（swapRuntimeBody 只搬 layerNames 内的层，node 不在清单即不动）。
+        val layerNames = buildList {
+            if (File(staging, "base").isDirectory) add("base")
+            if (File(staging, "node").isDirectory) add("node")
+            if (File(staging, "android-side").isDirectory) add("android-side")
+        }
+        if (!layerNames.containsAll(listOf("base", "android-side"))) {
+            return@withLock AppResult.Failure(
+                AppError("BUNDLE_INCOMPLETE", "assembled runtime staging is missing base/android-side"),
+            )
+        }
+        swapRuntimeBody(staging, layerNames)
+        // profile 与磁盘现状对齐：staging 不含 node 而已装 node 时，重建的 profile 会把
+        // 保留的 node 一并声明（hash 现算 + 哨兵自愈），verifyLayersBroken 语义不破。
+        regenerateProfile()
+        Log.i(TAG, "installAssembledRuntime: assembled body installed (layers=$layerNames), dsh & user-data untouched")
+        AppResult.Success(Unit)
+    }
+
+    override suspend fun installNodeLayer(stagingNodeDir: File): AppResult<Unit> = lifecycleMutex.withLock {
+        if (_sandboxState.value == SandboxState.RUNNING) {
+            return@withLock AppResult.Failure(
+                AppError("SANDBOX_RUNNING", "stop the sandbox before installing the node layer",
+                    userMessage = UiText.Res(R.string.bundle_sandbox_running)),
+            )
+        }
+        if (!stagingNodeDir.isDirectory || !File(stagingNodeDir, "bin/node").isFile) {
+            return@withLock AppResult.Failure(
+                AppError("BUNDLE_INCOMPLETE", "staging node layer is missing bin/node"),
+            )
+        }
+        val runtimeDir = runtimeCurrentDir()
+        if (!File(runtimeDir, "base").isDirectory) {
+            return@withLock AppResult.Failure(
+                AppError("NODE_NO_BASE", "base layer not installed; import the Linux layer first"),
+            )
+        }
+        // 旧 node → previous/node（单副本），新 node 上位。
+        val nodeDir = File(runtimeDir, "node")
+        val prevNode = File(runtimeDir, "previous/node")
+        if (prevNode.exists()) prevNode.deleteRecursively()
+        if (nodeDir.exists() && !nodeDir.renameTo(prevNode)) nodeDir.deleteRecursively()
+        if (!stagingNodeDir.renameTo(nodeDir)) {
+            stagingNodeDir.copyRecursively(nodeDir, overwrite = true)
+            stagingNodeDir.deleteRecursively()
+        }
+        regenerateProfile()
+        Log.i(TAG, "installNodeLayer: node layer installed, profile regenerated, dsh & user-data untouched")
+        AppResult.Success(Unit)
+    }
+
+    /**
+     * 按当前实际在位的层目录（base/node/android-side 按规范序）重建
+     * runtime-profile.json 并补写哨兵——在线分步导入（先 Linux 层后 node 层）后
+     * profile 必须与磁盘现状一致，否则 verifyLayersBroken 会误判损坏。
+     * 调用方持有 lifecycleMutex。
+     */
+    private fun regenerateProfile() {
+        val dir = runtimeCurrentDir()
+        val base = File(dir, "base")
+        val node = File(dir, "node")
+        val aside = File(dir, "android-side")
+        if (!base.isDirectory || !aside.isDirectory) return
+        val hasNode = node.isDirectory && File(node, "bin/node").isFile
+        val baseSha = com.dshbox.app.sandbox.online.DirHash.sha256(base)
+        val asideSha = com.dshbox.app.sandbox.online.DirHash.sha256(aside)
+        val nodeSha = if (hasNode) com.dshbox.app.sandbox.online.DirHash.sha256(node) else null
+        val nodeVersion = if (hasNode) {
+            // node 版本从既有 profile 声明继承（重建不改版本基线）；无 profile 时用常量。
+            val declared = runtimeProfile()?.layer("node")?.version
+                ?: com.dshbox.app.common.NodeSources.NODE_VERSION
+            declared
+        } else null
+        // arch 从既有 profile 继承（x86_64 模拟器装 amd64 层时不得被硬编码回 arm64）。
+        val arch = runtimeProfile()?.arch?.takeIf { it.isNotBlank() } ?: "arm64"
+        val builtAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date())
+        val profile = com.dshbox.app.sandbox.online.RuntimeProfileWriter.build(
+            bundleVersion = "0.1.0", arch = arch,
+            baseVersion = runtimeProfile()?.layer("base")?.version ?: "0.1.0",
+            baseSha256 = baseSha, baseSizeBytes = com.dshbox.app.sandbox.online.DirHash.sizeBytes(base),
+            nodeVersion = nodeVersion, nodeSha256 = nodeSha,
+            nodeSizeBytes = if (hasNode) com.dshbox.app.sandbox.online.DirHash.sizeBytes(node) else null,
+            asideVersion = runtimeProfile()?.layer("android-side")?.version ?: "0.1.0",
+            asideSha256 = asideSha, asideSizeBytes = com.dshbox.app.sandbox.online.DirHash.sizeBytes(aside),
+            builtAtIsoUtc = builtAt,
+        )
+        File(dir, "runtime-profile.json").writeText(profile)
+        // 哨兵与重建后的声明保持一致（自愈式写回，缺则补）。
+        runCatching {
+            File(File(base, ".dshbox"), "layer-base.sha256").parentFile?.mkdirs()
+            File(File(base, ".dshbox"), "layer-base.sha256").writeText(baseSha)
+            File(File(aside, ".dshbox"), "layer-android-side.sha256").parentFile?.mkdirs()
+            File(File(aside, ".dshbox"), "layer-android-side.sha256").writeText(asideSha)
+            if (hasNode && nodeSha != null) {
+                File(File(node, ".dshbox"), "layer-node.sha256").parentFile?.mkdirs()
+                File(File(node, ".dshbox"), "layer-node.sha256").writeText(nodeSha)
+            }
+        }
+        Log.i(TAG, "regenerateProfile: base=${baseSha.take(12)} node=${nodeSha?.take(12)} aside=${asideSha.take(12)} hasNode=$hasNode")
+    }
+
+    /**
+     * 分层 body 替换（[importRuntimeBundle] 与 [installAssembledRuntime] 共用）：
+     * 旧 body（base/node/android-side + profile）整体搬 runtime-current/previous/
+     * （单副本，先删旧 previous），staging 的新 body 搬进 runtime-current。
+     * dsh 层与 user-data 全程不碰。调用方持有 lifecycleMutex。
+     */
+    private fun swapRuntimeBody(staging: File, layerNames: List<String>) {
+        val runtimeDir = runtimeCurrentDir()
+        val previous = File(runtimeDir, "previous")
+        // Move CURRENT body -> previous/ (single copy). DSH layer + user-data untouched.
+        for (layer in layerNames) {
+            val curLayer = File(runtimeDir, layer)
+            val prevLayer = File(previous, layer)
+            if (prevLayer.exists()) prevLayer.deleteRecursively()
+            if (curLayer.exists() && !curLayer.renameTo(prevLayer)) curLayer.deleteRecursively()
+        }
+        val curProfile = File(runtimeDir, "runtime-profile.json")
+        val prevProfile = File(previous, "runtime-profile.json")
+        if (prevProfile.exists()) prevProfile.delete()
+        if (curProfile.exists()) curProfile.renameTo(prevProfile)
+        // Move the NEW body from staging into runtime-current.
+        for (layer in layerNames) {
+            val srcLayer = File(staging, layer)
+            if (srcLayer.isDirectory) {
+                val destLayer = File(runtimeDir, layer)
+                if (!srcLayer.renameTo(destLayer)) srcLayer.copyRecursively(destLayer, overwrite = true)
+            }
+        }
+        val stagedProfile = File(staging, "runtime-profile.json")
+        if (stagedProfile.isFile) stagedProfile.copyTo(File(runtimeDir, "runtime-profile.json"), overwrite = true)
     }
 
     /** True when [path] (canonical) equals or lives under [dir] (canonical). */
@@ -695,7 +848,7 @@ class DefaultSandboxManager(
     ): AppResult<Unit> = withContext(Dispatchers.IO) {
         // npm 的默认缓存位置是 ~/.npm（guest HOME=/root）。把它 bind 到宿主
         // cacheDir/npm-cache，下载中间产物不再落 base/root/.npm（运行环境本体红线区、
-        // 清理功能清不到，实测曾膨胀 446MB）；缓存归 cacheDir 后随「应用缓存」可一键清理。
+        // 清理功能清不到，可膨胀至数百 MB）；缓存归 cacheDir 后随「应用缓存」可一键清理。
         // bind 目标必须是已存在目录（proot 对不存在的 bind 目标会报错）。
         config.npmCacheDir.mkdirs()
         val proot = prootBinary().absolutePath
@@ -703,10 +856,22 @@ class DefaultSandboxManager(
             add(proot)
             add("--rootfs=${baseRootfs().absolutePath}")
             add("--bind=/system"); add("--bind=/apex"); add("--bind=/proc"); add("--bind=/dev")
-            add("--bind=${nodeLayerDir().absolutePath}:/usr/local")
+            // node 层可缺（仅装 Linux 层的在线导入形态）——bind 目标必须是已存在目录
+            // （proot 对不存在的 bind 目标会报错），缺层时跳过绑定。
+            nodeLayerDir().takeIf { it.isDirectory }?.let { add("--bind=${it.absolutePath}:/usr/local") }
             dshLayerDir().takeIf { it.isDirectory }?.let { add("--bind=${it.absolutePath}:/opt/dshapp/runtime") }
+            // 硬链接垫片：guest 命令若要用 `dsh`（工作区里的包装脚本会 --import 它），
+            // 这个挂载点必须在位。app 启动网页端 DSH 一直绑它，这里保持同口径。
+            config.dshShimDir.takeIf { it.isDirectory }
+                ?.let { add("--bind=${it.absolutePath}:${Constants.DSH_LINK_SHIM_GUEST_DIR}") }
+            // 工具链缓存（pnpm store / corepack 缓存）：`dsh plugin` 走 guest 命令时同样需要，
+            // 否则 pnpm 会按默认位置把 store 写进 base 层、把 corepack 缓存写进工作区。
+            config.guestCacheDir.apply { mkdirs() }
+                .let { add("--bind=${it.absolutePath}:${Constants.DSHBOX_GUEST_CACHE_DIR}") }
             add("--bind=${config.userDataDir.absolutePath}:/root/projects")
             add("--bind=${config.npmCacheDir.absolutePath}:/root/.npm")
+            // 手机助手通道：guest 里跑的 `dsh plugin` 之类命令也要能调宿主能力。
+            add("--bind=${pilotHostDir()}:/opt/pilot")
             add("--cwd=/root")
             add("--kill-on-exit")
             add("/system/bin/sh"); add("-c")
@@ -916,8 +1081,36 @@ class DefaultSandboxManager(
      * 不带绑定与预加载，DSH 退化为上游原始行为（硬链接失败的老问题会复现，
      * 但服务本身可启动）——这比彻底启动失败更可取。
      */
+    /**
+     * 传给 dsh 的 `--patch` 层：逐个按"文件存在且非空"追加（`--patch` 可重复）。
+     *
+     * 三个独立的层，分开是为了互不覆盖 —— 共用一份文件时，一方的回滚会把另一方的停用行抹掉：
+     *  - dsh-official-plugin：预置开启上游默认关闭的官方条目（如侧边栏浏览器）；**只由宿主写**；
+     *  - plugin-market：停用行（插件市场与安全模式共写）；**只由该模块写**；
+     *  - safe-mode：绝对安全模式独占（关闭 = 删文件）。
+     *
+     * 顺序即优先级：后追加的层覆盖前层，因此 absolute 排最后。
+     *
+     * 不存在时**不传**：传一个不存在的 patch 会让 dsh 启动直接失败，那比"少几个条目"严重得多。
+     */
+    private fun dshOverlayGuestPaths(): List<String> {
+        return listOf(
+            Constants.DSH_OFFICIAL_PLUGIN_OVERLAY_RELATIVE_PATH to
+                Constants.DSH_OFFICIAL_PLUGIN_OVERLAY_GUEST_PATH,
+            Constants.DSH_PLUGIN_MARKET_OVERLAY_RELATIVE_PATH to Constants.DSH_PLUGIN_MARKET_OVERLAY_GUEST_PATH,
+            Constants.DSH_SAFE_MODE_ABSOLUTE_OVERLAY_RELATIVE_PATH to
+                Constants.DSH_SAFE_MODE_ABSOLUTE_OVERLAY_GUEST_PATH,
+        ).mapNotNull { (relative, guest) ->
+            val overlay = File(config.userDataDir, relative)
+            guest.takeIf { overlay.isFile && overlay.length() > 0L }
+        }
+    }
+
     private fun linkShimHostDir(): String? =
         config.dshShimDir.absolutePath.takeIf { config.dshShimFile.isFile }
+
+    /** 手机助手暴露给 guest 的宿主目录（`/opt/pilot`）；目录为空只表示 guest 还没拿到入口脚本。 */
+    private fun pilotHostDir(): String = config.pilotEntryDir.apply { mkdirs() }.absolutePath
 
     /**
      * Assembles the host-process env for a proot role by sourcing the layered
@@ -944,7 +1137,7 @@ class DefaultSandboxManager(
             "@PROOT_TMP_DIR@" to tmpDir.absolutePath,
             "@HOME@" to "/root",
             "@TERM@" to "xterm-256color",
-            "@PATH@" to "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "@PATH@" to "${Constants.DSHBOX_ASSETS_GUEST_DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "@NODE_BIN@" to "/usr/local/bin/node",
             "@DSH_PERMISSION_MODE@" to "danger-full-access",
             "@DSH_BIN@" to "/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
@@ -983,6 +1176,13 @@ class DefaultSandboxManager(
             base["TMPDIR"] = "/tmp"
             base["TMP"] = "/tmp"
             base["TEMP"] = "/tmp"
+            // The guest /etc/passwd has no entry for the runtime uid (PRoot runs
+            // as the Android app uid), so Node's os.userInfo() fails with ENOENT
+            // from libuv getpwuid_r. The DSH web terminal resolves its shell via
+            // `process.env.SHELL || userInfo()`, so a non-empty SHELL short-
+            // circuits the lookup and the terminal starts without touching
+            // /etc/passwd.
+            base["SHELL"] = "/bin/bash"
         }
         return base
     }
@@ -1085,10 +1285,33 @@ class DefaultSandboxManager(
      * on success (a new process is running); false when the relaunch failed
      * (state already set to ERROR).
      */
+    /**
+     * 清理 `.dsh` 下持有者已不存在的 `*.lock`。
+     *
+     * 判定与纪律见 [DshWriterLockSweeper]；这里只提供真实环境的两件事：
+     * `/proc/<pid>` 存活判定，以及该判定本身是否可用（用本进程 PID 自检）。
+     */
+    private fun sweepDeadWriterLocks() {
+        val sweeper = DshWriterLockSweeper(
+            workspaceDir = config.userDataDir,
+            isProcessAlive = { pid -> File("/proc/$pid").exists() },
+            selfCheck = { File("/proc/${android.os.Process.myPid()}").exists() },
+        )
+        val result = runCatching { sweeper.sweep() }.getOrNull() ?: return
+        when {
+            result.skipped -> Log.i(TAG, "dsh writer-lock sweep skipped: /proc liveness check unavailable")
+            result.removed.isNotEmpty() -> Log.i(
+                TAG,
+                "dsh writer-lock sweep: removed ${result.removed.size}/${result.scanned} stale lock(s) " +
+                    result.removed.joinToString(","),
+            )
+        }
+    }
+
     private suspend fun restartDshProcessInPlace(): Boolean = lifecycleMutex.withLock {
         dshProcess?.let { processRunner.stop(it) }
         // 健康循环重启同样需要 cmdline 兜底，否则旧树不清时
-        // 新进程 EADDRINUSE、循环重启陷入死转（真机 17:15~17:22 实证）。
+        // 新进程 EADDRINUSE、循环重启陷入死转。
         runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
         dshProcess = null
         _dshState.value = DshState.STARTING
@@ -1102,6 +1325,8 @@ class DefaultSandboxManager(
                 nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
                 dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
                 shimHostDir = linkShimHostDir(),
+                dshPatchGuestPaths = dshOverlayGuestPaths(),
+                pilotHostDir = pilotHostDir(),
             )
             val prootEnv = buildProotEnv(runtimeDir, "dsh")
             dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv, onRawLine = ::ingestDshWebLaunchToken)
@@ -1119,56 +1344,112 @@ class DefaultSandboxManager(
      * initial readiness wait and post-ready crash recovery with a bounded
      * auto-restart policy ([Constants.MAX_AUTO_RESTART_ATTEMPTS]). Restarts are
      * performed in-place so this loop is never cancelled by its own recovery.
+     *
+     * 判定规则本身在 [decideDshHealth] 里（纯函数，便于单测覆盖各种时序组合）；本循环只负责
+     * 探测、执行动作与记录日志。计时一律用单调时钟，避免系统时间被校正时产生错误差值。
      */
     private fun startDshHealthLoop() {
         dshHealthLoopJob?.cancel()
         dshHealthLoopJob = scope.launch {
-            var startedAt = System.currentTimeMillis()
-            var wasReady = false
+            var window = DshWindowState.fresh(monotonicMs())
+            // 上一轮迭代结束时刻，用于判断采样是否被中断（循环被冻结或长时间未获调度）。
+            var lastIterationEndedAtMs = 0L
             while (_dshState.value == DshState.STARTING ||
                 _dshState.value == DshState.RUNNING ||
                 _dshState.value == DshState.READY
             ) {
+                val iterationStartMs = monotonicMs()
                 val health = healthChecker.check()
-                if (health.webUiReady) {
-                    _dshState.value = DshState.READY
-                    restartAttempts = 0
-                    wasReady = true
-                } else if (wasReady || !isDshProcessAlive()) {
-                    // DSH dropped after being ready, or the process died before
-                    // becoming ready. Bounded auto-restart.
-                    restartAttempts++
-                    if (restartAttempts >= Constants.MAX_AUTO_RESTART_ATTEMPTS) {
-                        Log.w(TAG, "dsh health: reached max auto-restart attempts")
-                        // 健康循环退场前清理 DSH 进程（可能占着 3080），
-                        // 否则 ERROR 状态下真实进程存活，后续启动全部 EADDRINUSE。
-                        dshProcess?.let { processRunner.stop(it) }
-                        runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
-                        dshProcess = null
+                val nowMs = monotonicMs()
+                val alive = isDshProcessAlive()
+                val decision = decideDshHealth(
+                    state = window,
+                    probe = DshHealthProbe(
+                        nowMs = nowMs,
+                        webUiReady = health.webUiReady,
+                        processAlive = alive,
+                        // 设备交互状态取不到时按「交互中」处理：宁可照旧判定，也不让外部回调
+                        // 的异常中断整个监测循环——循环一旦退出，DSH 之后就再没有恢复路径了。
+                        deviceInteractive = runCatching { isDeviceInteractive() }.getOrDefault(true),
+                        probeGapMs = if (lastIterationEndedAtMs == 0L) {
+                            0L
+                        } else {
+                            iterationStartMs - lastIterationEndedAtMs
+                        },
+                    ),
+                    readyTimeoutMs = config.dshReadyTimeoutMs,
+                    unresponsiveGraceMs = config.dshUnresponsiveGraceMs,
+                    maxRestartAttempts = Constants.MAX_AUTO_RESTART_ATTEMPTS,
+                )
+                // 触发时的窗口时长（迁移前取值）：重启日志要报告「它不应答了多久」，
+                // 迁移后窗口已清空，取值会变成 0。
+                val unresponsiveForMsBefore = window.unresponsiveSinceMs?.let { nowMs - it } ?: 0L
+                window = decision.next
+                val unresponsiveForMs = window.unresponsiveSinceMs?.let { nowMs - it } ?: 0L
+                // 展示层提示：连续不应答达阈值才置位，任何一次成功立即复位（与重启判定无关）。
+                _dshUnresponsive.value = !health.webUiReady &&
+                    unresponsiveForMs >= DshHealthPolicy.UNRESPONSIVE_HINT_MS
+                when (decision) {
+                    is DshHealthDecision.Ready -> _dshState.value = DshState.READY
+                    is DshHealthDecision.Observe -> Unit
+                    is DshHealthDecision.Restart -> {
+                        Log.i(
+                            TAG,
+                            "dsh health: auto-restart attempt ${window.restartAttempts}, " +
+                                "alive=$alive portOpen=${health.portOpen} unresponsiveFor=${unresponsiveForMsBefore}ms",
+                        )
+                        if (!restartDshProcessInPlace()) return@launch
+                    }
+                    is DshHealthDecision.InitialTimeout -> {
+                        // Initial startup gets the full configured timeout; do not
+                        // give up after only a few fast probe failures.
+                        Log.w(TAG, "dsh health: initial start timed out, alive=$alive portOpen=${health.portOpen}")
+                        teardownDshOnGiveUp()
                         _dshState.value = DshState.ERROR
                         return@launch
                     }
-                    Log.i(TAG, "dsh health: auto-restart attempt $restartAttempts")
-                    if (restartDshProcessInPlace()) {
-                        wasReady = false
-                        startedAt = System.currentTimeMillis()
-                    } else {
-                        return@launch
+                    is DshHealthDecision.Exhausted -> {
+                        // 预算用尽前再确认一次：句柄仍存活且端口已恢复应答，说明实例只是
+                        // 在判定窗口内不应答，不该销毁一个仍在服务（浏览器在线）的实例。
+                        if (alive && healthChecker.check().webUiReady) {
+                            Log.w(TAG, "dsh health: max auto-restart attempts reached, instance still answers; keeping it")
+                            window = window.copy(
+                                wasReady = true,
+                                restartAttempts = 0,
+                                unresponsiveSinceMs = null,
+                                healthyStreak = DshHealthPolicy.HEALTHY_STREAK_TO_CLOSE,
+                            )
+                            _dshState.value = DshState.READY
+                        } else {
+                            Log.w(
+                                TAG,
+                                "dsh health: reached max auto-restart attempts, giving up, " +
+                                    "alive=$alive portOpen=${health.portOpen}",
+                            )
+                            teardownDshOnGiveUp()
+                            _dshState.value = DshState.ERROR
+                            return@launch
+                        }
                     }
-                } else if (System.currentTimeMillis() - startedAt > config.dshReadyTimeoutMs) {
-                    // Initial startup gets the full configured timeout; do not
-                    // give up after only a few fast probe failures.
-                    Log.w(TAG, "dsh health: initial start timed out")
-                    // 同上——退场前清掉仍存活（误判为不健康）的 DSH 进程。
-                    dshProcess?.let { processRunner.stop(it) }
-                    runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
-                    dshProcess = null
-                    _dshState.value = DshState.ERROR
-                    return@launch
                 }
+                lastIterationEndedAtMs = monotonicMs()
                 delay(2_000L)
             }
         }
+    }
+
+    /** 单调毫秒：不受系统时间校正影响（设备休眠期间不推进）。 */
+    private fun monotonicMs(): Long = System.nanoTime() / 1_000_000L
+
+    /**
+     * 放弃或超时退场前清理 DSH 进程（可能占着 3080）；否则 ERROR 状态下真实进程存活，
+     * 后续启动会因端口被占而反复失败。
+     */
+    private fun teardownDshOnGiveUp() {
+        dshProcess?.let { processRunner.stop(it) }
+        runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
+        dshProcess = null
+        _dshUnresponsive.value = false
     }
 
     private inline fun <T> AppResult<T>.map(block: (T) -> Unit): AppResult<Unit> =

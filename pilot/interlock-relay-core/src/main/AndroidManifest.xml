@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Core capabilities' system permissions. Only what the implemented
+         capabilities actually use is declared; whether each can be granted at
+         runtime is decided by the per-capability system permission state. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The four clock entries of `sys.intent` (set alarm, set timer, open alarm
+         page, open timer page) target receiver Activities that declare
+         `android:permission="com.android.alarm.permission.SET_ALARM"`: without it
+         `startActivity` answers SecurityException/Permission Denial outright. It is
+         a normal permission, granted at install. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- A foreground service carries the channel while it runs: when the process is
+         swept by vendor background cleaners, the accessibility service unbinds with it
+         and every capability dies at once. specialUse because this service fits none
+         of the platform's preset categories; it serves the relay channel. -->
+    <!-- Foreground service itself needs this base permission (Android 9+). Declared
+         here so both core foreground services work when the module stands alone;
+         manifest merge deduplicates it with the host's own entry. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Screen capture: from Android 14, building a virtual display from a
+         MediaProjection token requires a mediaProjection-type foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- The short wake lease held while the channel runs: a sandboxed agent posting
+         with the screen off still needs its reply, so the CPU must not sleep through
+         the wait. PARTIAL_WAKE_LOCK keeps the CPU only. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The battery-optimization entry uses ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+         which requires this normal permission or the intent throws SecurityException.
+         It only affects this app's own switch and grants no cross-app capability. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Visibility for the Shizuku manager and launchable apps. Declared via
+         <queries> instead of the store-reviewed QUERY_ALL_PACKAGES. -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application>
+
+        <!-- Screen-capture system dialog launcher. Draws nothing: a translucent theme
+             floats it over whatever the user was on, and it finishes right after the
+             result lands, so the user is neither parked on a relay page nor left on an
+             in-app settings page. Excluded from recents: an entry there would be an
+             unowned record. -->
+        <activity
+            android:name="interlock.relay.core.runtime.RelayConsentActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Accessibility is enumerated and bound by the system under another UID,
+             so it must be exported; BIND_ACCESSIBILITY_SERVICE restricts binders to
+             the system. -->
+        <service
+            android:name="interlock.relay.core.exec.a11y.RelayAccessibilityService"
+            android:exported="true"
+            android:label="@string/relay_a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/relay_accessibility_service_config" />
+        </service>
+
+        <!-- Notification listener: same story as accessibility, enumerated and bound
+             by the system; BIND_NOTIFICATION_LISTENER_SERVICE restricts binders. -->
+        <service
+            android:name="interlock.relay.core.exec.direct.RelayNotificationListener"
+            android:exported="true"
+            android:label="@string/relay_notify_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- The Shizuku user service is not declared here: the Shizuku server
+             instantiates it reflectively by class name and never goes through the
+             system Service start path. -->
+
+        <!-- Foreground service carrying the capture session. It exists only to satisfy
+             "start the service before using the token to build a virtual display",
+             binds nothing, and is never started from outside this module. -->
+        <service
+            android:name="interlock.relay.core.exec.direct.RelayProjectionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <!-- The channel's long-lived foreground service. Not exported: only this
+             module's channel lifecycle starts and stops it - the system and other
+             apps must not be able to keep a process alive on demand. -->
+        <service
+            android:name="interlock.relay.core.exec.direct.RelayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="relay_command_channel" />
+        </service>
+
+        <!-- Periodic job carrier of the accessibility watchdog. Not exported and
+             system-bind only: being startable like a normal service would let anyone
+             restart the module's foreground service at will. -->
+        <service
+            android:name="interlock.relay.core.interlock.RelayA11yWatchdog"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Shizuku authorization and process provider. authorities are namespaced
+             per application id; the permission keeps ordinary apps from touching it. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+    </application>
+
+</manifest>

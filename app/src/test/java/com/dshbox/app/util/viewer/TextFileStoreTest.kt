@@ -11,7 +11,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 文本保存链路回归（返工修正 #4/#5 锁定）：新建文件不走 ExternalChanged；
+ * 文本保存链路用例：新建文件不走 ExternalChanged；
  * 外部变更检测（内容指纹）；元数据警告透传机制（跨平台可验证路径）。
  */
 class TextFileStoreTest {

@@ -1,5 +1,6 @@
 package com.dshbox.app.ui.webview
 
+import com.dshbox.app.common.Constants
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -10,14 +11,15 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * `prepareSettingsDocument` 单测（1.3.1 M14 的核心逻辑）。
+ * `prepareSettingsDocument` 单测。
  *
  * 背景：上游 `openSettingsDocument()` 的第一步是 `settings.prepareDocument()`
- * （`mkdir` + 以 `"wx"` 独占建一个空文件），而本项目的插件把整个调用拦掉了
- * （改走 `dshbox://` 通道），于是那一步在上游**永远不会执行** —— 原生侧必须自己补齐，
- * 否则全新安装（或从未写过设置的设备）点「打开配置文件」只会得到「未找到」。
+ * （建目录、必要时写初始正文，再把路径交给外部编辑器），而本项目的插件把整个调用
+ * 拦掉了（改走 `dshbox://` 通道），于是那一步在上游**永远不会执行** ——
+ * 原生侧必须自己补齐，否则全新安装（或 profile 尚未初始化）点「打开配置文件」
+ * 只会得到「未找到」。
  *
- * 这里锁住三件事：**缺失时创建**、**已存在时绝不覆盖**、**创建失败时返回 null**。
+ * 这里锁住三件事：**缺失时按上游模板创建**、**已存在时绝不覆盖**、**创建失败时返回 null**。
  */
 class PrepareSettingsDocumentTest {
 
@@ -39,8 +41,13 @@ class PrepareSettingsDocumentTest {
         )
         val file = File(path!!)
         assertTrue("文件应被创建", file.isFile)
-        assertEquals("内容应为空（与上游 prepareDocument 一致）", "", file.readText())
         assertTrue("父目录应存在", file.parentFile!!.isDirectory)
+
+        // 物化正文必须与上游 profile 初始化写下的内容同形：注释头 + 空层 `[]`。
+        // 早期版本写的是**空文件**，用户打开只会看到一片空白、没有任何说明。
+        val content = file.readText()
+        assertTrue("应含上游模板的说明头: $content", content.contains("Your patch layer for this dsh profile"))
+        assertTrue("应以空层 `[]` 收尾: $content", content.trimEnd().endsWith("[]"))
     }
 
     /**
@@ -89,9 +96,9 @@ class PrepareSettingsDocumentTest {
      * 创建出的文件权限应收紧到「仅属主可读写」（与上游 `0o600` 对齐）。
      *
      * Windows 不支持 POSIX 权限位，跳过；**其余平台必须能读到权限**——
-     * 早先这里写成「读不到就 return」，等于在 POSIX 上也可能静默通过。
+     * 若写成「读不到就 return」，在 POSIX 上也可能静默通过。
      *
-     * 本用例是真抓到过缺陷的：当时实现只调
+     * 该用例锁住一个真实缺陷：实现若只调
      * `setReadable(true, ownerOnly=true)` / `setWritable(true, true)`，
      * 而 JDK 的语义是「**为属主开启**」，只 OR 上属主位、**不清 group/other**，
      * 于是 0644 的文件原样保持 0644 —— 与注释声称的 0o600 不符。
@@ -132,10 +139,22 @@ class PrepareSettingsDocumentTest {
         assertEquals("权限应精确为 0o600", 0x180, mode)
     }
 
-    /** 路径常量必须落在工作区内（FileProvider 授权根 + 内置查看器可达）。 */
+    /**
+     * 路径常量必须落在工作区内（FileProvider 授权根 + 内置查看器可达），
+     * 且指向**当前 profile 的 patch 文件**——上游已把配置文档从
+     * `<DSH_HOME>/settings.yaml` 迁到 `<DSH_HOME>/profiles/<profile>/cordis.patch.yml`，
+     * 指向旧文件只会打开我们自己刚建出来的空文档。
+     */
     @Test
     fun relativePathStaysInsideWorkspace() {
-        assertEquals("user-data/.dsh/settings.yaml", SETTINGS_DOCUMENT_RELATIVE_PATH)
+        assertEquals(
+            "user-data/.dsh/profiles/${Constants.DSH_WEB_PROFILE}/cordis.patch.yml",
+            SETTINGS_DOCUMENT_RELATIVE_PATH,
+        )
+        assertTrue(
+            "应指向 profile 的 patch 文件",
+            SETTINGS_DOCUMENT_RELATIVE_PATH.endsWith("/cordis.patch.yml"),
+        )
         assertFalse("不得以 / 开头（必须是相对 filesDir 的路径）",
             SETTINGS_DOCUMENT_RELATIVE_PATH.startsWith("/"))
         assertFalse("不得含 .. 穿越", SETTINGS_DOCUMENT_RELATIVE_PATH.contains(".."))

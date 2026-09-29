@@ -4,7 +4,7 @@ import java.io.File
 import java.io.RandomAccessFile
 
 /**
- * 大文本分级装载（1.2.0 §6.4，纯 JVM；阈值真机验证后可调）。
+ * 大文本分级装载（纯 JVM；阈值可在设备上按需调整）。
  *
  * | 文件大小 | 策略 |
  * |---|---|
@@ -41,7 +41,7 @@ object LargeTextLoader {
         val editable: Boolean get() = policy == Policy.FULL_EDITABLE
     }
 
-    /** 按文件大小确定装载策略（§6.4 分级）。 */
+    /** 按文件大小确定装载策略（分级）。 */
     fun planFor(size: Long): Plan = when {
         size <= FULL_EDIT_LIMIT -> Plan(Policy.FULL_EDITABLE, size)
         size <= CONFIRM_EDIT_LIMIT -> Plan(Policy.READONLY_CHUNKS, size)

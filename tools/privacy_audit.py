@@ -39,8 +39,8 @@ PATTERNS = [
     # 机型代号：厂商内部型号（如 "V" 开头四位数字、iPad 的 "iPA"、
     # 三星的 "SM-"、以及通用「字母+三位数字」形态）。
     # 这类串写进文档等于把开发/测试用机固定暴露，且对读者毫无价值
-    # （应写成「手机」「平板」「Android 15 设备」）。v1.3.1 实测在
-    # CHANGES / 测试夹具 / 设备记录里各有一处，故补此规则。
+    # （应写成「手机」「平板」「Android 15 设备」）。
+    # 公开变更摘要 / 测试夹具 / 设备记录里都出现过，故补此规则。
     ("机型代号样式", re.compile(r"\b(?:[A-Z]\d{4}[A-Z]?|iP[AB]\d{4}|SM-[A-Z]\d{3}[A-Z]?|[A-Z]{1,2}\d{3}[A-Z]{1,3})\b"), "设备标识"),
 ]
 
@@ -78,6 +78,20 @@ ALLOW = [
     # —— 文档里的省略写法 ——
     re.compile(r"[A-Za-z]:[\\/]Users[\\/]\.\.\."),
     re.compile(r"^\s*//"),                          # 注释里的说明
+
+    # —— 单测夹具：测试自己造的 /tmp 路径，与本机无关（同上方「单测夹具虚构路径」口径）——
+    re.compile(r"/tmp/(a\.deb|a|it|foo|bar|tool\.deb)\b"),   # DebUnpackInstaller / SandboxFiles / UpdateDetector 夹具
+    re.compile(r"/tmp/(pilot-(snapshot-x|full-1)\.json|clip\.mp4|stub-artifact\.png|abs\.png|a\.png)"),  # mobile-pilot 单测夹具
+
+    # 以下四条**刻意写成拼接**：本文件自身也在扫描范围内，直写会让这些字面量被
+    # 对应规则再次命中（自匹配），拼接后源码文本里不再出现可命中的连续形态。
+    re.compile(r"/tmp/" r"dpkg-deb\."),                      # dpkg 临时目录名（单测夹具）
+    re.compile(r"back/home" r"/recents"),                    # 安卓导航三键名，被「Linux 家目录」正则误匹配
+    re.compile(r"C:" r"/\.\.\."),                            # 注释里说明「盘符式写法」的举例，非本机路径
+    re.compile("ESO" "CKETTIMEDOUT"),                        # 上游 pnpm 错误码，被「设备序列号」正则误匹配
+
+    # —— Debian 包元数据里的维护者字段（公开信息，与开发者无关；单测夹具）——
+    re.compile(r"sanvila@debian\.org"),
 ]
 
 SECRET_FILES = [

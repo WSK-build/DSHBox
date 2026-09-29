@@ -14,6 +14,9 @@ common/build/
 terminal-emulator/build/
 terminal-view/build/
 terminal-session/build/
+plugin-manager/build/
+pilot/interlock-relay-core/build/
+pilot/dshbox-adapter/build/
 *.apk
 *.aab
 *.keystore
@@ -24,3 +27,5 @@ dist/
 .gradle-home/
 .kotlin/errors/
 app/src/main/assets/runtime/
+__pycache__/
+*.pyc

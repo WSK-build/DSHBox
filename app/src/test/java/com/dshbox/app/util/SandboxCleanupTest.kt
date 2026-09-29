@@ -66,7 +66,7 @@ class SandboxCleanupTest {
     fun redLinePathsAreNeverCategorized() {
         assertNull(SandboxCleanup.categorize("user-data/notes.md"))
         assertNull(SandboxCleanup.categorize("user-data/.dsh/profiles/web"))
-        assertNull(SandboxCleanup.categorize("user-data/.dsh/mobile-adapt/install.sh"))
+        assertNull(SandboxCleanup.categorize("user-data/.dsh/dshbox/dshbox-plugins/mobile-adapt/install.sh"))
         assertNull(SandboxCleanup.categorize("runtime/runtime-current/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"))
         assertNull(SandboxCleanup.categorize("runtime/runtime-current/node/bin/node"))
         assertNull(SandboxCleanup.categorize("runtime/runtime-current/base/etc/passwd"))
@@ -168,6 +168,33 @@ class SandboxCleanupTest {
         val reclaimable = ledger.reclaimable()
         assertEquals(2048L, reclaimable[Category.GUEST_TMP])
         assertEquals(2048L, reclaimable[Category.LOGS])
+    }
+
+    @Test
+    fun ledgerSkipsAptCacheWhilePackageToolRuns() {
+        val now = 100_000L
+        val ledger = UsageLedger(now, guardActive = false, aptBusy = true)
+        // 有包工具在跑：APT 条目只计总量、不进 reclaimable（与 clean 的让路一致）。
+        assertEquals(
+            4096L,
+            ledger.add(entry("runtime/runtime-current/base/var/cache/apt/archives/vim.deb", blocks = 8)),
+        )
+        // 其它类别不受影响。
+        assertEquals(2048L, ledger.add(entry("logs/process-dsh.log", blocks = 4)))
+        val reclaimable = ledger.reclaimable()
+        assertNull(reclaimable[Category.APT])
+        assertEquals(2048L, reclaimable[Category.LOGS])
+    }
+
+    @Test
+    fun aptCacheIsEligibleOnlyWhenSelectedAndNoPackageToolRuns() {
+        val all = setOf(Category.APT, Category.LOGS)
+        assertTrue(SandboxCleanup.aptCacheEligible(all, packageToolBusy = false))
+        // 有 apt/dpkg 在跑（终端里的命令不在 BackgroundOps 忙判断内）→ 让路。
+        assertFalse(SandboxCleanup.aptCacheEligible(all, packageToolBusy = true))
+        // 用户没勾这一项 → 本来就不清。
+        assertFalse(SandboxCleanup.aptCacheEligible(setOf(Category.LOGS), packageToolBusy = false))
+        assertFalse(SandboxCleanup.aptCacheEligible(emptySet(), packageToolBusy = false))
     }
 
     @Test

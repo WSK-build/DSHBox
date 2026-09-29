@@ -1,0 +1,23 @@
+# Gradle
+/.gradle/
+/build/
+/sample/build/
+/.kotlin/
+
+# Machine-specific Android SDK location — never commit (it carries an absolute path)
+local.properties
+
+# IDE
+/.idea/
+*.iml
+/captures/
+
+# Build outputs and signing material
+*.aar
+*.apk
+*.jks
+*.keystore
+
+# OS noise
+.DS_Store
+Thumbs.db

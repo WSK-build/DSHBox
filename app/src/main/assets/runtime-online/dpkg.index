@@ -1,0 +1,20 @@
+0644	file	var/lib/dpkg/alternatives/awk	var/lib/dpkg/alternatives/awk	298
+0644	file	var/lib/dpkg/alternatives/builtins.7.gz	var/lib/dpkg/alternatives/builtins.7.gz.bin	83
+0644	file	var/lib/dpkg/alternatives/lzma	var/lib/dpkg/alternatives/lzma	1135
+0644	file	var/lib/dpkg/alternatives/pager	var/lib/dpkg/alternatives/pager	154
+0644	file	var/lib/dpkg/alternatives/rmt	var/lib/dpkg/alternatives/rmt	113
+0644	file	var/lib/dpkg/alternatives/which	var/lib/dpkg/alternatives/which	787
+0644	file	var/lib/dpkg/triggers/File	var/lib/dpkg/triggers/File	207
+0644	file	var/lib/dpkg/triggers/ldconfig	var/lib/dpkg/triggers/ldconfig	9
+0644	file	var/lib/dpkg/triggers/update-ca-certificates	var/lib/dpkg/triggers/update-ca-certificates	16
+0644	file	var/lib/dpkg/triggers/update-ca-certificates-fresh	var/lib/dpkg/triggers/update-ca-certificates-fresh	16
+0644	file	var/lib/dpkg/cmethopt	var/lib/dpkg/cmethopt	8
+0644	file	var/lib/dpkg/info/format	var/lib/dpkg/info/format	2
+0600	empty	var/lib/dpkg/triggers/Lock		0
+0644	empty	var/lib/dpkg/triggers/Unincorp		0
+0640	empty	var/lib/dpkg/lock		0
+0640	empty	var/lib/dpkg/lock-frontend		0
+0644	tpl	var/lib/dpkg/arch-native	var/lib/dpkg/arch-native	6
+0644	tpl	var/lib/dpkg/available	var/lib/dpkg/available	64844
+0644	tpl	var/lib/dpkg/diversions	var/lib/dpkg/diversions	632
+0644	tpl	var/lib/dpkg/diversions-old	var/lib/dpkg/diversions-old	530

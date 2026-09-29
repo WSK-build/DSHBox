@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sandbox_not_running_debian">沙箱未运行，请先启动 Debian 沙箱</string>
-    <string name="dsh_not_ready_timeout">DSH 未能在限定时间内就绪</string>
+    <string name="dsh_not_ready_timeout">DSH 启动失败</string>
     <string name="dsh_stopped_retry">DSH 已被停止，请稍后重试</string>
     <string name="dsh_ready_timeout">DSH 就绪超时</string>
     <string name="bundle_empty">压缩包内没有文件</string>
+    <string name="bundle_sandbox_running">沙箱正在运行，请先停止后再执行此操作</string>
+    <string name="dsh_start_need_node">请先导入 node 层（设置 → 在线导入运行环境包 → 在线导入 node 层）</string>
     <string name="bundle_unsafe_path_rel">压缩包包含非法路径（..），已拦截：%1$s</string>
     <string name="bundle_unsafe_path_escape">压缩包路径越界，已拦截：%1$s</string>
     <string name="bundle_no_profile">运行环境包缺少 runtime-profile.json（无法校验层完整性，已拒绝导入）</string>

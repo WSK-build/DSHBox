@@ -19,11 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.Edit
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Check
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.MoreVert
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -72,17 +72,20 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.dshbox.app.common.R as CommonR
 
 /**
- * 通用文件查看器外壳（1.2.0 §6.1，覆盖式全屏二级页）。
+ * 通用文件查看器外壳（覆盖式全屏二级页）。
  *
  * **路径契约（实现硬约束）**：
  * 1. 只接收 `logicalPath: String`，不持有 FileEntry 引用——Tab 切回时列表重建不影响查看器状态
  *    （编辑脏状态安全）；
  * 2. 所有 IO 前统一 [PathMapper.resolvePhysical]；resolve 后立即 [com.dshbox.app.util.layerOf]
- *    判层，写入门禁在 resolve 之后执行（§6.1.2）；
- * 3. 失败态：不可读/已删/IO 错误 → 统一错误态 UI（信息 + 重试 + 导出/外部打开出口，§6.1.3）；
- * 4. 分类失败/未知类型 → Hex + 信息卡，**无「不支持预览」死路**（§6.1.4）。
+ *    判层，写入门禁在 resolve 之后执行；
+ * 3. 失败态：不可读/已删/IO 错误 → 统一错误态 UI（信息 + 重试 + 导出/外部打开出口）；
+ * 4. 分类失败/未知类型 → Hex + 信息卡，**无「不支持预览」死路**。
  */
 @Composable
 internal fun FileViewerScreen(
@@ -102,7 +105,7 @@ internal fun FileViewerScreen(
 
     // 查看模式覆盖（AUTO = 按分类分发；按文本/按 Hex 强制切换）
     var viewMode by remember(logicalPath) { mutableStateOf(ViewerMode.AUTO) }
-    // 编辑开关（文本类；gated 层经强确认后才置 true，§6.1.6/§6.4）
+    // 编辑开关（文本类；受限层经强确认后才置 true）
     var editing by remember(logicalPath) { mutableStateOf(false) }
     val textCtrl = remember { TextEditController() }
     var showMenu by remember { mutableStateOf(false) }
@@ -116,7 +119,7 @@ internal fun FileViewerScreen(
     var pendingFailedOpen by remember { mutableStateOf<Pair<File, Layer>?>(null) }
     // 导出目标暂存（launcher 回调按此拷贝，避免读错文件）
     var pendingExportFile by remember { mutableStateOf<File?>(null) }
-    // 外部编辑返回后的权限位恢复记录（§6.11.2 rootfs 权限位保护）
+    // 外部编辑返回后的权限位恢复记录（rootfs 权限位保护）
     var editReturnFile by remember { mutableStateOf<File?>(null) }
     var editReturnMeta by remember { mutableStateOf<EditReturnMeta?>(null) }
 
@@ -144,7 +147,7 @@ internal fun FileViewerScreen(
         hasFullBytes = ready?.fullBytes != null,
     )
 
-    // ---------------- 返回与未保存拦截（§6.4.4） ----------------
+    // ---------------- 返回与未保存拦截 ----------------
 
     BackHandler {
         when {
@@ -167,7 +170,7 @@ internal fun FileViewerScreen(
         if (textCtrl.lossy) editing = false
     }
 
-    // ---------------- 外部调用（§6.11） ----------------
+    // ---------------- 外部调用 ----------------
 
     val editLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -186,7 +189,7 @@ internal fun FileViewerScreen(
                         file.setLastModified(meta.mtime)
                     }
                 }
-                // EDIT 写回变更检测（§6.11.2）：内容指纹变化 → 重载查看器
+                // EDIT 写回变更检测：内容指纹变化 → 重载查看器
                 val fp = withContext(Dispatchers.IO) { ContentFingerprint.of(file) }
                 val changed = fp != null && !fp.matches(meta.fingerprint)
                 if (changed) toastRes(R.string.files_ext_edit_changed)
@@ -232,7 +235,7 @@ internal fun FileViewerScreen(
             toastRes(R.string.files_exit_no_app)
             return
         }
-        // rootfs 权限位保护：发起前记录 rwx/mtime，返回后恢复（§6.11.2）
+        // rootfs 权限位保护：发起前记录 rwx/mtime，返回后恢复
         editReturnMeta = EditReturnMeta(
             readable = r.file.canRead(),
             writable = r.file.canWrite(),
@@ -246,12 +249,12 @@ internal fun FileViewerScreen(
 
     fun externalEdit() {
         val r = ready ?: return
-        // §6.11：内建编辑有未保存修改时禁用外部编辑（同一时刻只允许一个写入口）
+        // 内建编辑有未保存修改时禁用外部编辑（同一时刻只允许一个写入口）
         if (textCtrl.dirty) {
             toastRes(R.string.files_exit_dirty_block)
             return
         }
-        // §4.2/§6.11：风险层强确认后放行
+        // 风险层强确认后放行
         if (riskLevelOfLayer(r.layer) != null) {
             pendingEditGate = EditGate.EXTERNAL_RISK
             return
@@ -299,7 +302,7 @@ internal fun FileViewerScreen(
         }.onFailure { toastRes(R.string.files_exit_no_app) }
     }
 
-    // ---------------- 编辑进入门禁（§6.4：大文件分级 + 层强确认） ----------------
+    // ---------------- 编辑进入门禁（大文件分级 + 层强确认） ----------------
 
     fun requestEdit() {
         val r = ready ?: return
@@ -360,7 +363,7 @@ internal fun FileViewerScreen(
                     }
                 },
             )
-            // 风险层编辑强确认（§4.2：文案含完整性失配与停机建议）与外发确认（§6.11）
+            // 风险层编辑强确认（文案含完整性失配与停机建议）与外发确认
             EditGate.RISK, EditGate.EXTERNAL_RISK -> AlertDialog(
                 onDismissRequest = { pendingEditGate = null },
                 title = { Text(stringResource(R.string.files_risk_title)) },
@@ -393,7 +396,7 @@ internal fun FileViewerScreen(
         }
     }
 
-    // ---------------- 失败态风险层「外部打开」强确认（§4.2/§6.11） ----------------
+    // ---------------- 失败态风险层「外部打开」强确认 ----------------
 
     pendingFailedOpen?.let { (file, layer) ->
         AlertDialog(
@@ -423,7 +426,7 @@ internal fun FileViewerScreen(
         )
     }
 
-    // ---------------- 未保存三选一（§6.4.4） ----------------
+    // ---------------- 未保存三选一 ----------------
 
     if (showUnsaved) {
         AlertDialog(
@@ -458,7 +461,7 @@ internal fun FileViewerScreen(
         )
     }
 
-    // ---------------- 换行转换入口（§6.4：保存时默认还原原风格，另提供转换） ----------------
+    // ---------------- 换行转换入口（保存时默认还原原风格，另提供转换） ----------------
 
     if (showNewline) {
         AlertDialog(
@@ -534,7 +537,7 @@ internal fun FileViewerScreen(
     }
 
     // ---------------- 页面 ----------------
-    // 返工：覆盖式二级页必须有衬底——此前根 Column 无背景，透明透出底层
+    // 覆盖式二级页必须有衬底：根 Column 无背景会透明透出底层
     // （文件列表/首页 DSH 背景），视觉表现为「PDF 显示在首页背景里」（缺陷 2）。
     // 返工 #7：根级 clickable 空动作**吞噬点击**——覆盖页空白区若无 pointer 消费，
     // Compose 命中测试会继续下探到 FilesScreen 列表项 → 点文件内空白处跳转到别的文件。
@@ -546,7 +549,7 @@ internal fun FileViewerScreen(
             .background(MaterialTheme.colorScheme.background)
             .clickable(interactionSource = rootInteraction, indication = null) { },
     ) {
-        // ---- 顶栏：返回 · 文件名/逻辑路径 · 编辑切换 · 更多菜单（§6.1） ----
+        // ---- 顶栏：返回 · 文件名/逻辑路径 · 编辑切换 · 更多菜单 ----
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -555,7 +558,7 @@ internal fun FileViewerScreen(
                 if (textCtrl.dirty) showUnsaved = true else onDismiss()
             }) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    imageVector = ImageVector.vectorResource(CommonR.drawable.ic_arrow_left),
                     contentDescription = stringResource(R.string.files_back),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
@@ -578,11 +581,11 @@ internal fun FileViewerScreen(
                 )
             }
             if (isTextKind && (ready?.plan?.policy != LargeTextLoader.Policy.FORCE_READONLY_TAIL)) {
-                // 返工 #2：编辑态提供显式「保存」按钮（此前只能退出时经未保存弹窗保存）
+                // 编辑态提供显式「保存」按钮（否则只能在退出时经未保存弹窗保存）
                 if (editing) {
                     IconButton(onClick = { textCtrl.saveSignal++ }) {
                         Icon(
-                            imageVector = Icons.Filled.Check,
+                            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_check),
                             contentDescription = stringResource(R.string.files_menu_save),
                             tint = if (textCtrl.dirty) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -596,7 +599,7 @@ internal fun FileViewerScreen(
                     }
                 }) {
                     Icon(
-                        imageVector = Icons.Outlined.Edit,
+                        imageVector = ImageVector.vectorResource(CommonR.drawable.ic_pencil),
                         contentDescription = stringResource(R.string.files_edit_toggle),
                         tint = if (editing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -605,7 +608,7 @@ internal fun FileViewerScreen(
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
-                        imageVector = Icons.Filled.MoreVert,
+                        imageVector = ImageVector.vectorResource(CommonR.drawable.ic_dots_vertical),
                         contentDescription = stringResource(R.string.files_more),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
@@ -665,7 +668,7 @@ internal fun FileViewerScreen(
             load is ViewerLoad.Loading -> CenterHint(stringResource(R.string.files_viewer_loading))
             load is ViewerLoad.Failed -> {
                 val f = load as ViewerLoad.Failed
-                // §6.1.3 统一失败态：信息 + 重试 + 导出/外部打开出口（返工修正 #3：
+                // 统一失败态：信息 + 重试 + 导出/外部打开出口（
                 // 文件仍存在时给出导出与外部打开出口，不再只有信息卡）
                 FallbackPanel(
                     name = File(logicalPath).name,
@@ -695,9 +698,9 @@ internal fun FileViewerScreen(
             }
             ready != null && bodyMode == ViewerMode.INFO -> {
                 // 信息卡兜底：不承接类型（音视频/7z/rar/纯压缩流）、
-                // OFFICE 抽取失败/空文本、渲染器 onFallback 降级落点；全部出口保留（§6.3/§6.1.4）
+                // OFFICE 抽取失败/空文本、渲染器 onFallback 降级落点；全部出口保留
                 val r = ready
-                // 返工 #5：OFFICE 未抽出文本时给解释（此前用户易误点「按文本打开」看 ZIP 字节乱码；
+                // OFFICE 未抽出文本时给解释（用户易误点「按文本打开」看 ZIP 字节乱码；
                 // 有损警告虽正确但仍把抽取失败当缺陷报）——隐藏按文本出口并说明原因
                 val officeExtractFailed = r.type.kind == FileTypeClassifier.FileKind.OFFICE && r.fullBytes == null
                 if (officeExtractFailed) {
@@ -747,7 +750,7 @@ internal fun FileViewerScreen(
             )
             ready != null && bodyMode == ViewerMode.PDF -> PdfViewer(
                 file = ready.file,
-                // 渲染异常降级信息卡（§6.6/任务要求：任何格式不得让文件打不开）
+                // 渲染异常降级信息卡（任何格式都不得打不开）
                 onFallback = { viewMode = ViewerMode.INFO },
                 modifier = Modifier.weight(1f),
             )
@@ -765,7 +768,7 @@ internal fun FileViewerScreen(
                 previewKind = markupKind,
                 editing = editing,
                 controller = textCtrl,
-                // 「编辑」标签与顶栏铅笔走同一条门禁链（大文件/风险层强确认，§6.4/§4.2）
+                // 「编辑」标签与顶栏铅笔走同一条门禁链（大文件/风险层强确认）
                 onRequestEdit = { requestEdit() },
                 onRequestRefresh = onRequestRefresh,
                 onToast = { toast(it) },
@@ -792,7 +795,7 @@ private fun hasFullText(load: ViewerLoad): Boolean = (load as? ViewerLoad.Ready)
 /** 编辑进入门禁链。 */
 private enum class EditGate { BIG_FILE, RISK, EXTERNAL_RISK }
 
-/** 外部编辑发起前记录的元数据（返回后恢复权限位 + 变更检测，§6.11.2）。 */
+/** 外部编辑发起前记录的元数据（返回后恢复权限位 + 变更检测）。 */
 private data class EditReturnMeta(
     val readable: Boolean,
     val writable: Boolean,
@@ -804,7 +807,7 @@ private data class EditReturnMeta(
 private sealed interface ViewerLoad {
     data object Loading : ViewerLoad
 
-    /** 统一失败态（§6.1.3；file 非空 = 文件仍存在，出口提供导出/外部打开）。 */
+    /** 统一失败态（file 非空 = 文件仍存在，出口提供导出/外部打开）。 */
     data class Failed(
         val message: UiText?,
         val file: File?,
@@ -831,7 +834,7 @@ private sealed interface ViewerLoad {
     ) : ViewerLoad
 }
 
-/** 装载入口（IO 线程调用）：resolve → 立即判层（§6.1.2 硬约束）→ 分类 → 分级载入。 */
+/** 装载入口（IO 线程调用）：resolve → 立即判层（硬约束）→ 分类 → 分级载入。 */
 private fun loadViewerFile(logicalPath: String, mapper: PathMapper, layerRoots: LayerRoots): ViewerLoad {
     val logical = File(logicalPath)
     val physical = runCatching { mapper.resolvePhysical(logical) }.getOrDefault(logical)
@@ -871,9 +874,9 @@ private fun loadViewerFile(logicalPath: String, mapper: PathMapper, layerRoots: 
     } else {
         fingerprint = ContentFingerprint.of(physical)
         if (type.kind == FileTypeClassifier.FileKind.OFFICE) {
-            // §6.10：docx/xlsx 抽取为只读纯文本（固定 UTF-8 检测；编辑入口被 isTextKind 门禁
+            // docx/xlsx 抽取为只读纯文本（固定 UTF-8 检测；编辑入口被 isTextKind 门禁
             // 关闭，绝不写回原文档）。抽取失败/空文本保持 null → AUTO 落信息卡兜底；
-            // pptx 不支持抽取（计划 §6.10），同样落信息卡 + 外部打开。
+            // pptx 不支持抽取，同样落信息卡 + 外部打开。
             val extracted = when (type.extension) {
                 "docx" -> OfficeTextExtractor.extractDocx(physical)
                 "xlsx" -> OfficeTextExtractor.extractXlsx(physical)

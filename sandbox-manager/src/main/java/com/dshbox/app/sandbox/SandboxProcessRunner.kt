@@ -5,9 +5,10 @@ import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.Constants
 import com.dshbox.app.common.LogRedactor
 import java.io.File
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import java.io.IOException
-import java.io.InputStream
 import java.nio.charset.StandardCharsets
 
 /**
@@ -58,6 +59,9 @@ class SandboxProcessRunner(
         /** 单文件日志上限（策略 A 轮转）。 */
         private const val MAX_LOG_BYTES = 2L * 1024 * 1024
 
+        /** DSH 角色的 tag：这一份日志按启动分段保留，不参与体积轮转。 */
+        private const val DSH_LOG_TAG = "dsh"
+
         /** guest 命令正常等待上限（npm 全量安装可达 10-20 分钟，兜底需留足）。 */
         private const val GUEST_COMMAND_TIMEOUT_MS = 10L * 60 * 1000
     }
@@ -99,8 +103,23 @@ class SandboxProcessRunner(
         nodeDir: String? = null,
         dshDir: String? = null,
         shimHostDir: String? = null,
+        /**
+         * 追加给 dsh 启动器的 `--patch` overlay（guest 内路径，可多个）。
+         *
+         * 这是 dsh **官方**的额外 patch 层入口（应用在 profile 层之后，见 `dsh/lib/bin.js`），
+         * 我们用它注入自己需要的覆盖层（功能开关层 / 插件管理停用层 / 绝对安全模式层）——
+         * 不修改 DSH 源码、不动 profile 文件。
+         * 调用方只在文件确实存在时才传入，否则 dsh 会因找不到 patch 文件而启动失败。
+         */
+        dshPatchGuestPaths: List<String> = emptyList(),
+        /** 手机助手暴露给 guest 的宿主子树，见 [SandboxConfig.pilotEntryDir]。空则不绑。 */
+        pilotHostDir: String? = null,
     ): List<String> = buildList {
-        addAll(layeredProotPrefix(prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shimHostDir))
+        addAll(
+            layeredProotPrefix(
+                prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shimHostDir, pilotHostDir,
+            ),
+        )
         add("--cwd=/root/projects")
         add("--kill-on-exit")
         add("/system/bin/sh"); add("-c")
@@ -120,7 +139,14 @@ class SandboxProcessRunner(
         } else {
             ""
         }
-        add("exec /usr/local/bin/node --expose-internals$shim /opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile web")
+        val patches = dshPatchGuestPaths
+            .filter { it.isNotBlank() }
+            .joinToString("") { " --patch $it" }
+        add(
+            "exec /usr/local/bin/node --expose-internals$shim " +
+                "/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js " +
+                "--profile ${Constants.DSH_WEB_PROFILE}$patches",
+        )
     }
 
     /**
@@ -145,6 +171,7 @@ class SandboxProcessRunner(
         nodeDir: String?,
         dshDir: String?,
         shimHostDir: String? = null,
+        pilotHostDir: String? = null,
     ): List<String> = buildList {
         add(prootBinary)
         add("--rootfs=$rootfsDir")
@@ -155,6 +182,7 @@ class SandboxProcessRunner(
         if (!nodeDir.isNullOrBlank()) add("--bind=$nodeDir:/usr/local")
         if (!dshDir.isNullOrBlank()) add("--bind=$dshDir:/opt/dshapp/runtime")
         if (!shimHostDir.isNullOrBlank()) add("--bind=$shimHostDir:${Constants.DSH_LINK_SHIM_GUEST_DIR}")
+        if (!pilotHostDir.isNullOrBlank()) add("--bind=$pilotHostDir:/opt/pilot")
         add("--bind=$workspaceBind:/root/projects")
     }
 
@@ -174,20 +202,29 @@ class SandboxProcessRunner(
         pb.redirectErrorStream(true)
 
         val logFile = File(logsDir(), "process-$tag.log")
+        // DSH 这一份日志按「启动次数」分段保留（见 [BootSegmentedLog]）；其余角色仍按体积轮转。
+        val bootLog = if (tag == DSH_LOG_TAG) BootSegmentedLog(logFile) else null
         val process = pb.start()
         val running = RunningProcess(process, tag)
+        // 启动标记行必须排在这次启动的输出**之前**：进程已起来（没起来就不该记一次），
+        // 而日志泵还没开始读。
+        bootLog?.beginBoot()
+        // Non-interactive by design: close the write end at once so a stdin reader
+        // sees EOF instead of blocking until the command timeout.
+        runCatching { process.outputStream.close() }
 
-        val input: InputStream = process.inputStream
         val thread = Thread({
             try {
-                input.bufferedReader(StandardCharsets.UTF_8).forEachLine { line ->
-                    runCatching { onRawLine(line) }
-                    val cleaned = redact(line)
-                    appendRotated(logFile, cleaned)
-                    // Mirror to logcat so sandbox/DSH child output is observable
-                    // adb (also useful for on-device diagnostics when the app data
-                    // dir is not readable, e.g. non-rooted release builds).
-                    Log.i(TAG, "proc-$tag: $cleaned")
+                process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
+                    reader.forEachLine { line ->
+                        runCatching { onRawLine(line) }
+                        val cleaned = redact(line)
+                        if (bootLog != null) bootLog.append(cleaned) else appendRotated(logFile, cleaned)
+                        // Mirror to logcat so sandbox/DSH child output is observable
+                        // adb (also useful for on-device diagnostics when the app data
+                        // dir is not readable, e.g. non-rooted release builds).
+                        Log.i(TAG, "proc-$tag: $cleaned")
+                    }
                 }
             } catch (_: IOException) {
                 // stream closed by process exit
@@ -230,13 +267,18 @@ class SandboxProcessRunner(
             return AppResult.Failure(AppError("GUEST_SPAWN_FAILED", "cannot spawn guest command: ${t.message}"))
         }
         runCatching { onProcess(process) }
+        // Non-interactive by design: close the write end at once so a stdin reader
+        // sees EOF instead of blocking until the command timeout.
+        runCatching { process.outputStream.close() }
         val logFile = File(logsDir(), "process-guest.log")
         val thread = Thread({
             try {
-                process.inputStream.bufferedReader(StandardCharsets.UTF_8).forEachLine { line ->
-                    val cleaned = redact(line)
-                    appendRotated(logFile, cleaned)
-                    onLine(cleaned)
+                process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
+                    reader.forEachLine { line ->
+                        val cleaned = redact(line)
+                        appendRotated(logFile, cleaned)
+                        onLine(cleaned)
+                    }
                 }
             } catch (_: IOException) {
                 // stream closed by process exit
@@ -245,7 +287,7 @@ class SandboxProcessRunner(
         thread.isDaemon = true
         thread.start()
         // waitFor 改为可中断轮询——在线安装点「取消」后立即收敛，
-        // 不再干等 proot 残壳自然退出（真机实测 npm 秒退后 proot 残留 ~20s，
+        // 不再干等 proot 残壳自然退出（npm 秒退后 proot 仍会残留 ~20s，
         // 期间取消按钮形同虚设）。取消分支等待 cancel 侧（RuntimeUpdateManager）
         // 的 SIGKILL 整树落地，上限 5s，兜底 destroyForcibly。
         // 正常等待加 10 分钟超时兜底——proot/guest 异常卡死时
@@ -376,10 +418,9 @@ class SandboxProcessRunner(
 
     private fun killPid(pid: Int) {
         try {
-            val exit = ProcessBuilder("/system/bin/kill", "-KILL", pid.toString()).start().waitFor()
-            if (exit != 0) Log.w(TAG, "kill $pid failed exit=$exit")
+            Os.kill(pid, OsConstants.SIGKILL)
         } catch (t: Throwable) {
-            Log.w(TAG, "kill $pid threw: ${t.message}")
+            Log.w(TAG, "kill $pid failed: ${t.message}")
         }
     }
 

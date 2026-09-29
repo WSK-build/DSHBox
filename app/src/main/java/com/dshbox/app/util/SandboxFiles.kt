@@ -115,11 +115,31 @@ class PathMapper(
     }
 }
 
+/**
+ * 物理路径 → **guest 内**的绝对路径。
+ *
+ * 依据是 PRoot 的层绑定在 [PathMapper.sandboxRoot] 内部是镜像的（`ensureRoots()` 建立的那套）：
+ * 工作区物理路径先经 [PathMapper.toLogical] 变成 `rootfs/root/projects/...`，
+ * 再相对 [PathMapper.sandboxRoot] 取相对路径，得到的正是 guest 里看到的 `/root/projects/...`；
+ * node 层同理得到 `/usr/local/...`，base 层则原样得到 `/tmp/...` 这类路径。
+ *
+ * 分隔符统一按 `/` 处理，因此在非 Android 环境（JVM 测试）里也能得到同一结论。
+ */
+fun guestPathOf(mapper: PathMapper, physical: File): String {
+    val logical = mapper.toLogical(physical).absolutePath.replace(File.separatorChar, '/')
+    val root = mapper.sandboxRoot.absolutePath.replace(File.separatorChar, '/').trimEnd('/')
+    return when {
+        logical == root -> "/"
+        logical.startsWith("$root/") -> logical.removePrefix(root)
+        else -> logical
+    }
+}
+
 /** 文件风险级别：用于软保护（可操作，但操作时弹窗提醒）。 */
 enum class RiskLevel { NORMAL, SYSTEM_DIR, DSH_DATA }
 
 /**
- * 统一物理层判定结果（1.2.0 §4.1）。
+ * 统一物理层判定结果。
  *
  * [WORKSPACE]/[BASE] 直接放行；[SYSTEM_DIR]/[NODE]/[DSH]/[DSH_DATA] 需强确认。
  * 视图（沙盒/工作区）无关——UI 据此决定"某视图下哪些 Layer 要弹窗"。
@@ -143,6 +163,27 @@ data class LayerRoots(
 
 private const val DSH_DATA_SEGMENT = ".dsh"
 
+/** 我方随包资产目录名（`.dsh/dshbox`，见 Constants.DSHBOX_ASSETS_RELATIVE_DIR）。 */
+private const val DSHBOX_SEGMENT = "dshbox"
+
+/**
+ * **物理路径**是否落在我方固定资产目录（`<workspaceRoot>/.dsh/dshbox`）内。
+ *
+ * 调用方传 `PathMapper.resolvePhysical(...)` 的结果与 `mapper.workspaceRoot`：只认工作区根下
+ * 第一层的那一对段，用户自己建的深层同名目录不受影响。判定纯字符串、不做磁盘 IO。
+ * 用途：文件页写操作的前置拦截（权限位对 guest 无效，见 SandboxService 的说明）。
+ */
+fun isAppManagedAsset(physicalPath: String, workspaceRoot: File): Boolean {
+    // 统一成 '/' 再比：Android 上本来就是 '/'，Windows 上跑单测时 File.separatorChar 是 '\'，
+    // 用分隔符拼前缀会让同一份判定在两个平台得出不同结果。
+    val root = workspaceRoot.absolutePath.replace('\\', '/').trimEnd('/')
+    val target = physicalPath.replace('\\', '/').trimEnd('/')
+    val prefix = "$root/$DSH_DATA_SEGMENT/$DSHBOX_SEGMENT"
+    // 只认「工作区根下第一层的 .dsh/dshbox」：任意深度匹配会把用户自建的
+    // `myproj/.dsh/dshbox` 也锁成只读（审查 P2-5）。
+    return target == prefix || target.startsWith("$prefix/")
+}
+
 /** 路径按段拆分（兼容 / 与 \，Windows 测试环境友好）。 */
 private fun pathSegments(path: String): List<String> =
     path.replace('\\', '/').split('/').filter { it.isNotEmpty() }
@@ -154,14 +195,14 @@ private fun isUnder(path: String, root: String?): Boolean {
 }
 
 /**
- * 视图无关的物理层判定（1.2.0 §4.1，按顺序）：
+ * 视图无关的物理层判定（按顺序）：
  *
  * 1. **`.dsh` 段匹配优先**：路径任一段等于 `.dsh` → [Layer.DSH_DATA]（任意嵌套深度，
  *    如 `user-data/foo/.dsh/secret.txt`）。
  * 2. **系统目录仅限 rootfs 顶层**：`proc/sys/dev/system/apex/tmp/.dshbox` 是 PRoot `--bind`
  *    的一级挂载点，只存在于 sandbox 根的首段；**不按任意深度匹配**——用户自建目录
- *    （如 workspace 下的 `tmp/`）不得被误判为系统目录（修正：此前任意深度段匹配在
- *    Linux 环境下会把 `/tmp/...` 临时目录整体判为 SYSTEM_DIR，CI 测试与真实用例均受影响）。
+ *    （如 workspace 下的 `tmp/`）不得被误判为系统目录（按任意深度段匹配时会把
+ *    `/tmp/...` 临时目录整体判为 SYSTEM_DIR，测试与真实用例均受影响）。
  * 3. **前缀归属**：位于 node 层根及其下 → [Layer.NODE]；dsh 层根及其下 → [Layer.DSH]；
  *    workspaceRoot 及其下 → [Layer.WORKSPACE]；其余（sandboxRoot 下）→ [Layer.BASE]。
  * 4. 层未安装（nodeLayer/dshLayer == null）时跳过相应前缀判断。
@@ -197,7 +238,7 @@ data class FileEntry(
     val size: Long,
     val lastModified: Long,
     val risk: RiskLevel,
-    /** 可执行位（IO 预计算，1.2.0 §6.11 查看器信息卡用；目录表示可进入）。 */
+    /** 可执行位（IO 预计算，查看器信息卡用；目录表示可进入）。 */
     val canExecute: Boolean = false,
     /** rwx 权限文本（如 `rwx` / `rw-`，IO 预计算）。 */
     val permissionText: String = "",
@@ -217,26 +258,65 @@ fun riskOf(name: String, isTopLevelRootfs: Boolean): RiskLevel = when {
 }
 
 /**
+ * 单目录**文件**条数上限：目录不受限（导航不能被截断），仅文件按名称保留前 N 条，
+ * 超出部分丢弃并以 [DirectoryListing.truncated] 标记（界面据此提示）。
+ */
+const val MAX_DIRECTORY_FILES = 10_000
+
+/** 目录列举结果：[entries] 为条目（目录在前），[truncated] 表示文件数超限被截断。 */
+data class DirectoryListing(
+    val entries: List<FileEntry>,
+    val truncated: Boolean,
+)
+
+/**
+ * 文件条目按名称取前 [limit] 条；返回（保留的文件, 是否截断）。
+ * 目录不参与截断（由调用方单独保留）。抽成纯函数以便直接单测边界（无需真的造出上万文件）。
+ */
+internal fun capDirectoryFiles(files: List<File>, limit: Int = MAX_DIRECTORY_FILES): Pair<List<File>, Boolean> =
+    if (files.size <= limit) {
+        files to false
+    } else {
+        files.sortedBy { it.name.lowercase() }.take(limit) to true
+    }
+
+/**
  * 在 IO 线程扫描逻辑目录，返回预计算元数据的列表项。
  * [isTopLevel] 用于 rootfs 视图首层识别系统绑定目录（仅沙盒模式顶层为 true）。
+ *
+ * 目录条目始终全部保留；文件超过 [MAX_DIRECTORY_FILES] 时按名称取前 N 条（结果确定），
+ * 避免超大目录一次性构造海量元数据对象。
  */
-fun scanDirectory(logicalDir: File, mapper: PathMapper, isTopLevel: Boolean): List<FileEntry> {
+fun scanDirectory(logicalDir: File, mapper: PathMapper, isTopLevel: Boolean): DirectoryListing {
     val physical = mapper.resolvePhysical(logicalDir)
-    return physical.listFiles()?.mapNotNull { f ->
-        val name = f.name
-        FileEntry(
-            name = name,
-            logicalPath = File(logicalDir, name).absolutePath,
-            isDirectory = f.isDirectory,
-            size = if (f.isDirectory) 0L else runCatching { f.length() }.getOrDefault(0L),
-            lastModified = runCatching { f.lastModified() }.getOrDefault(0L),
-            risk = riskOf(name, isTopLevel),
-            canExecute = runCatching { f.canExecute() }.getOrDefault(false),
-            permissionText = runCatching {
-                (if (f.canRead()) "r" else "-") + (if (f.canWrite()) "w" else "-") + (if (f.canExecute()) "x" else "-")
-            }.getOrDefault(""),
-        )
-    } ?: emptyList()
+    val children = physical.listFiles() ?: return DirectoryListing(emptyList(), false)
+    val dirs = ArrayList<File>(children.size)
+    val files = ArrayList<File>(children.size)
+    for (child in children) {
+        if (child.isDirectory) dirs.add(child) else files.add(child)
+    }
+    val (keptFiles, truncated) = capDirectoryFiles(files)
+    val entries = ArrayList<FileEntry>(dirs.size + keptFiles.size)
+    for (f in dirs) entries.add(toFileEntry(f, logicalDir, isTopLevel))
+    for (f in keptFiles) entries.add(toFileEntry(f, logicalDir, isTopLevel))
+    return DirectoryListing(entries, truncated)
+}
+
+/** 单个目录项的元数据预计算（与列举策略无关，保持逐字段容错）。 */
+private fun toFileEntry(f: File, logicalDir: File, isTopLevel: Boolean): FileEntry {
+    val name = f.name
+    return FileEntry(
+        name = name,
+        logicalPath = File(logicalDir, name).absolutePath,
+        isDirectory = f.isDirectory,
+        size = if (f.isDirectory) 0L else runCatching { f.length() }.getOrDefault(0L),
+        lastModified = runCatching { f.lastModified() }.getOrDefault(0L),
+        risk = riskOf(name, isTopLevel),
+        canExecute = runCatching { f.canExecute() }.getOrDefault(false),
+        permissionText = runCatching {
+            (if (f.canRead()) "r" else "-") + (if (f.canWrite()) "w" else "-") + (if (f.canExecute()) "x" else "-")
+        }.getOrDefault(""),
+    )
 }
 
 // 固定 Locale.US——文件时间戳保持 ISO 风格西文数字，

@@ -54,7 +54,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 图片查看（1.2.0 §6.5，零依赖原生实现，不引 Coil）。
+ * 图片查看（零依赖原生实现，不引 Coil）。
  *
  * - 常规图：BitmapFactory `inSampleSize` 按屏幕尺寸降采样 + Compose 手势自绘
  *   （双指缩放/拖动/双击放大，缩放锚定点击点、位移钳制在画面内——返工修正 #10）；
@@ -127,7 +127,7 @@ internal fun ImageViewer(
     }
 }
 
-/** 双指缩放 / 拖动 / 双击放大（Compose 自绘，§6.5；返工修正 #10：位移钳制 + 双击锚定点击点）。 */
+/** 双指缩放 / 拖动 / 双击放大（Compose 自绘；位移钳制 + 双击锚定点击点）。 */
 @Composable
 private fun ZoomableImage(bitmap: Bitmap, modifier: Modifier = Modifier) {
     var scale by remember { mutableFloatStateOf(1f) }

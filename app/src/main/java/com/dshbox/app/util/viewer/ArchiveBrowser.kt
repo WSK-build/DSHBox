@@ -20,7 +20,7 @@ import java.util.zip.ZipEntry
 import org.apache.commons.compress.archivers.zip.ZipFile as CCZipFile
 
 /**
- * 压缩包只读条目枚举（1.2.0 §6.8，纯 JVM 无 Android 依赖）。
+ * 压缩包只读条目枚举（纯 JVM 无 Android 依赖）。
  *
  * 支持格式：ZIP 族（ZipFile）、TAR 族（commons-compress：tar/tar.gz/tgz/tar.bz2/tbz2）、
  * tar.zst（zstd-jni，工程内 classes jar + jniLibs arm64 .so）。7z/RAR 不支持（计划 D5），
@@ -28,12 +28,25 @@ import org.apache.commons.compress.archivers.zip.ZipFile as CCZipFile
  *
  * 只读约束：不落盘工作区、不解压，无 Zip-Slip 面；加密 ZIP 仅列条目名（内容拒绝预览）。
  * x86_64 模拟器无 zstd .so：zstd 加载失败必须捕获为 [Result.Error]（不得崩溃），
- * 仅 arm64 真机可实际枚举 tar.zst。
+ * tar.zst 的枚举依赖原生库，仅在 arm64 设备上可用。
  */
 object ArchiveBrowser {
 
     /** 条目枚举上限（防病态超大包拖爆内存；超出部分 [Snapshot.truncated] 标记）。 */
     const val MAX_ENTRIES = 100_000
+
+    /**
+     * 中央目录一次性分配的字节上限。十万条目量级的中央目录约 5–10 MB，16 MB 留足余量；
+     * 超出即按既有「无法判定」口径回退 UTF-8，而不是按包头声明分配超大数组。
+     */
+    private const val MAX_CENTRAL_DIRECTORY_BYTES = 16L * 1024 * 1024
+
+    /**
+     * 中央目录能否安全读取：长度非负且不超上限，且 `偏移 + 长度` 落在文件内。
+     * 抽成纯判据以便直接单测（无需构造超大文件）。
+     */
+    internal fun isCentralDirectoryReadable(cdOffset: Long, cdSize: Long, fileSize: Long): Boolean =
+        cdSize in 0..MAX_CENTRAL_DIRECTORY_BYTES && cdSize <= Int.MAX_VALUE && cdOffset + cdSize <= fileSize
 
     enum class Format { ZIP, TAR, TAR_GZ, TAR_BZ2, TAR_ZST }
 
@@ -146,7 +159,7 @@ object ArchiveBrowser {
     }
 
     /**
-     * 全部文件条目单遍导出为 ZIP 流（「全部导出」，§6.8：复用既有 SAF 落盘）。
+     * 全部文件条目单遍导出为 ZIP 流（「全部导出」，复用既有 SAF 落盘）。
      * 加密条目跳过；[cancelCheck] 在条目间调用（协程取消传播）。返回已写入条目数。
      */
     fun exportAllToZip(
@@ -161,7 +174,7 @@ object ArchiveBrowser {
     }
 
     // ---------------- ZIP ----------------
-    // 2026-09-07 审查 P2：中文条目名。java.util.zip.ZipFile 无法指定条目名字符集——
+    // 中文条目名：java.util.zip.ZipFile 无法指定条目名字符集——
     // 国内 Windows 压缩软件的中文 ZIP 多为 GBK（bit11 未置位），JDK 默认按 UTF-8 解出
     // 乱码。改用 commons-compress ZipFile（charset=GBK）：bit11 置位条目按 UTF-8、
     // 未置位按 GBK 解码；其 GeneralPurposeBit 直接暴露加密位（替代自研 CEN 扫描），
@@ -236,7 +249,7 @@ object ArchiveBrowser {
             if (eocd < 0) return "UTF-8"
             val cdSize = leInt(buf, eocd + 12).toLong() and 0xFFFFFFFFL
             val cdOffset = leInt(buf, eocd + 16).toLong() and 0xFFFFFFFFL
-            if (cdOffset + cdSize > size || cdSize > Int.MAX_VALUE) return "UTF-8"
+            if (!isCentralDirectoryReadable(cdOffset, cdSize, size)) return "UTF-8"
             raf.seek(cdOffset)
             val cd = ByteArray(cdSize.toInt())
             raf.readFully(cd)

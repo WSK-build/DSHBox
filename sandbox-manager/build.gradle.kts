@@ -34,6 +34,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.commons.compress)
+    // Debian Release.gpg OpenPGP 验签（在线导入的信任链加固）。
+    implementation(libs.bcpg)
     // XZ 解压需要 org.tukaani:xz（commons-compress 的 XZ 支持不内嵌该实现；
     // BZip2 为 commons-compress 自带，无需额外依赖）。
     implementation("org.tukaani:xz:1.9")

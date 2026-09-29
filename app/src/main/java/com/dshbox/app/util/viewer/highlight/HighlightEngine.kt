@@ -1,12 +1,12 @@
 package com.dshbox.app.util.viewer.highlight
 
 /**
- * 自研语法高亮引擎（1.2.0 §6.4，纯 JVM，零第三方依赖）。
+ * 自研语法高亮引擎（纯 JVM，零第三方依赖）。
  *
  * 骨架 = 「规则表 + 单遍扫描分词器」；Sora 适配层见 ui/files/viewer/SoraLanguages.kt
  * （SimpleAnalyzeManager 子类按行取 [tokenize] 结果生成 Spans）。
  *
- * 首发覆盖 6 种语言（§6.4）：json、yaml、shell、python、javascript、java(+kotlin 共用
+ * 覆盖 6 种语言：json、yaml、shell、python、javascript、java(+kotlin 共用
  * C 系规则)。规则为「逐位置 lookingAt」的行内正则——跨行结构（多行注释/三引号字符串/
  * 多行模板串）不做跨行状态跟踪，已知限制（记 textmate 1.2.x 评估）。
  *
@@ -25,7 +25,7 @@ object HighlightEngine {
 
     private fun rule(type: TokenType, pattern: String) = Rule(type, Regex(pattern))
 
-    // ---------------- 语言规则表（每种 20–40 行，§6.4） ----------------
+    // ---------------- 语言规则表（每种 20–40 行） ----------------
 
     private val JSON = listOf(
         rule(TokenType.COMMENT, "//[^\n]*"),

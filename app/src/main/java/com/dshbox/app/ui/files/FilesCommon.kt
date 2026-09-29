@@ -65,7 +65,7 @@ internal fun ControlBg(): Color = if (filesUseDarkTheme()) DarkSurface else Colo
 @Composable
 internal fun CardShadow(): Color = if (filesUseDarkTheme()) Color(0x33000000) else Color(0x0A000000)
 
-/** 顶部胶囊分段切换（沙盒 / 工作区视图选择）。1.2.0 §4.3 由 FilesScreen 迁出提权。 */
+/** 顶部胶囊分段切换（沙盒 / 工作区视图选择）。 */
 @Composable
 internal fun SegmentedSwitch(
     selected: Int,
@@ -102,9 +102,9 @@ internal fun SegmentedSwitch(
 }
 
 /**
- * 风险弹窗文案选择（1.2.0 §4.2，纯函数供 JVM 单测）。
- * 判定必须与入口筛选同源（都基于 [Layer]）——复查修正：此前移动文案用 entry.risk
- * （名称口径），层内文件命中 NORMAL 落到错误兜底，node/dsh 层文件显示 DSH 数据文案。
+ * 风险弹窗文案选择（纯函数供 JVM 单测）。
+ * 判定必须与入口筛选同源（都基于 [Layer]）：若改用 entry.risk（名称口径），
+ * 层内文件会命中 NORMAL 而落到错误兜底，node/dsh 层文件显示 DSH 数据文案。
  */
 internal fun riskDialogTextRes(layer: Layer, isMoveAction: Boolean, sandboxRunning: Boolean): Int = when {
     isMoveAction && layer == Layer.DSH_DATA -> R.string.files_risk_move_dsh
@@ -115,13 +115,13 @@ internal fun riskDialogTextRes(layer: Layer, isMoveAction: Boolean, sandboxRunni
     layer == Layer.NODE || layer == Layer.DSH ->
         if (sandboxRunning) R.string.files_risk_layer_running else R.string.files_risk_layer
     layer == Layer.SYSTEM_DIR -> R.string.files_risk_system
-    // 复查第八轮修正：DSH_DATA 用 §4.2 定稿措辞的文件向文案（旧 key 把文件称作
-    // 「目录」且措辞弱于定稿），delete/rename 与 move 同一信息强度
+    // DSH_DATA 用文件向文案（原 key 把文件称作
+    // 「目录」且措辞偏弱），delete/rename 与 move 同一信息强度
     layer == Layer.DSH_DATA -> R.string.files_risk_dsh_data
     else -> R.string.files_risk_generic
 }
 
-/** 面包屑导航：root → currentDir 逐级可点击。1.2.0 §4.3 由 FilesScreen 迁出提权。 */
+/** 面包屑导航：root → currentDir 逐级可点击。 */
 @Composable
 internal fun Breadcrumb(
     root: File,
@@ -166,8 +166,8 @@ internal fun Breadcrumb(
 }
 
 /**
- * 覆盖页/非活跃 tab 的「组合保留 + 零尺寸不命中」修饰符（自 MainScreen 提权共享，
- * 2026-09-07 返工批次）：覆盖式二级页（FileViewerScreen / FolderPickerScreen）发射在
+ * 覆盖页/非活跃 tab 的「组合保留 + 零尺寸不命中」修饰符（自 MainScreen 提权共享）。
+ * 覆盖式二级页（FileViewerScreen / FolderPickerScreen）发射在
  * FilesScreen 根 Box 之外、与 MainScreen 各 tab 同级且 zIndex(2f)——若不加本修饰符，
  * 查看器/选择器打开期间切换 tab 会被这块「透明桌布」压住（底部导航永远点不动），
  * 且它在 Files tab 不活跃时仍绘制在其它 tab 之上。沿用 keepAliveHidden：非活跃时

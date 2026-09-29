@@ -5,7 +5,7 @@ import java.io.RandomAccessFile
 import java.security.MessageDigest
 
 /**
- * 内容指纹（1.2.0 §6.4.3，纯 JVM）：**size + lastModified + 首尾各 64KB 的 SHA-256 摘要**。
+ * 内容指纹（纯 JVM）：**size + lastModified + 首尾各 64KB 的 SHA-256 摘要**。
  *
  * 外部变更检测的核心：文件的 lastModified 秒级精度不足（编辑器快速连续保存时 mtime
  * 可能不变），由首尾内容摘要补齐——外部修改文件头部或尾部（最常见场景：日志追加、
@@ -30,7 +30,7 @@ data class ContentFingerprint(
 
     companion object {
 
-        /** 首/尾摘要窗口：64KB（§6.4.3）。 */
+        /** 首/尾摘要窗口：64KB。 */
         const val WINDOW = 64 * 1024
 
         /** 计算文件指纹（IO，调用方负责线程）。文件不可读时返回 null（调用方按错误态处理）。 */

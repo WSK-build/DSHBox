@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 文本编码探测单测（1.2.0 §10.1）：UTF-8/UTF-16 BOM/GBK 探测、UTF-8 有效性否决
+ * 文本编码探测单测：UTF-8/UTF-16 BOM/GBK 探测、UTF-8 有效性否决
  * （截断多字节序列）、CRLF/LF/CR 识别与保持、手动指定覆盖。
  */
 class TextEncodingTest {
@@ -60,7 +60,7 @@ class TextEncodingTest {
 
     @Test
     fun windowCutMultibyteStillUtf8() {
-        // 返工修正 #7 回归锁定：8KB 采样窗口在多字节序列中间切断——
+        // 8KB 采样窗口在多字节序列中间切断——
         // 8000 个 ASCII + 「中」UTF-8 的首字节（E4 B8 落入窗口内但序列不完整）。
         // 修复前：严格校验否决 → GBK 启发式把 E4 B8 当合法对 → 误判 GBK；
         // 修复后：尾部不完整序列裁掉 → 全 ASCII → UTF-8。
@@ -173,7 +173,7 @@ class TextEncodingTest {
         // 编辑表示归一为 LF
         val normalized = TextEncoding.normalizeToLf(original)
         assertEquals("l1\nl2\n", normalized)
-        // 保存时按原风格还原（§6.4 默认原样保留）
+        // 保存时按原风格还原（默认原样保留）
         assertEquals(original, TextEncoding.applyNewlineStyle(normalized, info.style))
         // 显式转换（契约：输入为 LF 归一文本）
         assertEquals("l1\r\nl2\r\n", TextEncoding.applyNewlineStyle(normalized, TextEncoding.NewlineStyle.CRLF))

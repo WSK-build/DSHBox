@@ -8,10 +8,21 @@
   "theme_color": "#10A37F",
   "icons": [
     {
-      "src": "./assets/images/app-icon.png",
+      "src": "./assets/images/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "./assets/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/images/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }

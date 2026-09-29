@@ -17,8 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
+// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +58,9 @@ import com.dshbox.app.sandbox.SandboxState
 import com.dshbox.app.ui.asString
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.dshbox.app.common.R as CommonR
 
 /**
  * 更新 DSH（在线）新界面。
@@ -113,10 +116,10 @@ fun DshUpdateScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // 左上角显式返回键（此前仅系统 BackHandler，无可见入口）。
+            // 左上角显式返回键（仅有系统 BackHandler 时无可见入口）。
             IconButton(onClick = onBack) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = ImageVector.vectorResource(CommonR.drawable.ic_arrow_left),
                     contentDescription = stringResource(R.string.dsh_update_back),
                 )
             }
@@ -182,7 +185,16 @@ fun DshUpdateScreen(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            for (source in DshSources.ALL) {
+            // 源探测结果排序展示：有版本列表的可达源按延迟升序在前，不可达殿后
+            // （不标注地区，全部源一视同仁）。
+            val sortedSources = DshSources.ALL
+                .sortedWith(
+                    compareByDescending<DshNpmSource> { s ->
+                        probes[s.url]?.let { it.reachable && it.versions.isNotEmpty() } == true
+                    }.thenByDescending { probes[it.url]?.reachable == true }
+                        .thenBy { probes[it.url]?.latencyMs ?: Long.MAX_VALUE },
+                )
+            for (source in sortedSources) {
                 val probe = probes[source.url]
                 SourceRow(
                     source = source,
@@ -190,9 +202,12 @@ fun DshUpdateScreen(
                     installedVersion = dshVersion?.takeIf { it.isNotBlank() },
                     enabled = !probing,
                     onClick = {
-                        if (probe?.reachable == true && probe.latestVersion != null) {
+                        val newest = newestVersion(probe)
+                        if (probe?.reachable == true && newest != null) {
                             versionDialogSource = source
-                            versionDialogSelection = probe.latestVersion
+                            // 预选"已发布的最新版"（版本列表按版本号降序，rc.2 > rc.1）；
+                            // 不用 dist-tags.latest——它可能滞后于实际最新发布（如 rc.2 未打 latest 标签）。
+                            versionDialogSelection = newest
                         }
                     },
                 )
@@ -313,6 +328,13 @@ private fun versionBadgeSuffix(version: String, installed: String?): String = wh
     else -> stringResource(R.string.dsh_update_version_older)
 }
 
+/**
+ * 源的"最新版"= 已发布版本列表中的最大版本号（probe.versions 已按版本降序）。
+ * 退回 dist-tags.latest 仅当版本列表为空——避免 npm latest 标签滞后导致的显示/预选错位。
+ */
+private fun newestVersion(probe: DshSourceProbe?): String? =
+    probe?.versions?.firstOrNull() ?: probe?.latestVersion
+
 @Composable
 private fun SourceRow(
     source: DshNpmSource,
@@ -321,8 +343,9 @@ private fun SourceRow(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val hasNewer = probe?.latestVersion != null && installedVersion != null &&
-        Versions.compare(installedVersion, probe.latestVersion) < 0
+    val newest = newestVersion(probe)
+    val hasNewer = newest != null && installedVersion != null &&
+        Versions.compare(installedVersion, newest) < 0
     val accent = when {
         probe == null -> MaterialTheme.colorScheme.onSurfaceVariant
         !probe.reachable -> MaterialTheme.colorScheme.error
@@ -345,29 +368,11 @@ private fun SourceRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = source.name.asString(),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (hasNewer) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                    if (source.chinaMirror) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.secondaryContainer,
-                                    RoundedCornerShape(4.dp),
-                                )
-                                .padding(horizontal = 4.dp, vertical = 1.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.dsh_update_china_tag),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = source.name.asString(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (hasNewer) FontWeight.SemiBold else FontWeight.Normal,
+                )
                 Text(
                     text = source.note.asString(),
                     style = MaterialTheme.typography.bodySmall,
@@ -376,7 +381,7 @@ private fun SourceRow(
                 Text(
                     text = probe?.let {
                         if (it.reachable) {
-                            stringResource(R.string.dsh_update_latest_version, it.latestVersion ?: "—")
+                            stringResource(R.string.dsh_update_latest_version, newestVersion(it) ?: "—")
                         } else {
                             stringResource(R.string.dsh_update_unreachable, it.error?.asString().orEmpty())
                         }
@@ -407,8 +412,8 @@ private fun InstallProgressView(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     // 去掉内层 verticalScroll —— 本视图直接位于更新页根
     // Column(verticalScroll) 之内，嵌套滚动组件会被以无限最大高度约束测量，
-    // 首次组合即抛 IllegalStateException（点「安装」后整个 app 闪退，真机
-    // FATAL EXCEPTION: main 实证）。外层页面 Column 已可滚，日志区由固定
+    // 首次组合即抛 IllegalStateException（整个 app 会闪退，
+    // 日志可见 FATAL EXCEPTION: main）。外层页面 Column 已可滚，日志区由固定
     // 260dp 的 LazyColumn 自行滚动，此层无需再滚。
     Column(
         modifier = Modifier

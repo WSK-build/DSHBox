@@ -14,7 +14,7 @@ import java.io.FileOutputStream
 
 /**
  * BundleManager.extractTarGz 按魔数支持 bzip2（BZh）与 xz
- * （FD 37 7A 58 5A 00）——此前这两种压缩会误入 gzip 分支得到误导性报错。
+ * （FD 37 7A 58 5A 00）——若不加识别，这两种压缩会误入 gzip 分支得到误导性报错。
  */
 class Bzip2XzExtractionTest {
     @get:Rule

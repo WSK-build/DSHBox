@@ -1,0 +1,22 @@
+pilot 模块授权说明
+==================
+
+本目录是 DSHBox 手机助手（DshPilot）的模块容器，含两个 Gradle 子模块。两者授权不同，
+复制或再分发时不要混为一谈：
+
+1) interlock-relay-core/  —— Apache License 2.0
+   可独立发布的平台层：协议、通道（v1 信箱 + v2 控制通道）、审批闸门、三个执行后端、
+   存储与配额、运行日志与审计、以及对宿主的七个扩展点（spi/）。
+   版权：Copyright 2026 WSK-build。
+   许可原文与第三方依赖清单：见本目录内的 LICENSE 与 NOTICE。
+
+2) dshbox-adapter/  —— GNU GPL v3
+   DSHBox 自己的适配层：助手界面、弹窗与通知、六语文案与语言跟随、部署取值注入
+   （挂载点 /opt/pilot、命令名 pilot、相册目录 DSHBox、pilot_* 通知渠道）。
+   它依赖宿主 :common 与 androidx/compose，属于 DSHBox 应用的一部分，
+   随应用整体以 GPL-3.0 分发，**永不单独发布**。
+   许可原文：见本目录内的 LICENSE。
+
+两者的关系：适配层以 `api` 依赖核心层；宿主（app）只依赖适配层，即可拿到核心层的全部类型。
+在 DSHBox 工程内整体构建时，合并产物整体适用 GPL-3.0；单独取用 interlock-relay-core/
+时适用 Apache-2.0（两条授权互不影响：Apache-2.0 与 GPL-3.0 兼容）。

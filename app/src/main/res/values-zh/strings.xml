@@ -45,6 +45,8 @@
     <string name="diagnostics_empty">（空）</string>
     <string name="diagnostics_export">导出日志</string>
     <string name="diagnostics_export_done">日志已导出</string>
+    <string name="diagnostics_copy">复制</string>
+    <string name="diagnostics_copy_done">已复制到剪贴板</string>
     <string name="diagnostics_log_dsh">DSH 进程日志</string>
     <string name="diagnostics_log_guest">访客命令日志</string>
     <string name="diagnostics_log_sandbox">沙箱进程日志</string>
@@ -104,6 +106,7 @@
     <string name="fileops_err_open_input_stream">无法打开所选文件（openInputStream 返回 null）</string>
     <string name="fileops_err_write_file">无法写入导出文件 %1$s</string>
     <string name="files_archive_binary_entry">该条目不是文本，请导出后查看</string>
+    <string name="files_dshbox_readonly">这是随 App 发布的固定资产（只读），不能修改或删除</string>
     <string name="files_archive_empty">压缩包内没有条目</string>
     <string name="files_archive_encrypted_entry">加密条目不支持内建预览，可使用外部应用打开</string>
     <string name="files_archive_encrypted_hint">含加密条目</string>
@@ -225,6 +228,8 @@
     <string name="files_new_folder">新建文件夹</string>
     <string name="files_new_folder_confirm">创建</string>
     <string name="files_new_folder_hint">请输入文件夹名称</string>
+    <string name="files_new_file">新建文件</string>
+    <string name="files_new_file_hint">请输入文件名</string>
     <string name="files_newline_follow">跟随原文件</string>
     <string name="files_newline_hint">选择保存时使用的换行风格；「跟随原文件」保存时保持不变。</string>
     <string name="files_office_no_text">未提取到文本：文档可能为空或格式不支持，可尝试外部打开</string>
@@ -292,6 +297,10 @@
     <string name="files_search_scanning">正在搜索全沙盒…</string>
     <string name="files_select_hint">请长按选择要导出的文件或文件夹</string>
     <string name="files_share">导出/分享</string>
+    <string name="files_list_truncated">文件仅显示前 %1$d 个（文件夹完整显示）</string>
+    <string name="files_install_deb">安装到沙箱</string>
+    <string name="files_install_deb_done">安装完成</string>
+    <string name="files_install_deb_failed">安装失败</string>
     <string name="files_sort">排序</string>
     <string name="files_sort_name">按名称排序</string>
     <string name="files_sort_size">按大小排序</string>
@@ -306,13 +315,10 @@
     <string name="files_viewer_loading">正在打开…</string>
     <string name="files_viewer_read_failed">文件不可读或已被删除</string>
     <string name="files_viewer_retry">重试</string>
-    <string name="home_address_caption">仅本设备可访问，无需联网</string>
-    <string name="home_address_hint">本机访问地址</string>
-    <string name="home_copied">已复制</string>
-    <string name="home_copy">复制</string>
     <string name="home_dsh_error">DSH 异常</string>
     <string name="home_dsh_needs_sandbox_hint">启动 DSH 前需要先启动沙箱</string>
     <string name="home_dsh_ready">DSH 就绪</string>
+    <string name="home_dsh_unresponsive">DSH 无响应，正在确认…</string>
     <string name="home_dsh_restart">重启 DSH</string>
     <string name="home_dsh_start">启动 DSH</string>
     <string name="home_dsh_stop">停止 DSH</string>
@@ -320,7 +326,13 @@
     <string name="home_dsh_stop_confirm_title">停止 DSH？</string>
     <string name="home_dsh_stopped">DSH 已停止</string>
     <string name="home_open">在浏览器中打开 DSH</string>
+    <string name="home_browser">浏览器</string>
+    <string name="home_pilot_title">DshPilot</string>
+    <string name="home_pilot_subtitle">连接 DSH 与手机</string>
+    <string name="home_open_browser_failed">无法打开浏览器</string>
+    <string name="home_open_no_token">启动令牌尚未就绪，请稍后重试</string>
     <string name="home_runtime_import">去设置导入</string>
+    <string name="home_runtime_get_online">在线导入运行环境包</string>
     <string name="home_runtime_installing">正在自动安装运行环境</string>
     <string name="home_runtime_installing_hint">首次使用会自动解包内置运行环境（约 1~3 分钟），请稍候，无需手动操作。</string>
     <string name="home_runtime_missing">尚未安装运行环境</string>
@@ -334,7 +346,6 @@
     <string name="home_stop_cancel">取消</string>
     <string name="home_stop_confirm">停止</string>
     <string name="home_uptime_format">已运行 %1$s</string>
-    <string name="home_version_format">版本号 %1$s</string>
     <string name="move_err_copy_place_failed">复制就位失败：%1$s</string>
     <string name="move_err_copy_verify_failed">复制校验失败：%1$s（预期 %2$d 字节，实际 %3$d 字节）</string>
     <string name="move_err_data_preserved">；源数据已保全到 %1$s</string>
@@ -376,7 +387,7 @@
     <string name="search_scanning_name">正在扫描 %1$s</string>
     <string name="settings_appearance">主题</string>
     <string name="settings_appearance_dark">深色</string>
-    <string name="settings_appearance_follow_system">跟随系统</string>
+    <string name="settings_appearance_follow_system">系统</string>
     <string name="settings_appearance_light">浅色</string>
     <string name="settings_assemble_mobile_adapt">装配DSH移动端适配包</string>
     <string name="settings_assemble_mobile_adapt_failed">装配失败，已尝试回滚</string>
@@ -467,6 +478,7 @@
     <string name="tab_terminal">终端</string>
     <string name="terminal_action_failsafe">受限 shell</string>
     <string name="terminal_action_open_sandbox_terminal">切换到沙箱终端</string>
+    <string name="terminal_action_switch_to_sandbox">终端</string>
     <string name="terminal_action_restart">重启会话</string>
     <string name="terminal_action_start_sandbox">启动沙箱</string>
     <string name="terminal_banner_failsafe">受限 shell —— 沙箱离线，仅提供基础命令</string>
@@ -533,4 +545,70 @@
     <string name="webview_upload_partial_failed">%2$d 个文件中有 %1$d 个无法读取，已跳过</string>
 
     <string name="webview_settings_doc_missing">未找到配置文件：user-data/.dsh/settings.yaml</string>
+
+    <string name="online_import_title">在线导入运行环境包</string>
+    <string name="online_import_slim_title">精简版 Debian</string>
+    <string name="online_import_explain">将下载并组装精简版 Debian：仅移除非必需的语言包、文档与手册等，功能组件全部保留。不影响正常使用，并可减轻存储压力。</string>
+    <string name="online_import_intro">从镜像源下载 Debian 基础层与 Node.js，并在本机组装运行环境；离线导入保留为无网兜底。</string>
+    <string name="online_import_sources_deb">Debian 软件源</string>
+    <string name="online_import_sources_node">Node.js 源</string>
+    <string name="online_import_start">获取并安装</string>
+    <string name="online_import_reprobe">重新探测</string>
+    <string name="online_import_confirm_title">停止沙箱并在线获取运行环境？</string>
+    <string name="online_import_confirm_msg">导入会先停止沙箱，然后从所选镜像下载并组装运行环境（失败自动换源重试）。请保持设备联网；deb 缓存让重试几乎不重复下载。</string>
+    <string name="online_import_confirm_action">开始</string>
+    <!-- 安装状态检测口（获取并安装下方）：让用户在按下去之前知道自己是在首次安装还是重装 -->
+    <string name="online_layer_status_title">安装状态</string>
+    <string name="online_layer_installed">已安装</string>
+    <string name="online_layer_installed_just_now">已安装 · 刚刚更新</string>
+    <string name="online_layer_not_installed">未安装</string>
+    <string name="online_layer_checking">检测中…</string>
+    <string name="online_layer_status_hint">点击可重新检测</string>
+    <!-- 已安装用户点「获取并安装」的二次确认（与离线导入运行环境包弹窗同款样式） -->
+    <string name="online_reinstall_title">重新获取并安装</string>
+    <string name="online_reinstall_debian_msg">安装 Debian 会重置当前运行环境的 base 层，但保护工作区用户数据和 .dsh 数据。</string>
+    <string name="online_reinstall_node_msg">安装 node 会重置当前运行环境的 node 层，但保护工作区用户数据和 .dsh 数据。</string>
+    <string name="online_reinstall_action">确定安装</string>
+    <string name="online_import_cancel">取消</string>
+    <string name="online_import_back_to_list">返回源列表</string>
+    <string name="online_source_probing">探测中…</string>
+    <string name="online_source_ok_ms">%1$d 毫秒</string>
+    <string name="online_source_unreachable">不可达</string>
+    <string name="online_source_unreachable_reason">不可达：%1$s</string>
+    <string name="online_stage_prepare">正在准备</string>
+    <string name="online_stage_index">正在获取软件包索引</string>
+    <string name="online_stage_packages">正在下载软件包</string>
+    <string name="online_stage_db">正在合成软件包数据库</string>
+    <string name="online_stage_fixes">正在应用系统配置</string>
+    <string name="online_stage_trim">正在裁剪为精简版</string>
+    <string name="online_stage_verify">正在自检</string>
+    <string name="online_stage_node">正在获取 Node.js</string>
+    <string name="online_stage_seal">正在生成运行环境校验</string>
+    <string name="online_stage_install">正在装配运行环境</string>
+    <string name="online_stage_dsh">正在装配 DSH 基线</string>
+    <string name="online_stage_done">完成</string>
+    <string name="online_stage_failed">失败</string>
+    <string name="online_err_low_storage">存储空间不足（需约 %1$s GB，当前可用 %2$s GB）</string>
+    <string name="online_err_manifest">内置软件清单缺失或与本机架构不符</string>
+    <string name="online_err_no_source">没有可用的镜像源</string>
+    <string name="online_err_index">软件包索引获取失败：%1$s</string>
+    <string name="online_err_gpg">软件包索引签名验证失败（该源不是受信任的 Debian 镜像）</string>
+    <string name="online_err_missing">镜像缺少清单软件包：%1$s</string>
+    <string name="online_err_deb">软件包下载或校验失败：%1$s</string>
+    <string name="online_err_node">Node.js 获取失败：%1$s</string>
+    <string name="online_err_need_debian">请先导入 Linux（精简 Debian）层</string>
+    <string name="online_err_verify">自检未通过：%1$s</string>
+    <string name="online_err_ldconfig">动态链接缓存生成失败</string>
+    <string name="online_err_cancelled">已取消导入</string>
+
+<string name="online_hub_debian">在线导入 Linux（精简 Debian）层</string>
+<string name="online_hub_debian_desc">探测镜像源，在本机组装精简版 Debian 基础层，并装配随包 DSH 基线。</string>
+<string name="online_hub_node">在线导入 node 层</string>
+<string name="online_hub_node_desc">下载并装配 Node.js 运行时层；需先完成 Linux（精简 Debian）层的导入。</string>
+<string name="online_source_no_target">可达但缺少所需内容</string>
+<string name="online_node_intro">从镜像源下载 Node.js 运行时层并装配；需先完成 Linux（精简 Debian）层的导入。</string>
+
+    <string name="home_node_missing">尚未导入 node 层</string>
+    <string name="home_node_missing_hint">Linux 层已就绪；还需导入 node 层才能启动 DSH。</string>
+    <string name="home_node_missing_action">在线导入运行环境包</string>
 </resources>

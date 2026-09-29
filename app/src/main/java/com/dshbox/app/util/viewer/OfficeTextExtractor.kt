@@ -7,7 +7,7 @@ import java.io.InputStream
 import java.util.zip.ZipFile
 
 /**
- * Office OOXML 纯文本抽取兜底（1.2.0 §6.10）。
+ * Office OOXML 纯文本抽取兜底。
  *
  * - docx：`word/document.xml` 文本节点（`w:p` 段落 / `w:t` 文本 / `w:tab` 制表 / `w:br` 换行）；
  * - xlsx：`xl/sharedStrings.xml` 共享字符串 + 工作表（`xl/worksheets/sheetN.xml`，
@@ -57,10 +57,12 @@ object OfficeTextExtractor {
                 val e = zip.getEntry(sheet) ?: continue
                 zip.getInputStream(e).use { ins ->
                     if (!truncated) {
-                        truncated = !parseSheet(ins, shared, sb)
+                        truncated = !parseSheet(ins, shared.values, sb)
                     }
                 }
             }
+            // 共享字符串表被截断同样属于「内容不完整」：单元格里越界的引用会渲染为空。
+            if (shared.truncated) truncated = true
             Extracted(sb.toString(), truncated, sheets.size)
         }
     } catch (_: Exception) {
@@ -95,9 +97,18 @@ object OfficeTextExtractor {
 
     // ---------------- xlsx ----------------
 
-    private fun readSharedStrings(zip: ZipFile): List<String> {
-        val entry = zip.getEntry("xl/sharedStrings.xml") ?: return emptyList()
+    /** 共享字符串表读取结果：字符串列表 + 是否因超过 [MAX_TEXT_CHARS] 而截断。 */
+    private class SharedStrings(val values: List<String>, val truncated: Boolean)
+
+    /**
+     * 读共享字符串表；累计字符数超过 [MAX_TEXT_CHARS] 即停止读取并标记截断——
+     * 超大工作表不会把整张字符串表读进内存，越界引用在单元格里渲染为空。
+     */
+    private fun readSharedStrings(zip: ZipFile): SharedStrings {
+        val entry = zip.getEntry("xl/sharedStrings.xml") ?: return SharedStrings(emptyList(), false)
         val out = ArrayList<String>()
+        var chars = 0
+        var truncated = false
         zip.getInputStream(entry).use { input ->
             val parser = newParser(input)
             var current: StringBuilder? = null
@@ -110,6 +121,11 @@ object OfficeTextExtractor {
                         "t" -> current?.append(parser.nextText())
                     }
                     XmlPullParser.END_TAG -> if (local(parser) == "si" && current != null) {
+                        chars += current.length
+                        if (chars > MAX_TEXT_CHARS) {
+                            truncated = true
+                            return@use
+                        }
                         out.add(current.toString())
                         current = null
                     }
@@ -117,7 +133,7 @@ object OfficeTextExtractor {
                 event = parser.next()
             }
         }
-        return out
+        return SharedStrings(out, truncated)
     }
 
     /** 追加工作表文本到 [sb]；返回是否完整未截断。 */

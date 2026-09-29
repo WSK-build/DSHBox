@@ -13,7 +13,7 @@ import java.util.zip.ZipOutputStream
 
 /**
  * OfficeTextExtractor 单测（纯 JVM）：临时目录构造最小 docx/xlsx zip 样本，
- * 断言抽取文本、空态与损坏输入不崩（1.2.0 §6.10）。
+ * 断言抽取文本、空态与损坏输入不崩。
  */
 class OfficeTextExtractorTest {
 
@@ -202,5 +202,24 @@ class OfficeTextExtractorTest {
         assertNotNull(extracted)
         assertTrue(extracted!!.text.length >= OfficeTextExtractor.MAX_TEXT_CHARS)
         assertTrue(extracted.truncated)
+    }
+
+    @Test
+    fun xlsxSharedStringsBeyondCapIsTruncated() {
+        // 单条 1000 字符 × 4100 条 = 4,100,000 字符 > MAX_TEXT_CHARS（4,000,000）
+        val f = tmp.newFile("huge-shared.xlsx")
+        val shared = StringBuilder("<sst>")
+        repeat(4_100) { shared.append("<si><t>").append("x".repeat(1000)).append("</t></si>") }
+        shared.append("</sst>")
+        zipOf(
+            mapOf(
+                "xl/sharedStrings.xml" to shared.toString(),
+                "xl/worksheets/sheet1.xml" to sheetXml("""<row><c r="A1" t="s"><v>0</v></c></row>"""),
+            ),
+            f,
+        )
+        val extracted = OfficeTextExtractor.extractXlsx(f)
+        assertNotNull(extracted)
+        assertTrue("共享字符串表超限应标记截断", extracted!!.truncated)
     }
 }

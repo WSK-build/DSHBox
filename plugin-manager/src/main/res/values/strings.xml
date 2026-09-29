@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 首页入口卡 -->
+    <string name="pm_home_entry_title">Cordis</string>
+    <string name="pm_home_entry_subtitle">Plugin manager · Market</string>
+
+    <!-- 面板页 -->
+    <string name="pm_panel_title">Cordis plugins</string>
+    <string name="pm_panel_hint">How to handle plugins that fail to load.</string>
+    <string name="pm_safety_mode">Safety mode</string>
+    <string name="pm_safety_mode_desc">Skips plugins that fail to load</string>
+    <string name="pm_absolute_mode">Absolute safety mode</string>
+    <string name="pm_absolute_mode_desc">Starts without loading any third-party plugin</string>
+    <string name="pm_absolute_on_hint">Absolute safety mode is on: no third-party plugin will be loaded.</string>
+    <string name="pm_load_log_row">Plugin load log</string>
+    <string name="pm_isolation_row">Failed plugin list</string>
+    <string name="pm_market_row">Plugin market</string>
+
+    <!-- 插件加载记录 -->
+    <string name="pm_load_log_title">Plugin load log</string>
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_current">This boot</string> -->
+    <!-- 封存：「本次/上次」两栏已取消（现为单栏按启动分段展示），此文案暂留备用。
+    <string name="pm_load_log_previous">Previous boot</string> -->
+    <string name="pm_load_log_empty">No records yet</string>
+    <string name="pm_load_log_hint">Keeps the last %1$d boots, rotating.</string>
+    <string name="pm_load_log_too_long">Log too long — showing the tail only. Export the full log from Run logs in diagnostics.</string>
+    <string name="pm_repair_row">Crash repair helper</string>
+    <string name="pm_repair_card_title">opencode terminal agent</string>
+    <string name="pm_repair_install">Install</string>
+    <string name="pm_repair_update">Update</string>
+    <string name="pm_repair_remove">Remove</string>
+    <string name="pm_repair_note_1">opencode is an open-source terminal agent that helps you get work done in the terminal.</string>
+    <string name="pm_repair_note_2">opencode comes with a limited daily free quota.</string>
+    <string name="pm_repair_note_3">When a DSH plugin keeps crashing, you can repair it from the terminal with this tool.</string>
+    <string name="pm_repair_note_4">To use it: tap Install, then type opencode in the terminal.</string>
+    <string name="pm_repair_state_installed">Installed v%1$s</string>
+    <string name="pm_repair_state_installed_no_version">Installed</string>
+    <string name="pm_repair_state_missing">Not installed</string>
+    <string name="pm_repair_working">Downloading and installing. Keep the network connected and wait.</string>
+    <string name="pm_repair_retrying">Network hiccup — retrying.</string>
+    <string name="pm_repair_done">Done</string>
+    <string name="pm_repair_failed">Failed: %1$s</string>
+    <string name="pm_repair_failed_unknown">unknown error</string>
+    <string name="pm_repair_retry">Retry</string>
+    <string name="pm_repair_remove_confirm_body">opencode itself, its configuration and your data will all be removed.</string>
+
+    <!-- 失败隔离清单 -->
+    <string name="pm_isolation_title">Failed plugin list</string>
+    <string name="pm_isolation_hint">Failed to load on startup and has been skipped. Re-enabling takes effect on the next boot.</string>
+    <string name="pm_isolation_empty">No skipped plugins</string>
+    <string name="pm_isolation_restore">Re-enable</string>
+    <string name="pm_isolation_badge">Skipped</string>
+
+    <!-- 通用 -->
+    <string name="pm_back">Back</string>
+    <string name="pm_refresh">Refresh</string>
+    <string name="pm_copy">Copy</string>
+    <string name="pm_copied">Copied to clipboard</string>
+    <string name="pm_working">Working…</string>
+
+    <!-- Market · chrome -->
+    <string name="pm_market_title">Plugin market</string>
+    <string name="pm_market_subtitle">Community plugins for DeepSeek Harness</string>
+    <string name="pm_market_tab_discover">Discover</string>
+    <string name="pm_market_tab_favorites">Favorites</string>
+    <string name="pm_market_tab_installed">Installed</string>
+
+    <!-- Market · catalog loading -->
+    <string name="pm_market_loading">Loading the plugin catalog…</string>
+    <string name="pm_market_unavailable">The plugin catalog is unavailable right now.</string>
+    <string name="pm_market_load_failed_title">Could not load the plugin catalog</string>
+    <string name="pm_market_load_failed_attempts">Tried %1$d time(s)</string>
+    <string name="pm_market_load_failed_elapsed">Took %1$d ms</string>
+    <string name="pm_market_load_retry">Retry</string>
+    <string name="pm_market_empty">No matching plugins</string>
+    <string name="pm_market_result_count">%1$d/%2$d</string>
+
+    <!-- Market · discover -->
+    <string name="pm_market_search_ph">Search plugins, e.g. notifications, terminal, memory…</string>
+    <string name="pm_market_category_all">All</string>
+    <string name="pm_market_filter_host">Compatible host only</string>
+    <string name="pm_market_filter_host_hint">Plugins that declare nothing, or cannot be checked, stay visible.</string>
+    <string name="pm_market_sort_field">Sort by</string>
+    <string name="pm_market_sort_downloads">Downloads</string>
+    <string name="pm_market_sort_stars">Stars</string>
+    <string name="pm_market_sort_added">Added</string>
+    <string name="pm_market_sort_desc">Descending</string>
+    <string name="pm_market_sort_asc">Ascending</string>
+    <string name="pm_market_load_more">Load more</string>
+
+    <!-- Market · card fields -->
+    <string name="pm_market_deprecated_badge">Deprecated</string>
+    <string name="pm_market_deprecated_warn">The catalog marks this plugin as deprecated; new users are advised against installing it.</string>
+    <string name="pm_market_replacement_hint">The catalog suggests %1$s instead</string>
+    <string name="pm_market_downloads_value">↓ %1$s</string>
+    <string name="pm_market_stars_value">★ %1$s</string>
+    <string name="pm_market_version_value">v%1$s</string>
+    <string name="pm_market_author_value">by %1$s</string>
+    <string name="pm_market_categories_label">Categories</string>
+    <string name="pm_market_installed_badge">✓ Installed</string>
+    <string name="pm_market_third_party_badge">Third-party</string>
+    <string name="pm_market_local_dev_badge">Local dev</string>
+
+    <!-- Market · host compatibility -->
+    <string name="pm_market_compat_compatible">Host requirement satisfied</string>
+    <string name="pm_market_compat_incompatible">Confirmed incompatible with this DSH</string>
+    <string name="pm_market_compat_unknown">Host requirement unknown — still installable</string>
+    <string name="pm_market_compat_undeclared">Host requirement not declared</string>
+    <string name="pm_market_compat_unavailable">Host requirement could not be read</string>
+    <string name="pm_market_compat_requirement">Needs DSH %1$s</string>
+
+    <!-- Market · install and detail -->
+    <string name="pm_market_install">Install</string>
+    <string name="pm_market_installing">Installing…</string>
+    <string name="pm_market_confirm_install">Confirm install</string>
+    <string name="pm_market_confirm">Confirm</string>
+    <string name="pm_market_cancel">Cancel</string>
+    <string name="pm_market_confirm_warn">Plugins are third-party community code. Installing means you trust this source; build scripts are blocked by default.</string>
+    <string name="pm_market_detail_title">Plugin details</string>
+    <string name="pm_market_detail_cmd">Install command</string>
+    <string name="pm_market_detail_published">Published %1$s</string>
+    <string name="pm_market_detail_third_party">This is third-party code written by the community, not by us. Review the source before installing.</string>
+    <string name="pm_market_detail_build_blocked">This plugin needs its build scripts to run; they are blocked by default for safety. Allow them only after you trust the source.</string>
+    <string name="pm_market_detail_source">Source repository</string>
+    <string name="pm_market_detail_install_anyway">Install anyway</string>
+    <string name="pm_market_incompatible_warn">This plugin declares that it is incompatible with the current DSH. Installing it will most likely break it.</string>
+    <string name="pm_market_close">Close</string>
+
+    <!-- Market · installed list -->
+    <string name="pm_market_installed_empty">No community plugins installed yet</string>
+    <string name="pm_market_installed_empty_hint">Browse the Discover tab to find some.</string>
+    <string name="pm_market_state_live">Active</string>
+    <string name="pm_market_state_restart">Installed, takes effect after restart</string>
+    <string name="pm_market_state_inert">Installed, not in use</string>
+    <string name="pm_market_state_broken">Installed, failed validation</string>
+    <string name="pm_market_state_missing">Listed, but the files are gone</string>
+    <string name="pm_market_state_disabled">Disabled</string>
+    <string name="pm_market_act_why">Details</string>
+    <string name="pm_market_act_why_empty">No diagnosis was recorded for this state.</string>
+    <string name="pm_market_toggle_on">Enabled</string>
+    <string name="pm_market_toggle_off">Disabled</string>
+    <string name="pm_market_toggle_restart_notice">Switched. Takes effect on the next start.</string>
+    <string name="pm_market_update">Update</string>
+    <string name="pm_market_updating">Updating…</string>
+    <string name="pm_market_up_to_date">Up to date</string>
+    <string name="pm_market_update_channel_switch">Switch to channel %1$s is available — this is not a version upgrade</string>
+    <string name="pm_market_uninstall">Uninstall</string>
+    <string name="pm_market_uninstall_confirm">Uninstall?</string>
+    <string name="pm_market_uninstall_confirm_desc">This removes the plugin from the current profile. This cannot be undone.</string>
+    <string name="pm_market_note_add">Add note</string>
+    <string name="pm_market_note_edit">Edit note</string>
+    <string name="pm_market_note_mine">My note</string>
+    <string name="pm_market_note_ph">Describe this plugin in your own words. It replaces the author description.</string>
+    <string name="pm_market_note_save">Save</string>
+    <string name="pm_market_note_clear">Clear note</string>
+    <string name="pm_market_note_limit">A note is limited to 200 characters.</string>
+    <string name="pm_market_spec_label">Install spec</string>
+
+    <!-- Market · task panel -->
+    <string name="pm_market_ops_title">Tasks</string>
+    <string name="pm_market_ops_busy">Working %1$d/%2$d</string>
+    <string name="pm_market_ops_attention">%1$d need you</string>
+    <string name="pm_market_ops_leave_hint">You can leave this page; you will be told when it finishes.</string>
+    <string name="pm_market_ops_empty">No operation in progress</string>
+    <string name="pm_market_ops_empty_hint">Install, update and uninstall progress shows up here.</string>
+    <string name="pm_market_ops_close">Collapse</string>
+    <string name="pm_market_ops_clear">Clear finished</string>
+    <string name="pm_market_ops_running">Running</string>
+    <string name="pm_market_ops_done">Done</string>
+    <string name="pm_market_ops_failed">Failed</string>
+    <string name="pm_market_ops_retry">Retry</string>
+    <string name="pm_market_ops_progress">%1$d of %2$d done</string>
+    <string name="pm_market_ops_kind_install">Install</string>
+    <string name="pm_market_ops_kind_update">Update</string>
+    <string name="pm_market_ops_kind_uninstall">Uninstall</string>
+    <string name="pm_market_ops_reason">Reason</string>
+    <string name="pm_market_ops_output">Output</string>
+    <string name="pm_market_ops_no_output">No output yet</string>
+    <string name="pm_market_ops_unsupported">Cancelling and allowing build scripts need data-layer support that is not in place yet.</string>
+    <string name="pm_market_busy_wait">Another operation is already running — please wait for it to finish (one install/update/uninstall at a time).</string>
+
+    <!-- Market · favorites -->
+    <string name="pm_market_fav_empty">No favorites yet</string>
+    <string name="pm_market_fav_empty_hint">Favorites are stored in the market state file, next to your other plugin settings.</string>
+    <string name="pm_market_fav_unavailable">Favorites are not available yet: the data layer does not expose them.</string>
+    <string name="pm_market_fav_count">%1$d favorites</string>
+
+    <!-- Market · update check gap / list load failure -->
+    <string name="pm_market_update_unchecked">Not checked (%1$s)</string>
+    <string name="pm_market_update_unchecked_source">this source does not support update checks</string>
+    <string name="pm_market_update_unchecked_query">the query failed or returned nothing</string>
+    <string name="pm_market_installed_failed_title">Could not read the installed plugins</string>
+    <string name="pm_market_updates_failed_title">Could not check for updates</string>
+    <string name="pm_market_notice_dismiss">Dismiss notice</string>
+
+    <!-- Market · update check in flight / state file recovery -->
+    <string name="pm_market_update_checking">Checking for updates…</string>
+    <string name="pm_market_state_broken_title">Could not read the market state file</string>
+    <string name="pm_market_state_broken_message">The market state file on disk (your disabled toggles and notes) cannot be parsed. To avoid overwriting it, nothing is being saved.</string>
+    <string name="pm_market_state_rebuild">Back up and rebuild</string>
+    <string name="pm_market_state_rebuilt">State file rebuilt; the original was kept as a backup.</string>
+
+    <!-- Safety-mode notices (the app-wide Toast; the system adds the app icon). -->
+    <string name="pm_guard_toast_attempt_title">Safety mode is skipping the failing plugin (attempt %1$d)</string>
+    <string name="pm_guard_toast_attempt_skipped">Skipped %1$d plugin(s): %2$s</string>
+    <string name="pm_guard_toast_recovered_title">Safety mode skipped %1$d plugin(s); DSH is up</string>
+    <string name="pm_guard_toast_recovered_skipped">Skipped: %1$s</string>
+    <string name="pm_guard_toast_absolute">Absolute safety mode is on</string>
+    <string name="pm_guard_toast_failed">DSH did not start; automatic retry stopped</string>
+
+    <!-- DSHBox adapter plugins (moved from the settings page) -->
+    <string name="pm_adapt_section_title">DSHBox adapter plugins</string>
+    <string name="pm_adapt_mobile">DSH mobile page adaptation</string>
+    <string name="pm_adapt_mobile_pilot">Connect phone to DSH</string>
+    <string name="pm_adapt_restart_hint">; restart DSH to apply</string>
+    <string name="pm_adapt_ok">Assembled</string>
+    <string name="pm_adapt_fail">Assembly failed</string>
+    <!-- DSH official plugins (built-in capabilities upstream ships disabled by default). -->
+    <string name="pm_official_section">DSH official plugins</string>
+    <string name="pm_official_desc_ui_sidebar_browser">Built-in browser in the right sidebar</string>
+    <string name="pm_official_note">Writes to .dsh/dshbox/dsh-official-plugin/dsh-official-plugin-overlay.yml; restart DSH to apply.</string>
+    <string name="pm_official_on">%1$s enabled; restart DSH to apply</string>
+    <string name="pm_official_off">%1$s disabled; restart DSH to apply</string>
+    <string name="pm_official_fail">Could not apply: %1$s</string>
+    <!-- 市场 · 数据源 -->
+    <string name="pm_market_source_label">Data source</string>
+    <string name="pm_market_source_switch">Switch</string>
+    <string name="pm_market_source_title">Data source</string>
+    <string name="pm_market_source_current">Current</string>
+    <string name="pm_market_source_pick">Choose</string>
+    <string name="pm_market_source_intro">Choose where the plugin catalog comes from. Switching reloads it.</string>
+    <string name="pm_market_source_foot">Installed plugins are not affected.</string>
+    <string name="pm_market_source_mobile_desc">A curated collection of DeepSeek Harness plugins built for phone-sized screens.
+
+The catalog newly created by DSHBox, to make extending mobile plugin coverage easier. Pull requests and ideas are welcome!</string>
+    <string name="pm_market_source_official_desc">The largest curated list of DeepSeek Harness plugins — but it targets desktop use, so some plugins have layout or compatibility problems on mobile.</string>
+    <string name="pm_market_source_open_failed">No app can open this link</string>
+</resources>

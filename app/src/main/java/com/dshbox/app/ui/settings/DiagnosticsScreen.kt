@@ -1,5 +1,7 @@
 package com.dshbox.app.ui.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.net.Uri
 import android.util.Log
 import android.view.ViewGroup
@@ -10,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dshbox.app.R
 import com.dshbox.app.common.Constants
+import com.dshbox.app.ui.files.PrimaryGreen
 import java.io.File
 import kotlinx.coroutines.delay
 import org.json.JSONObject
@@ -135,18 +139,38 @@ fun DiagnosticsScreen(
         )
 
         for ((entry, lines) in entries) {
+            val logContent = remember(lines) { lines.joinToString("\n") }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(entry.titleRes) + "（" + entry.fileName + "）",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        CopyButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(ClipboardManager::class.java)
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText(entry.fileName, logContent),
+                                )
+                                Toast.makeText(
+                                    context,
+                                    R.string.diagnostics_copy_done,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
+                    }
                     Text(
-                        text = stringResource(entry.titleRes) + "（" + entry.fileName + "）",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        text = lines.joinToString("\n").ifEmpty { stringResource(R.string.diagnostics_empty) },
+                        text = logContent.ifEmpty { stringResource(R.string.diagnostics_empty) },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     )
                 }
@@ -182,7 +206,7 @@ private const val TAIL_LINES = 150
 // 任何线索。因此这里用**真实内核实例**执行 CSS.supports 探测，把设备实际能力
 // 与各特性所需的最低 Chromium 主版本直接摆出来。
 //
-// 判定以「实测」为准而非版本号推断：部分 ROM 的 WebView 版本号与实际能力不一致，
+// 判定以实际探测为准而非版本号推断：部分 ROM 的 WebView 版本号与实际能力不一致，
 // 只有真跑一次才知道页面为何坏掉。
 
 /** 一个探测项：JS 结果键 / 展示用 CSS 令牌 / 所需最低 Chromium 主版本。 */
@@ -257,7 +281,7 @@ private class ProbeViewHolder {
 }
 
 /**
- * WebView 内核指纹面板：提供者包名/版本 + Chromium 主版本 + 真实内核的 CSS 能力实测。
+ * WebView 内核指纹面板：提供者包名/版本 + Chromium 主版本 + 真实内核的 CSS 能力探测。
  * 供排障判断「页面坏掉是不是内核太旧」——这是日志无法回答的问题。
  */
 @Composable
@@ -450,6 +474,24 @@ private fun FingerprintRow(label: String, value: String) {
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        )
+    }
+}
+
+/** 淡绿色边框复制按钮：方框 + 内部"复制"二字，用于诊断日志各条标题右侧。 */
+@Composable
+private fun CopyButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.extraSmall,
+        color = androidx.compose.ui.graphics.Color.Transparent,
+        border = BorderStroke(1.dp, PrimaryGreen),
+    ) {
+        Text(
+            text = stringResource(R.string.diagnostics_copy),
+            style = MaterialTheme.typography.bodySmall,
+            color = PrimaryGreen,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }
 }

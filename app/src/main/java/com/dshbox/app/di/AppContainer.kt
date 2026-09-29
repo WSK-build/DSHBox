@@ -2,6 +2,7 @@ package com.dshbox.app.di
 
 import android.content.Context
 import com.dshbox.app.bridge.BridgeRouter
+import com.dshbox.app.runtime.OnlineRuntimeImportManager
 import com.dshbox.app.runtime.RuntimeUpdateManager
 import com.dshbox.app.sandbox.SandboxConfig
 import com.dshbox.app.sandbox.SandboxManager
@@ -17,4 +18,5 @@ class AppContainer(
     val bridgeRouter: BridgeRouter,
     val dshTerminalManager: DshTerminalManager,
     val runtimeUpdateManager: RuntimeUpdateManager,
+    val onlineRuntimeImportManager: OnlineRuntimeImportManager,
 )

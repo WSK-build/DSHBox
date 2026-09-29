@@ -157,7 +157,7 @@ class MoveWithinTest {
         assertEquals(1, result.moved)
         // 同名文件被源覆盖
         assertEquals("src", File(destDir, "clash.txt").readText())
-        // 目标独有文件绝不丢失（§5.3.4）
+        // 目标独有文件绝不丢失
         assertEquals("d-only", File(destDir, "only-dst.txt").readText())
         assertEquals("s-only", File(destDir, "only-src.txt").readText())
         assertFalse(srcDir.exists())
@@ -190,7 +190,7 @@ class MoveWithinTest {
         assertTrue(msg is UiText.Res && msg.id == R.string.move_err_source_missing)
     }
 
-    // ---------- 取消（§5.3.5） ----------
+    // ---------- 取消 ----------
 
     @Test
     fun cancellationBetweenItemsKeepsCompletedAndCleansTemps() = runBlocking {
@@ -218,7 +218,7 @@ class MoveWithinTest {
         assertTrue("源保留（未处理项）", File(dir2, "b.txt").exists())
     }
 
-    // ---------- .dsh-moving 残留清理（§5.3.6） ----------
+    // ---------- .dsh-moving 残留清理 ----------
 
     @Test
     fun finallyCleansTempOnCancelledCopy() = runBlocking {
@@ -264,11 +264,11 @@ class MoveWithinTest {
         assertEquals("data", normalFile.readText())
     }
 
-    // ---------- 审查修正回归：OVERWRITE 失败路径数据零丢失（注入失败，全平台确定性执行） ----------
+    // ---------- OVERWRITE 失败路径数据零丢失（注入失败，全平台确定性执行） ----------
 
     /**
      * 「删除旧目标失败」用注入的 deleteTarget = { false } 驱动真实失败分支——
-     * 本机实测：Windows（JDK 21）上打开句柄、只读属性均已不能阻止删除（环境实测
+     * 在 Windows（JDK 21）上，打开句柄与只读属性均已不能阻止删除（
      * File.delete on readonly -> true），无法用文件系统手段可靠构造，故走注入。
      * 断言（stagedByRename 路径）：源唯一副本被还原回原路径、内容完整、无 `.dsh-moving-*` 残留。
      */
@@ -316,7 +316,7 @@ class MoveWithinTest {
         )
     }
 
-    // ---------- 合并失败可追溯性（R20 回归：子项失败继续 + 源保留 + 聚合消息） ----------
+    // ---------- 合并失败可追溯性：子项失败继续 + 源保留 + 聚合消息 ----------
 
     /** 平铺层：一个子项删除失败 → 兄弟子项照常合并、源保留失败子项、异常含已合并计数与失败路径。 */
     @Test

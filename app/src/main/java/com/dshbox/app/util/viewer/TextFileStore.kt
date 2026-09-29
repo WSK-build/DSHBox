@@ -8,7 +8,7 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 
 /**
- * 文本保存链路（1.2.0 §6.4，纯 JVM 文件操作）。
+ * 文本保存链路（纯 JVM 文件操作）。
  *
  * 1. **原子写**：写 `name.dsh-tmp` → flush/fsync → 替换原文件，杜绝写一半崩溃损坏原文件；
  * 2. **元数据保留**：原子替换产生新 inode，必须把原文件 rwx 权限位（rootfs 脚本必须

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sandbox_not_running_debian">El entorno aislado no está en ejecución. Inicia el entorno aislado de Debian primero.</string>
-    <string name="dsh_not_ready_timeout">DSH no se puso listo dentro del tiempo límite</string>
+    <string name="dsh_not_ready_timeout">Error al iniciar DSH</string>
     <string name="dsh_stopped_retry">DSH ha sido detenido. Inténtalo de nuevo más tarde.</string>
     <string name="dsh_ready_timeout">Tiempo de espera para la preparación de DSH agotado</string>
     <string name="bundle_empty">El archivo comprimido no contiene archivos</string>
+    <string name="bundle_sandbox_running">El entorno aislado está en ejecución. Deténgalo antes de esta operación.</string>
+    <string name="dsh_start_need_node">Importe primero la capa node (Ajustes → Importar el entorno en línea → capa node)</string>
     <string name="bundle_unsafe_path_rel">El archivo comprimido contiene una ruta ilegal (..); bloqueado: %1$s</string>
     <string name="bundle_unsafe_path_escape">Una ruta del archivo comprimido escapa del directorio de destino; bloqueado: %1$s</string>
     <string name="bundle_no_profile">El paquete del entorno de ejecución carece de runtime-profile.json (no se puede verificar la integridad de la capa; importación rechazada)</string>
