@@ -22,8 +22,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # setup-android@v3 的 packages 默认值是 `tools platform-tools`，
+      # 而 `tools` 早已从 SDK 仓库移除：新版 runner（cmdline-tools 16）上
+      # `sdkmanager tools` 会直接失败退出，CI 连门禁都跑不到。
+      # 这里只让它装仍存在的 platform-tools，其余 SDK 包由下一步手动安装。
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Accept licenses & install SDK packages
         run: |
