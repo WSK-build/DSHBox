@@ -28,7 +28,8 @@
 | First-run setup | New users follow the setup guide to fetch the runtime online (mirror-probed minimal Debian layer + Node.js layer), or import the full offline package |
 
 **[Download the latest APK](https://github.com/WSK-build/DSHBox/releases/latest)** → install → open the app → follow the guide to get the runtime (online mirrors, or the offline import) → open DSH.
-
+---
+**Important Note: The official DSH has high requirements for the system WebView kernel. Older versions may cause a range of issues such as white screen and abnormal workspace loading. In such cases, you may download a compatible version for your device from Google Play or consult AI to select a proper version for upgrade and replacement.**
 ---
 
 ## What's new
