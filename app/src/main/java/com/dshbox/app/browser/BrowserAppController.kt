@@ -6,9 +6,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import com.dshbox.app.MainActivity
 import com.dshbox.app.ui.theme.AppThemeState
 import com.dshbox.app.ui.theme.AppLocaleState
@@ -68,11 +68,14 @@ class BrowserAppController(context: Context) {
     fun start() {
         if (started) return
         val filter = IntentFilter(BrowserContract.ACTION_STATUS)
-        if (Build.VERSION.SDK_INT >= 33) {
-            context.registerReceiver(receiver, filter, permission, handler, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, filter, permission, handler)
-        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            filter,
+            permission,
+            handler,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         started = true
         appSettings.registerOnSharedPreferenceChangeListener(settingsListener)
         broadcastUiSettings()

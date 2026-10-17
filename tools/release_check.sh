@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # release_check.sh — 发布前门禁（本地运行，也可在 CI 复用）。
 #
-# 一次跑完发布前必须全绿的五项，任一失败即中止：
+# 一次跑完发布前必须全绿的六项，任一失败即中止：
 #   1. i18n 一致性（六语键位/占位符/复数/硬编码）
 #   2. 官网资源版本号（?v= 与 versionName 一致，防「新 HTML + 旧 JS」）
 #   3. 个人数据泄露审查（本机路径、用户名、凭据文件、设备号样式）
 #   4. 全量 JVM 单测
-#   5. release 构建（含 lintVital）
+#   5. 完整 Android Lint（lintDebug，与 GitHub CI 一致）
+#   6. release 构建（含 lintVital）
 #
 # 为什么把审计放进门禁：构建文档里曾带着开发机的
 # JDK 绝对路径并随仓库公开。这类内容不会被编译器、单测或 lint 发现，
@@ -37,14 +38,14 @@ FAILED=0
 step() { echo; echo "──────── $1 ────────"; }
 fail() { echo "!! $1" >&2; FAILED=1; }
 
-step "[1/5] i18n 一致性"
+step "[1/6] i18n 一致性"
 if bash tools/i18n_check.sh; then
     echo "[ok] i18n 通过"
 else
     fail "i18n 未通过"
 fi
 
-step "[2/5] 官网资源版本号（?v= 与 versionName 一致）"
+step "[2/6] 官网资源版本号（?v= 与 versionName 一致）"
 # GitHub Pages 给静态资源设 Cache-Control: max-age=600，必须靠查询串变化
 # 才能让用户拿到新 JS/CSS；漏改会导致「新 HTML + 旧 JS」的错配。
 # 这里以 app/build.gradle.kts 的 versionName 为准，校验 index.html / 404.html。
@@ -72,7 +73,7 @@ else
     fi
 fi
 
-step "[3/5] 个人数据泄露审查"
+step "[3/6] 个人数据泄露审查"
 if [ -z "$PY" ]; then
     fail "未找到 python，无法运行隐私审计"
 elif "$PY" tools/privacy_audit.py; then
@@ -82,14 +83,21 @@ else
 fi
 
 if [ "$SKIP_BUILD" = "0" ]; then
-    step "[4/5] 全量 JVM 单测"
+    step "[4/6] 全量 JVM 单测"
     if ./gradlew testDebugUnitTest --console=plain; then
         echo "[ok] 单测通过"
     else
         fail "单测失败"
     fi
 
-    step "[5/5] release 构建（含 lintVital）"
+    step "[5/6] 完整 Android Lint"
+    if ./gradlew lintDebug --console=plain; then
+        echo "[ok] Lint 通过"
+    else
+        fail "Lint 失败"
+    fi
+
+    step "[6/6] release 构建（含 lintVital）"
     if ./gradlew :app:assembleRelease --console=plain; then
         echo "[ok] 构建通过"
     else
@@ -97,7 +105,7 @@ if [ "$SKIP_BUILD" = "0" ]; then
     fi
 else
     echo
-    echo "（--skip-build：已跳过单测与构建）"
+    echo "（--skip-build：已跳过单测、Lint 与构建）"
 fi
 
 echo
