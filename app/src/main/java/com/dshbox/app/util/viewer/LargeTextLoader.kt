@@ -12,7 +12,7 @@ import java.io.RandomAccessFile
  * | 2–10 MB | 默认只读分块查看（[readAlignedWindow] 按行对齐窗口懒加载）；显式点「仍要编辑」才全量载入并提示风险 |
  * | > [CONFIRM_EDIT_LIMIT]（10 MB） | 强制只读分块 / 尾部模式（日志场景「仅看最后 N KB」），编辑引导外部应用 |
  *
- * 行扫实现说明（返工修正）：行首吸附/行尾延伸一律 64KB 成块扫描并设 [LINE_SCAN_CAP]
+ * 行首吸附/行尾延伸以 64KB 成块扫描并设 [LINE_SCAN_CAP]
  * 上限——超长单行（压缩 json / min.js）不再退化为数千万次单字节 `raf.read()`；
  * 触顶时窗口边界取当前字节位（内容不跳过、不丢失，仅该窗口边界不在行首）。
  */
@@ -152,7 +152,7 @@ object LargeTextLoader {
         val text: String,
         val hasPrev: Boolean,
         val hasNext: Boolean,
-        /** 返工 P1：窗口内存在无法解码的字节（有损解码）——只读展示，无保存路径。 */
+        /** 窗口内存在无法解码的字节时仅支持只读展示。 */
         val lossy: Boolean = false,
     )
 }

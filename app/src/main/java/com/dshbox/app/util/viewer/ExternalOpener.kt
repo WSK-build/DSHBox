@@ -1,7 +1,9 @@
 package com.dshbox.app.util.viewer
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.dshbox.app.util.FileOpException
@@ -45,6 +47,9 @@ object ExternalOpener {
      * 外部打开（ACTION_VIEW，主路径）。无可用应用返回 false（调用方降级导出）。
      * 使用 createChooser + 先行 queryIntentActivities 探测（targetSdk 30+ 包可见性
      * 由 Manifest <queries> 兜底）。
+     *
+     * 本应用自身也注册了「用其他应用打开」与「分享到」入口，故探测与选择器都要排除自身：
+     * 把自己列为打开目标等于"把文件从沙盒导出再导入"，会形成无意义的回环。
      */
     fun openView(context: Context, file: File, mime: String): Boolean {
         val uri = contentUri(context, file) ?: return false
@@ -53,12 +58,41 @@ object ExternalOpener {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         return try {
-            if (context.packageManager.queryIntentActivities(intent, 0).isEmpty()) return false
-            context.startActivity(Intent.createChooser(intent, file.name))
+            if (!hasExternalTarget(context, intent)) return false
+            context.startActivity(chooserExcludingSelf(context, intent, file.name))
             true
         } catch (_: android.content.ActivityNotFoundException) {
             false
         }
+    }
+
+    /**
+     * 除本应用外是否存在可响应该意图的应用。
+     *
+     * 用「排除自身」的口径而非单纯非空：本应用注册了接收入口后，任何可打开的意图都能
+     * 被自身匹配到，直接判非空会让「没有应用能处理此文件」的既有提示永远不出现。
+     */
+    fun hasExternalTarget(context: Context, intent: Intent): Boolean =
+        context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            .any { it.activityInfo?.packageName != context.packageName }
+
+    /**
+     * 构造排除自身的系统选择器。
+     *
+     * 本应用注册了「分享到 / 用其他应用打开」接收入口后同样出现在解析结果里，
+     * 而把文件再送给自己只是复制一份副本，故统一从选择器候选中剔除自身组件。
+     */
+    fun chooserExcludingSelf(context: Context, intent: Intent, title: String): Intent {
+        val chooser = Intent.createChooser(intent, title)
+        val self = context.packageManager
+            .queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            .mapNotNull { it.activityInfo }
+            .filter { it.packageName == context.packageName }
+            .map { ComponentName(it.packageName, it.name) }
+        if (self.isNotEmpty()) {
+            chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, self.toTypedArray())
+        }
+        return chooser
     }
 
     /** 外部编辑（ACTION_EDIT）可启动的 Intent；无支持应用返回 null（调用方回退 VIEW）。 */
@@ -68,9 +102,7 @@ object ExternalOpener {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         }
-        if (runCatching { context.packageManager.queryIntentActivities(edit, 0) }.getOrDefault(emptyList()).isEmpty()) {
-            return null
-        }
+        if (!hasExternalTarget(context, edit)) return null
         return edit
     }
 
@@ -81,9 +113,7 @@ object ExternalOpener {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        if (runCatching { context.packageManager.queryIntentActivities(view, 0) }.getOrDefault(emptyList()).isEmpty()) {
-            return null
-        }
+        if (!hasExternalTarget(context, view)) return null
         return view
     }
 

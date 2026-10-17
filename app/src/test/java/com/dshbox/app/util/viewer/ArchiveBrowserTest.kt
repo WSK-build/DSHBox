@@ -102,7 +102,7 @@ class ArchiveBrowserTest {
     @Test
     fun endToEndNaming_compoundTarContainersResolve() {
         assertEquals(
-            "a.tar.gz 应承接为 TAR_GZ（返工 B 前为 null → 信息卡）",
+            "a.tar.gz 应识别为 TAR_GZ",
             ArchiveBrowser.Format.TAR_GZ,
             formatViaClassifier("a.tar.gz", GZIP_MAGIC),
         )

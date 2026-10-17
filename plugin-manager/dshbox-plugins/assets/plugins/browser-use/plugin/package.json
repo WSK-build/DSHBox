@@ -1,0 +1,21 @@
+{
+  "name": "@local/browser-use",
+  "license": "GPL-3.0-only",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./tools": "./lib/tools.js"
+  },
+  "scripts": {
+    "test": "node --test ../../../../tests/browser/*.test.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

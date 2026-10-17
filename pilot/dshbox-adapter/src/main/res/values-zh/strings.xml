@@ -11,6 +11,7 @@
 
     <!-- ===== 界面层文案 ===== -->
     <string name="pilot_page_overview">手机助手</string>
+    <string name="pilot_page_tagline">连接DSH与手机</string>
     <string name="pilot_page_capabilities">能力</string>
     <string name="pilot_page_capability_detail">能力详情</string>
     <string name="pilot_page_surface">执行模式</string>

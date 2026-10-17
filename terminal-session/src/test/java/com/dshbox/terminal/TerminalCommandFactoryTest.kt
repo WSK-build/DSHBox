@@ -73,4 +73,14 @@ class TerminalCommandFactoryTest {
     fun `failsafe command is plain system shell`() {
         assertEquals(listOf("/system/bin/sh"), TerminalCommandFactory.failsafeShell())
     }
+
+    @Test
+    fun `browser bind is available on first and overlay sessions`() {
+        val p = paths().copy(browserDir = File(tmp.root, "browser-tools"))
+        val bind = "--bind=${p.browserDir!!.absolutePath}:/opt/browser"
+        assertEquals(1, TerminalCommandFactory.sandboxLoginShell(p).count { it == bind })
+        assertTrue(p.browserDir!!.isDirectory)
+        assertEquals(1, TerminalCommandFactory.sandboxLoginShell(p, "true;").count { it == bind })
+        assertTrue(TerminalCommandFactory.sandboxLoginShell(p.copy(browserDir = null)).none { it.endsWith(":/opt/browser") })
+    }
 }

@@ -215,7 +215,7 @@ class SafetyModeTest {
     @Test
     fun `id 命中与包名命中各自的去重键`() {
         // 归因层只能按 `id ?: name` 去重；"包名 → 条目 id"的对齐发生在写层之前
-        // （resolveTargets 会查一次合成配置做映射），这里只钉住归因层的行为。
+        // （resolveTargets 会查询合成配置做映射），本用例仅验证归因层行为。
         val applyHit = FailureAttribution.parse(
             listOf("failed to apply loader entry broken-x (broken-x-plugin): nope"),
         ).single()
@@ -337,7 +337,7 @@ class SafetyModeTest {
 
     @Test
     fun `config 块里的模型 id 不会被当成插件条目`() {
-        // 真机上踩过：`llm-pi-ai` 的模型清单是 `- id: <模型名>`（含冒号、缩进很深），
+        // 模型清单包含深层缩进的 `- id: <模型名>`，
         // 按任意缩进匹配会把它们当成插件条目，进而让整次操作因"id 不可写"失败。
         val parsed = safeMode().parseComposedEntries(
             listOf(

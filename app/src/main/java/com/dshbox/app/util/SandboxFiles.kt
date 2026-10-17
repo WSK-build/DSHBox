@@ -1,6 +1,7 @@
 package com.dshbox.app.util
 
 import com.dshbox.app.R
+import com.dshbox.app.common.Constants
 import com.dshbox.app.common.UiText
 import java.io.File
 import java.time.ZoneId
@@ -36,6 +37,8 @@ class PathMapper(
     val workspaceRoot: File,
     val nodeLayer: File? = null,
     val dshLayer: File? = null,
+    /** 共享区宿主根（公共存储 DSHBox）；见 [guestPathOf] 的共享区分支。 */
+    val shareRoot: File? = null,
 ) {
     /** rootfs 中对应 guest `/root/projects` 的逻辑路径（物理映射到 workspaceRoot）。 */
     val rootfsProjects: File = File(File(sandboxRoot, "root"), "projects")
@@ -123,9 +126,18 @@ class PathMapper(
  * 再相对 [PathMapper.sandboxRoot] 取相对路径，得到的正是 guest 里看到的 `/root/projects/...`；
  * node 层同理得到 `/usr/local/...`，base 层则原样得到 `/tmp/...` 这类路径。
  *
- * 分隔符统一按 `/` 处理，因此在非 Android 环境（JVM 测试）里也能得到同一结论。
+ * 分隔符统一按 `/` 处理，因此在非 Android 环境（JVM 测试）里也能得到同一结论；
+ * 共享区（[PathMapper.shareRoot]）不经 rootfs 镜像，直接映射到 `/root/share/DSHBox`。
  */
 fun guestPathOf(mapper: PathMapper, physical: File): String {
+    // 共享区：物理路径 → guest 挂载根下的对应路径（与 PRoot 的共享区绑定一一对应）。
+    mapper.shareRoot?.let { sr ->
+        val prefix = sr.absolutePath.replace(File.separatorChar, '/').trimEnd('/')
+        val p = physical.absolutePath.replace(File.separatorChar, '/')
+        val guestRoot = "${Constants.SHARE_AREA_GUEST_DIR}/${Constants.SHARE_AREA_DIR_NAME}"
+        if (p == prefix) return guestRoot
+        if (p.startsWith("$prefix/")) return "$guestRoot/${p.removePrefix("$prefix/")}"
+    }
     val logical = mapper.toLogical(physical).absolutePath.replace(File.separatorChar, '/')
     val root = mapper.sandboxRoot.absolutePath.replace(File.separatorChar, '/').trimEnd('/')
     return when {
@@ -188,10 +200,20 @@ fun isAppManagedAsset(physicalPath: String, workspaceRoot: File): Boolean {
 private fun pathSegments(path: String): List<String> =
     path.replace('\\', '/').split('/').filter { it.isNotEmpty() }
 
+/**
+ * 路径是否位于 [root] 之下（含自身；带分隔符边界，`…/DSHBox2` 不命中 `…/DSHBox`）。
+ * 两侧统一按 `/` 比较（Windows 单测与 Android 同结论）；空根一律 false，避免恒真。
+ */
+fun isUnderRoot(root: File, path: String): Boolean {
+    val prefix = root.absolutePath.replace('\\', '/').trimEnd('/')
+    if (prefix.isEmpty()) return false
+    val p = path.replace('\\', '/')
+    return p == prefix || p.startsWith("$prefix/")
+}
+
 private fun isUnder(path: String, root: String?): Boolean {
     if (root.isNullOrEmpty()) return false
-    val r = root.trimEnd('/', '\\')
-    return path == r || path.startsWith("$r${File.separator}") || path.startsWith("$r/")
+    return isUnderRoot(File(root), path)
 }
 
 /**
@@ -242,6 +264,8 @@ data class FileEntry(
     val canExecute: Boolean = false,
     /** rwx 权限文本（如 `rwx` / `rw-`，IO 预计算）。 */
     val permissionText: String = "",
+    /** 宿主目标当前不可达（如共享区挂载目录被外部删除 / 卷已卸载）；仅虚拟条目使用。 */
+    val unavailable: Boolean = false,
 ) {
     val isHidden: Boolean get() = name.startsWith(".")
 }
@@ -324,11 +348,11 @@ private fun toFileEntry(f: File, logicalDir: File, isTopLevel: Boolean): FileEnt
     private val timeFmt = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.US)
         .withZone(ZoneId.systemDefault())
 
-/** 列表副标题：目录显示「目录」，文件显示「大小 · 时间」（可本地化）。 */
-fun entrySubtitle(entry: FileEntry): UiText = if (entry.isDirectory) {
-    UiText.Res(R.string.files_entry_directory)
-} else {
-    UiText.Raw("${formatFileSize(entry.size)} · ${timeFmt.format(Date(entry.lastModified).toInstant())}")
+/** 列表副标题：不可达条目提示路径不可用，目录显示「目录」，文件显示「大小 · 时间」（可本地化）。 */
+fun entrySubtitle(entry: FileEntry): UiText = when {
+    entry.unavailable -> UiText.Res(R.string.files_share_path_unavailable)
+    entry.isDirectory -> UiText.Res(R.string.files_entry_directory)
+    else -> UiText.Raw("${formatFileSize(entry.size)} · ${timeFmt.format(Date(entry.lastModified).toInstant())}")
 }
 
 /**

@@ -1,6 +1,9 @@
 Interlock Relay core
 Copyright 2026 WSK-build
 
+Dependency license metadata corrected by DSHBox on 2026-10-17.
+The Apache-2.0 license of this core is unchanged.
+
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 Third-party dependencies
@@ -34,9 +37,8 @@ Test code only (absent from the runtime dependency graph)
 - JUnit (junit:junit) — Eclipse Public License 1.0.
 - Hamcrest core (org.hamcrest:hamcrest-core), pulled transitively by JUnit —
   BSD 3-Clause.
-- org.json (org.json:json:20240303) — JSON License (MIT-style with the
-  "Good, not evil" clause). This artifact is NOT OSI-approved and is used
-  exclusively in JVM unit tests, where the Android platform's bundled
+- org.json (org.json:json:20240303) — Public Domain, as declared by this
+  release's published POM. Used exclusively in JVM unit tests, where the Android platform's bundled
   org.json implementation is unavailable as a stub. No runtime dependency:
   production builds use the org.json implementation shipped with Android.
 

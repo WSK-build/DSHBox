@@ -8,6 +8,7 @@ import com.dshbox.app.bridge.api.BridgeApi
 import com.dshbox.app.runtime.RuntimeUpdateManager
 import com.dshbox.app.sandbox.DefaultSandboxManager
 import com.dshbox.app.sandbox.SandboxConfig
+import com.dshbox.app.util.shareBinds
 import com.dshbox.terminal.DshTerminalManager
 
 /**
@@ -22,6 +23,9 @@ object ServiceLocator {
             // npm 下载缓存宿主目录（guest 侧 bind 为 /root/.npm），
             // 随「应用缓存」可一键清理，不再占 base/root/.npm 的红线区空间。
             appCacheDir = context.cacheDir,
+            // 共享区绑定清单（内建 DSHBox + 用户挂载，guest `/root/share/<别名>`）：
+            // 每次起会话现取，用户新授权或新增挂载无需重建配置。
+            shareBindsProvider = { shareBinds(context) },
         )
         // 设备交互状态（唤醒且亮屏）交给健康循环：休眠期间 guest 会被整体冻结，
         // 端口在听但 HTTP 不应答，此时的探测失败是暂时状态，不该判为 DSH 宕机。
@@ -108,6 +112,7 @@ object ServiceLocator {
                 com.dshbox.terminal.TerminalPathsResolver.resolve(
                     appFilesDir = sandboxConfig.appFilesDir,
                     nativeLibraryDir = sandboxConfig.nativeLibraryDir,
+                    shareBinds = shareBinds(context),
                 )
             },
             overlayInstaller = overlayInstaller,

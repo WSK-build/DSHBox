@@ -6,12 +6,14 @@
 
     <!-- اللوحة -->
     <string name="pm_panel_title">إضافات Cordis</string>
+    <string name="pm_root_title">لوحة الإضافات</string>
+    <string name="pm_panel_tagline">إدارة الإضافات · السوق</string>
     <string name="pm_panel_hint">كيفية التعامل مع الإضافات التي تفشل في التحميل.</string>
     <string name="pm_safety_mode">الوضع الآمن</string>
     <string name="pm_safety_mode_desc">تخطّي الإضافات التي تفشل في التحميل</string>
-    <string name="pm_absolute_mode">الوضع الآمن المطلق</string>
+    <string name="pm_absolute_mode">الوضع الآمن</string>
     <string name="pm_absolute_mode_desc">بدء التشغيل دون تحميل أي إضافة خارجية</string>
-    <string name="pm_absolute_on_hint">الوضع الآمن المطلق مُفعَّل: لن يتم تحميل أي إضافة خارجية.</string>
+    <string name="pm_absolute_on_hint">الوضع الآمن مُفعَّل: لن يتم تحميل أي إضافة خارجية.</string>
     <string name="pm_load_log_row">سجل تحميل الإضافات</string>
     <string name="pm_isolation_row">الإضافات المتخطّاة</string>
     <string name="pm_market_row">متجر الإضافات</string>
@@ -203,6 +205,11 @@
     <string name="pm_adapt_section_title">إضافات التكيّف الخاصة بـ DSHBox</string>
     <string name="pm_adapt_mobile">تكييف صفحة DSH للجوال</string>
     <string name="pm_adapt_mobile_pilot">ربط الهاتف بـ DSH</string>
+    <string name="pm_browser_adapter_title">أتمتة Browser في DSH</string>
+    <string name="pm_browser_assembled">تم تثبيت محوّل Browser</string>
+    <string name="pm_browser_removed">تمت إزالة محوّل Browser</string>
+    <string name="pm_browser_assembly_failed">تعذّر تثبيت محوّل Browser.</string>
+    <string name="pm_browser_refresh_failed">تعذّر تحديث محوّل Browser؛ ما زالت الحزمة السابقة متاحة.</string>
     <string name="pm_adapt_ok">تم التجميع</string>
     <string name="pm_adapt_fail">فشل التجميع، وتم التراجع</string>
     <string name="pm_adapt_restart_hint">(يُفعَّل بعد إعادة تشغيل DSH)</string>
@@ -210,7 +217,7 @@
     <string name="pm_guard_toast_attempt_skipped">تم تخطّي %1$d إضافة: %2$s</string>
     <string name="pm_guard_toast_recovered_title">تخطّى الوضع الآمن %1$d إضافة، وتم تشغيل DSH</string>
     <string name="pm_guard_toast_recovered_skipped">تم تخطّي: %1$s</string>
-    <string name="pm_guard_toast_absolute">الوضع الآمن المطلق مُفعَّل</string>
+    <string name="pm_guard_toast_absolute">الوضع الآمن مُفعَّل</string>
     <string name="pm_guard_toast_failed">لم يبدأ DSH؛ تم إيقاف إعادة المحاولة تلقائيًا</string>
     <!-- إضافات DSH الرسمية (قدرات مدمجة يشحنها المصدر معطّلة افتراضيًا) -->
     <string name="pm_official_section">إضافات DSH الرسمية</string>

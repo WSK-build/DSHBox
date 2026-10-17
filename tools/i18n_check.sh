@@ -25,7 +25,7 @@ LANGS=(values values-zh values-ar values-es values-fr values-ru)
 # 注：plugin-manager 参与键位核对，但**暂不参与下面的硬编码文案扫描**——
 # 该模块的领域层（安全模式的状态与事件文案）目前直接产生中文串，尚未改成资源 id；
 # 纳入扫描会让本脚本在改造完成前一直失败。改造后把它的 src/main 加进扫描列表。
-MODULES=(app common sandbox-manager plugin-manager)
+MODULES=(app common sandbox-manager plugin-manager browser/browser-runtime)
 
 extract_keys() { # $1 = strings.xml 路径 → 排序后的键名
   sed -n 's/.*<\(string\|plurals\) name="\([^"]*\)">.*/\2/p' "$1" | sort
@@ -151,12 +151,15 @@ HITS=0
 #     service/SandboxService.kt：字符串是**写往 guest 的内容**（apt 源文件首行注释、生成的
 #     包管理器包装与 dsh 垫片脚本注释）以及与 npm/guest 英文原始输出混排的运行日志，
 #     均按设计保持中文；界面文案仍须走资源文件（本检查对其余文件照常生效）。
+#   - BrowserBlockedPageEvidence.kt：字符串是用于识别网页验证码和访问受限提示的多语言
+#     页面内容，不是应用界面文案。
 # 条目按完整相对路径匹配（grep 输出为绝对路径，故用后缀匹配），避免误伤同名前缀文件。
 WHITELIST=(
   "app/src/main/java/com/dshbox/app/ui/theme/AppLocale.kt"
   "app/src/main/java/com/dshbox/app/runtime/AptSourceProvisioner.kt"
   "app/src/main/java/com/dshbox/app/runtime/OnlineRuntimeImportManager.kt"
   "app/src/main/java/com/dshbox/app/service/SandboxService.kt"
+  "browser/browser-runtime/src/main/java/com/dshbox/browser/runtime/BrowserBlockedPageEvidence.kt"
 )
 for src_dir in \
   "$ROOT/app/src/main" \
@@ -165,6 +168,8 @@ for src_dir in \
   "$ROOT/terminal-session/src/main" \
   "$ROOT/bridge/src/main" \
   "$ROOT/terminal-emulator/src/main" \
+  "$ROOT/browser/browser-runtime/src/main" \
+  "$ROOT/browser/browser-bridge/src/main" \
   "$ROOT/terminal-view/src/main"; do
   [ -d "$src_dir" ] || continue
   # grep -n 输出带 "绝对路径:行号:" 前缀；先剥离前缀再判注释，

@@ -75,7 +75,11 @@ interface SandboxManager {
     /** Enter safe mode: stop everything and stay stopped. */
     suspend fun enterSafeMode()
 
-    /** Returns true when runtime-current contains both PRoot and the Debian rootfs. */
+    /**
+     * 运行环境是否可用：PRoot 与 base 目录在位**且** runtime-profile.json 可解析、
+     * assembly 非空**且**逐层哨兵校验通过。profile 是层完整性的唯一依据，缺失或
+     * 损坏（含安装中途被杀留下的半成品）一律判未安装。
+     */
     fun isRuntimeInstalled(): Boolean
 
     /**
@@ -169,6 +173,15 @@ interface SandboxManager {
      * 沙箱必须先停止。dsh 层与 user-data 全程不碰。
      */
     suspend fun installNodeLayer(stagingNodeDir: java.io.File): AppResult<Unit>
+
+    /**
+     * 沙箱与 DSH 进程树当前的累计 CPU 时间（毫秒）。
+     *
+     * 供监控类界面把「应用自己 + 沙箱里干活的 DSH/node」算成一个整体占用；两者都不在
+     * 运行时返回 null。实现只读 /proc 的按 pid 文件（顶层 /proc/stat 被平台策略封禁，
+     * 按 pid 的文件不受影响），不改变任何进程状态，也不常驻采样——由调用方按需调用。
+     */
+    suspend fun sandboxCpuMillis(): Long?
 
     /**
      * Inject a one-off command into the DSH guest (fresh PRoot process) and

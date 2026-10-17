@@ -29,3 +29,7 @@ include(":pilot")
 // dshbox 适配层 dshbox-adapter 分列其下；模块目录在源码树的 pilot/ 下。
 include(":pilot:interlock-relay-core")
 include(":pilot:dshbox-adapter")
+include(":browser:browser-api")
+include(":browser:browser-runtime")
+include(":browser:browser-bridge")
+include(":browser:browser-devtools")

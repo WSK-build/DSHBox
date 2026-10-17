@@ -76,6 +76,8 @@ import com.dshbox.app.common.R as CommonR
 fun DshUpdateScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 宿主页签失活时关闭返回接管，避免不可见子页吞掉其它页签的返回键。 */
+    backEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as DshApp).container
@@ -83,7 +85,7 @@ fun DshUpdateScreen(
     val runtimeUpdateManager = container.runtimeUpdateManager
     val scope = rememberCoroutineScope()
 
-    BackHandler(onBack = onBack)
+    BackHandler(enabled = backEnabled, onBack = onBack)
 
     val dshVersion by sandboxManager.dshVersion.collectAsState()
     val sandboxState by sandboxManager.sandboxState.collectAsState()

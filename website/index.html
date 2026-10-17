@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DSHBox — Run DeepSeek Harness (DSH) on Android</title>
-  <meta name="description" content="DSHBox runs the full DeepSeek Harness (DSH) on-device on Android phones & tablets. One APK — Debian, Node.js, DSH, PRoot & WebView. No root, no Termux.">
+  <meta name="description" content="DSHBox runs DeepSeek Harness on Android with an AI browser assistant, phone tools, shared files and a terminal. Guided Debian and Node.js setup. No root or Termux required.">
   <meta name="keywords" content="DeepSeek Harness, DSH, dsh-android, dsh-mobile, dshbox, dsh android, dsh for android, deepseek harness android, deepseek harness mobile, DeepSeek 手机端, DSH 手机端, Android, 安卓, 手机, 平板, 本地运行, 手机本地运行 DeepSeek, 免Root, no root, no Termux, Termux, Debian, Node.js, PRoot, WebView, LLM, 大模型, AI assistant, APK">
   <meta name="robots" content="index, follow">
   <meta name="msvalidate.01" content="90F2FC4A24EEE6144EAC2F6A1D1230B3" />
@@ -32,7 +32,7 @@
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.4.0">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.0">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -54,15 +54,17 @@
         "applicationCategory": "MobileApplication",
         "applicationSubCategory": "Local AI / LLM assistant",
         "operatingSystem": "Android (ARM64, Android 10+)",
-        "softwareVersion": "1.4.0",
+        "softwareVersion": "1.5.0",
         "inLanguage": ["en", "zh-CN"],
-        "description": "DSHBox is the Android mobile client for DeepSeek Harness (DSH). It runs the full DeepSeek Harness entirely on-device on Android phones and tablets, bundling Debian, Node.js, the DSH layer, PRoot and an embedded WebView into a single APK. No root access, no separate Termux installation and no other software are required. 中文：DSHBox 是 DeepSeek Harness（DSH）的安卓移动端，在安卓手机与平板上用一个 APK 本地完整运行 DeepSeek Harness——内置 Debian、Node.js、DSH 层、PRoot 与 WebView，无需 Root、无需单独安装 Termux、不依赖任何其他软件。",
+        "description": "Run DeepSeek Harness locally on Android with an AI browser assistant, phone tools, shared folders and a terminal. Guided Debian and Node.js setup, no root or Termux required. 中文：在安卓手机与平板上本地运行 DSH，集成 AI 浏览器助手、手机助手、系统文件共享区与终端；按引导安装 Debian 与 Node.js，无需 Root 或单独安装 Termux。",
         "featureList": [
           "Runs the full DeepSeek Harness (DSH) locally on Android",
           "Supports Android phones and tablets (ARM64)",
           "No root required",
           "No Termux or other external software required",
-          "Single APK with Debian, Node.js, DSH, PRoot and WebView",
+          "Guided Debian and Node.js setup with bundled DSH and PRoot",
+          "AI browser automation with element and area feedback",
+          "System shared folders and external file sharing",
           "UI localized in English, Chinese, Arabic, Spanish, French and Russian"
         ],
         "offers": {
@@ -135,8 +137,8 @@
             <span class="lang-zh" lang="zh-CN">DeepSeek Harness（DSH）的安卓移动端——在手机与平板上完全本地化、完整运行 DSH。</span>
           </p>
           <p class="hero-note reveal">
-            <span class="lang-en">One APK with Debian, Node.js, DSH, PRoot, and WebView. No root or separate Termux installation required.</span>
-            <span class="lang-zh" lang="zh-CN">一个 APK 内置 Debian、Node.js、DSH、PRoot 与 WebView。无需 Root，无需单独安装 Termux。</span>
+            <span class="lang-en">An AI workbench with a browser assistant, phone tools, shared files and a terminal. Guided runtime setup, no root or separate Termux required.</span>
+            <span class="lang-zh" lang="zh-CN">集成 AI 浏览器助手、手机助手、系统文件共享区与终端。按引导安装运行环境，无需 Root，也无需单独安装 Termux。</span>
           </p>
 
           <div class="hero-actions reveal">
@@ -177,16 +179,16 @@
               <h2 class="whats-new-title" id="whats-new-hero-title">
                 <span class="lang-en">What's new</span><span class="lang-zh">最新版本变化</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.4.0</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.0</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>Phone assistant (DshPilot)</strong> — 39 device-control capabilities over a mailbox channel.</span>
-                <span class="lang-zh"><strong>手机助手（DshPilot）</strong> — 39 项操控能力，经信箱通道让 DSH 安全操控手机。</span>
+                <span class="lang-en"><strong>AI browser assistant</strong> — browser-use tools for navigation, page interaction, screenshots and selection feedback.</span>
+                <span class="lang-zh"><strong>AI 浏览器助手</strong> — browser-use 工具打通导航、网页交互、截图与元素/区域反馈。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Runtime fetched online</strong> — no longer bundled; the APK drops from ~236 MB to ~111 MB.</span>
-                <span class="lang-zh"><strong>运行环境改为在线获取</strong> — 不再随包内嵌，APK 由约 236 MB 降至约 111 MB。</span>
+                <span class="lang-en"><strong>Shared files &amp; DSH interaction</strong> — system folders, file sharing, full-screen chat and quick module switching.</span>
+                <span class="lang-zh"><strong>系统文件共享与 DSH 交互升级</strong> — 挂载系统目录、收发文件，全屏对话配合悬浮快捷切换。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -221,11 +223,11 @@
     <section class="stats" aria-label="Current release facts">
       <div class="container">
         <dl class="stats-strip reveal">
-          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.4.0</dd></div>
-          <div class="stat" style="--i:1"><dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt><dd data-fact="apkSize">110.7 MB</dd></div>
-          <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime after setup</span><span class="lang-zh">初始化后运行环境</span></dt><dd data-fact="runtimeSize">193 MB</dd></div>
+          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.0</dd></div>
+          <div class="stat" style="--i:1"><dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt><dd data-fact="apkSize">112.5 MB</dd></div>
+          <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime setup</span><span class="lang-zh">环境准备</span></dt><dd><span class="lang-en">Guided setup</span><span class="lang-zh">分步安装</span></dd></div>
           <div class="stat" style="--i:3"><dt><span class="lang-en">Android</span><span class="lang-zh">系统要求</span></dt><dd>10+ (ARM64)</dd></div>
-          <div class="stat" style="--i:4"><dt><span class="lang-en">Unit tests</span><span class="lang-zh">单元测试</span></dt><dd data-fact="testCount">1203</dd></div>
+          <div class="stat" style="--i:4"><dt><span class="lang-en">JVM tests</span><span class="lang-zh">JVM 测试项</span></dt><dd data-fact="testCount">1823</dd></div>
           <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd data-fact="dshVersion">0.2.0-rc.2</dd></div>
         </dl>
       </div>
@@ -241,8 +243,8 @@
             <span class="lang-zh">一个 APK，装下完整工具链</span>
           </h2>
           <p>
-            <span class="lang-en">DSHBox bundles the complete toolchain, so the whole DeepSeek Harness workflow fits in your pocket.</span>
-            <span class="lang-zh">DSHBox 打包了全部依赖，完整的 DeepSeek Harness 工作流直接装进口袋。</span>
+            <span class="lang-en">Set up your runtime with guided steps, then use DSH, browser automation and local tools from one app.</span>
+            <span class="lang-zh">按引导准备运行环境，在一个 App 中连接 DSH、浏览器自动化与本地工具。</span>
           </p>
         </header>
 
@@ -251,76 +253,76 @@
             <div class="feature-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10l2.5 2L8 14M12.5 14.5H16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <h3><span class="lang-en">Full DSH Runtime</span><span class="lang-zh">完整 DSH 运行时</span></h3>
+            <h3><span class="lang-en">Complete DSH Workbench</span><span class="lang-zh">完整 DSH 工作台</span></h3>
             <p>
-              <span class="lang-en">Run the complete DeepSeek Harness natively on Android — sessions, agents and tool calls, all on-device.</span>
-              <span class="lang-zh">在 Android 本机运行完整 DeepSeek Harness——会话、Agent 与工具调用，全部在设备上完成。</span>
+              <span class="lang-en">Run DSH locally on Android. Use sessions, agents and tools through the embedded WebUI, with full-screen chat and quick navigation.</span>
+              <span class="lang-zh">在 Android 本机运行 DSH，通过内嵌 WebUI 使用会话、Agent 与工具调用，配合全屏对话和快捷导航。</span>
             </p>
           </article>
 
           <article class="feature-card reveal" style="--i:1">
             <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-3 8.2-7 9.5C8 19.2 5 15.4 5 11V6l7-3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 11.5l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01M9 13l3 5 1-3 3-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <h3><span class="lang-en">No Root</span><span class="lang-zh">无需 Root</span></h3>
+            <h3><span class="lang-en">AI Browser Assistant</span><span class="lang-zh">AI 浏览器助手</span></h3>
             <p>
-              <span class="lang-en">PRoot provides a root-free Debian user-space environment. Your device stays unmodified.</span>
-              <span class="lang-zh">PRoot 提供免 Root 的 Debian 用户态环境，不改动你的系统。</span>
+              <span class="lang-en">Let DSH navigate and interact with web pages through browser-use. Share selected elements or areas with comments, and enable debugging when needed.</span>
+              <span class="lang-zh">通过 browser-use 让 DSH 导航与操控网页，框选元素或区域并附评论反馈给 AI，按需开启调试。</span>
             </p>
           </article>
 
           <article class="feature-card reveal" style="--i:2">
             <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 5h4M11 19h2M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <h3><span class="lang-en">No Separate Termux</span><span class="lang-zh">无需单独装 Termux</span></h3>
+            <h3><span class="lang-en">Pilot Phone Assistant</span><span class="lang-zh">手机助手 Pilot</span></h3>
             <p>
-              <span class="lang-en">The APK ships the environment it needs. Install one app — no Termux setup, no manual provisioning.</span>
-              <span class="lang-zh">APK 内置所需环境，装一个 App 即可，无需 Termux 配置。</span>
+              <span class="lang-en">Connect DSH to phone apps and system capabilities through foreground control, Shizuku and virtual displays, subject to your permissions and approvals.</span>
+              <span class="lang-zh">连接手机应用与系统能力，支持前台操作、Shizuku 与后台虚拟屏，按你设置的权限与审批执行。</span>
             </p>
           </article>
 
           <article class="feature-card reveal" style="--i:3">
             <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="8" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M14 8v10" stroke="currentColor" stroke-width="1.8"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 015 5h4.2l2 2.5H19a1.5 1.5 0 011.5 1.5v8A1.5 1.5 0 0119 18.5H5A1.5 1.5 0 013.5 17v-10.5zM8 11l2 2-2 2M13 15h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <h3><span class="lang-en">Phone &amp; Tablet</span><span class="lang-zh">手机与平板</span></h3>
+            <h3><span class="lang-en">File Manager &amp; Terminal</span><span class="lang-zh">文件管理与终端</span></h3>
             <p>
-              <span class="lang-en">Tested on real Android phones and tablets, from compact screens to large landscape displays.</span>
-              <span class="lang-zh">已在真实 Android 手机与平板上测试，小屏到大屏横屏均适配。</span>
+              <span class="lang-en">Browse your workspace and sandbox, view and edit files, and run command-line tools from the built-in persistent terminal.</span>
+              <span class="lang-zh">浏览工作区与沙箱，查看和编辑文件，通过内置持久终端运行命令行工具。</span>
             </p>
           </article>
 
           <article class="feature-card reveal" style="--i:4">
             <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.3 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.3-3.8-8.5S9.5 5.8 12 3.5z" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M3 7V6a2 2 0 012-2h4l2 3h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM7 12h9l-2-2M17 16H8l2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <h3><span class="lang-en">Embedded WebUI</span><span class="lang-zh">内嵌 WebUI</span></h3>
+            <h3><span class="lang-en">System Shared Folders</span><span class="lang-zh">系统文件共享区</span></h3>
             <p>
-              <span class="lang-en">A built-in WebView talks to the local DSH web server at <code>127.0.0.1:3080</code> — and the system browser works too.</span>
-              <span class="lang-zh">内置 WebView 连接本地 DSH 服务 <code>127.0.0.1:3080</code>，也支持系统浏览器打开。</span>
+              <span class="lang-en">Mount system folders to share local files with the sandbox. Receive and send files across apps; unmounting leaves the originals intact.</span>
+              <span class="lang-zh">挂载系统目录，在手机应用与沙箱间共用本地文件；接收和分享外部文件，取消挂载不删除原文件。</span>
             </p>
           </article>
 
           <article class="feature-card reveal" style="--i:5">
             <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 015 5h4.2l2 2.5H19a1.5 1.5 0 011.5 1.5v8A1.5 1.5 0 0119 18.5H5A1.5 1.5 0 013.5 17v-10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-3 8.2-7 9.5C8 19.2 5 15.4 5 11V6l7-3zM9 11.5l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <h3><span class="lang-en">File Manager &amp; Terminal</span><span class="lang-zh">文件管理器与终端</span></h3>
+            <h3><span class="lang-en">No Root or Termux</span><span class="lang-zh">无需 Root 与 Termux</span></h3>
             <p>
-              <span class="lang-en">Browse workspaces with the built-in file manager and drive everything from a persistent terminal.</span>
-              <span class="lang-zh">内置文件管理器浏览工作区，持久终端驱动一切操作。</span>
+              <span class="lang-en">PRoot runs Debian in user space. Follow the setup guide in DSHBox, with no root access or separate Termux installation.</span>
+              <span class="lang-zh">PRoot 提供免 Root 的 Debian 用户态环境，安装准备在 DSHBox 内完成，无需单独安装 Termux。</span>
             </p>
           </article>
 
           <article class="feature-card reveal" style="--i:6">
             <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="8" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M14 8v10" stroke="currentColor" stroke-width="1.8"/></svg>
             </div>
-            <h3><span class="lang-en">Local &amp; Private</span><span class="lang-zh">本地与隐私</span></h3>
+            <h3><span class="lang-en">Phone &amp; Tablet Support</span><span class="lang-zh">手机与平板适配</span></h3>
             <p>
-              <span class="lang-en">Sessions, files and the web server all live on your device. Nothing is uploaded by DSHBox itself.</span>
-              <span class="lang-zh">会话、文件与 Web 服务都在你的设备上，DSHBox 自身不上传任何数据。</span>
+              <span class="lang-en">Use DSHBox on Android phones and tablets, with layouts that adapt from compact screens to larger landscape displays.</span>
+              <span class="lang-zh">支持 Android 手机与平板，从小屏到大屏横屏提供适配布局。</span>
             </p>
           </article>
 
@@ -328,10 +330,10 @@
             <div class="feature-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M12 3l2.4 5 5.6.7-4.1 3.8 1.1 5.5L12 15.3 7 18l1.1-5.5L4 8.7 9.6 8 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
             </div>
-            <h3><span class="lang-en">Open Source</span><span class="lang-zh">开源</span></h3>
+            <h3><span class="lang-en">Open Source &amp; Local Data</span><span class="lang-zh">开源与本地数据</span></h3>
             <p>
-              <span class="lang-en">GPL-3.0 licensed, <span data-fact="testCount">1203</span> unit tests across <span data-fact="moduleCount">11</span> Gradle modules. Audit it, build it, fork it.</span>
-              <span class="lang-zh">GPL-3.0 协议，<span data-fact="moduleCount">11</span> 个 Gradle 模块、<span data-fact="testCount">1203</span> 个单元测试。可审计、可构建、可复用。</span>
+              <span class="lang-en">Core code is open under GPL-3.0. Manage workspaces and services locally, with model providers and file sharing chosen by you.</span>
+              <span class="lang-zh">核心代码以 GPL-3.0 开源，工作区与服务在本地管理，模型服务和文件分享由你选择。</span>
             </p>
           </article>
         </div>
@@ -353,43 +355,43 @@
           </p>
         </header>
 
-        <p class="eyebrow"><span class="lang-en">The DSH ecosystem — hosted and extended</span><span class="lang-zh">DSH 生态：容纳与扩充</span></p>
+        <p class="eyebrow"><span class="lang-en">Home, phone tools and files</span><span class="lang-zh">首页、手机助手与文件管理</span></p>
         <div class="shot-grid">
           <figure class="shot-card reveal" style="--i:0">
-            <img src="./assets/images/phone-01-dsh.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="DSH chat session running inside DSHBox on a phone">
-            <figcaption><span class="lang-en">DSH</span><span class="lang-zh">DSH</span></figcaption>
+            <img src="./assets/images/phone-01-home.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="DSHBox home with runtime controls and system status">
+            <figcaption><span class="lang-en">Home</span><span class="lang-zh">首页</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:1">
-            <img src="./assets/images/phone-02-plugin-market.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Plugin market browsing DSH plugins inside DSHBox">
-            <figcaption><span class="lang-en">Plugin Market</span><span class="lang-zh">插件市场</span></figcaption>
+            <img src="./assets/images/phone-02-phone-assistant.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Pilot phone assistant with execution modes and permissions">
+            <figcaption><span class="lang-en">Phone Assistant</span><span class="lang-zh">手机助手</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:2">
             <img src="./assets/images/phone-03-plugin-management.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Cordis plugin panel with per-entry switches">
             <figcaption><span class="lang-en">Plugin Management</span><span class="lang-zh">插件管理</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:3">
-            <img src="./assets/images/phone-04-phone-assistant.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Phone assistant settings with permission gates and diagnostics">
-            <figcaption><span class="lang-en">Phone Assistant</span><span class="lang-zh">手机助手</span></figcaption>
+            <img src="./assets/images/phone-04-files.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="File manager with sandbox, workspace and shared folders">
+            <figcaption><span class="lang-en">File Manager</span><span class="lang-zh">文件管理</span></figcaption>
           </figure>
         </div>
 
-        <p class="eyebrow" style="margin-top: 40px"><span class="lang-en">Everything around it — ready out of the box</span><span class="lang-zh">配套设施：开箱即用</span></p>
+        <p class="eyebrow" style="margin-top: 40px"><span class="lang-en">DSH, browser and terminal</span><span class="lang-zh">DSH、浏览器与终端</span></p>
         <div class="shot-grid">
           <figure class="shot-card reveal" style="--i:0">
-            <img src="./assets/images/phone-05-files.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Built-in file manager browsing the sandbox workspace">
-            <figcaption><span class="lang-en">File Manager</span><span class="lang-zh">文件管理器</span></figcaption>
+            <img src="./assets/images/phone-05-dsh.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Full-screen DSH conversation with floating quick navigation">
+            <figcaption><span class="lang-en">DSH</span><span class="lang-zh">DSH</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:1">
-            <img src="./assets/images/phone-06-terminal.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Terminal session running the opencode agent inside DSHBox">
-            <figcaption><span class="lang-en">Terminal</span><span class="lang-zh">终端</span></figcaption>
+            <img src="./assets/images/phone-06-update-dsh.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Online DSH update with multiple package mirrors">
+            <figcaption><span class="lang-en">DSH Updates</span><span class="lang-zh">DSH 更新</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:2">
-            <img src="./assets/images/phone-07-update-dsh.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Updating the DSH runtime from an npm source inside DSHBox">
-            <figcaption><span class="lang-en">Update DSH</span><span class="lang-zh">更新 DSH</span></figcaption>
+            <img src="./assets/images/phone-07-browser.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Browser automation with element and area selection tools">
+            <figcaption><span class="lang-en">Browser</span><span class="lang-zh">浏览器</span></figcaption>
           </figure>
           <figure class="shot-card reveal" style="--i:3">
-            <img src="./assets/images/phone-08-update-runtime.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Importing the Linux and Node runtime layers inside DSHBox">
-            <figcaption><span class="lang-en">Update Runtime</span><span class="lang-zh">更新运行环境</span></figcaption>
+            <img src="./assets/images/phone-08-terminal.jpg" width="1260" height="2800" loading="lazy" decoding="async" alt="Terminal running the opencode agent inside DSHBox">
+            <figcaption><span class="lang-en">Terminal</span><span class="lang-zh">终端</span></figcaption>
           </figure>
         </div>
       </div>
@@ -429,7 +431,7 @@
             <span class="flow-num" aria-hidden="true">3</span>
             <div>
               <h3><span class="lang-en">Node.js + DeepSeek Harness</span><span class="lang-zh">Node.js + DeepSeek Harness</span></h3>
-              <p><span class="lang-en">DSH runs inside the bundled Node.js runtime.</span><span class="lang-zh">DSH 运行在内置 Node.js 之上。</span></p>
+              <p><span class="lang-en">DSH runs on Node.js installed through the setup guide.</span><span class="lang-zh">DSH 运行在按引导安装的 Node.js 之上。</span></p>
             </div>
           </li>
           <li class="flow-step" style="--i:3">
@@ -480,18 +482,19 @@
               <li><span class="lang-en">Android 10 or newer (minSdk 29)</span><span class="lang-zh">Android 10 或更高（minSdk 29）</span></li>
               <li><span class="lang-en">ARM64 phone or tablet (targetSdk 36)</span><span class="lang-zh">ARM64 手机或平板（targetSdk 36）</span></li>
               <li><span class="lang-en">No root required</span><span class="lang-zh">无需 Root</span></li>
+              <li><span class="lang-en">Use the WebView check in setup; update the system WebView if pages stay blank or workspaces fail to load</span><span class="lang-zh">按引导检查 WebView 版本；白屏或工作区加载异常时，可更新适配设备的系统 WebView</span></li>
             </ul>
           </div>
           <div class="req-card reveal" style="--i:1">
             <h3><span class="lang-en">Storage &amp; Network</span><span class="lang-zh">存储与网络</span></h3>
             <ul>
-              <li><span class="lang-en"><span data-fact="apkSize">110.7 MB</span> for the APK download</span><span class="lang-zh">APK 下载占 <span data-fact="apkSize">110.7 MB</span></span></li>
-              <li><span class="lang-en"><span data-fact="runtimeSize">193 MB</span> runtime environment after first setup</span><span class="lang-zh">首次初始化后运行环境占 <span data-fact="runtimeSize">193 MB</span></span></li>
-              <li><span class="lang-en">Network needed for first-time initialization</span><span class="lang-zh">首次初始化需要网络</span></li>
+              <li><span class="lang-en"><span data-fact="apkSize">112.5 MB</span> for the APK download</span><span class="lang-zh">APK 下载占 <span data-fact="apkSize">112.5 MB</span></span></li>
+              <li><span class="lang-en">Allow extra storage for Debian, Node.js and your workspace</span><span class="lang-zh">为 Debian、Node.js 与工作区预留充足存储</span></li>
+              <li><span class="lang-en">Online mirror setup or offline runtime import</span><span class="lang-zh">支持在线多镜像源安装或离线导入运行环境</span></li>
             </ul>
           </div>
           <div class="req-card reveal" style="--i:2">
-            <h3><span class="lang-en">Bundled Stack</span><span class="lang-zh">内置组件</span></h3>
+            <h3><span class="lang-en">Runtime Stack</span><span class="lang-zh">运行组件</span></h3>
             <ul>
               <li><span class="lang-en">Debian user-space via PRoot</span><span class="lang-zh">PRoot 提供的 Debian 用户态</span></li>
               <li><span class="lang-en">Node.js runtime</span><span class="lang-zh">Node.js 运行时</span></li>
@@ -544,25 +547,25 @@
                 <span class="lang-en">What's new in this version</span>
                 <span class="lang-zh">本次版本更新内容</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.4.0</span>
-              <span class="whats-new-date" data-release-date hidden></span>
+              <span class="whats-new-badge" data-release-tag>v1.5.0</span>
+              <span class="whats-new-date" data-release-date>2026-10-17</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>Phone assistant (DshPilot)</strong> — 39 device-control capabilities over a mailbox channel, with three execution backends and two modes.</span>
-                <span class="lang-zh"><strong>手机助手（DshPilot）</strong> — 39 项操控能力，经信箱通道让 DSH 安全操控手机；三类执行通路 + 两种执行模式。</span>
+                <span class="lang-en"><strong>AI browser assistant</strong> — browser-use tools for page navigation, interaction, screenshots, selection feedback and optional debugging.</span>
+                <span class="lang-zh"><strong>AI 浏览器助手</strong> — browser-use 工具支持网页导航、交互、截图、选区图文反馈与按需调试。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Plugin manager &amp; market</strong> — bundled, official and third-party plugins on one page, plus an absolute safe mode and opencode.</span>
-                <span class="lang-zh"><strong>插件管理面板与插件市场</strong> — 随包自制、官方与第三方插件集中管理；含绝对安全模式与终端 Agent opencode。</span>
+                <span class="lang-en"><strong>System shared folders</strong> — mount local folders, receive files from other apps and share files outward. Unmounting leaves the files intact.</span>
+                <span class="lang-zh"><strong>系统文件共享区</strong> — 挂载本地目录，接收外部分享并将文件发往其他应用；取消挂载不删除原文件。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Runtime fetched online</strong> — no longer bundled; the APK drops from ~236 MB to ~111 MB, with per-layer mirror update and reset.</span>
-                <span class="lang-zh"><strong>运行环境改为在线获取</strong> — 不再随包内嵌，APK 由约 236 MB 降至约 111 MB；可按层多镜像源更新与重置。</span>
+                <span class="lang-en"><strong>DSH interaction</strong> — full-screen chat, floating quick navigation and a unified attachment source panel with multi-file support.</span>
+                <span class="lang-zh"><strong>DSH 界面交互升级</strong> — 全屏对话、悬浮快捷导航与统一附件来源面板，支持多文件传输。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>DSH 0.2.0-rc.2 support</strong> — camera and video capture, voice input, the side-bar terminal and the in-sidebar browser are enabled.</span>
-                <span class="lang-zh"><strong>深度适配 DSH 0.2.0-rc.2</strong> — 开启拍照与录像、语音输入、右侧边栏终端与内嵌浏览器。</span>
+                <span class="lang-en"><strong>Guided setup &amp; Pilot</strong> — step-by-step runtime installation, WebView compatibility hints, refreshed home navigation and theme-aware phone tools.</span>
+                <span class="lang-zh"><strong>安装引导与 Pilot</strong> — 分步准备运行环境、探测 WebView 兼容性，更新首页导航并统一手机助手主题。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -615,8 +618,8 @@
               <span class="lang-zh">需要单独安装 Termux 吗？</span>
             </summary>
             <p>
-              <span class="lang-en">No. The APK bundles everything it needs — Debian, Node.js, DSH and PRoot. There is no Termux dependency.</span>
-              <span class="lang-zh">不需要。APK 内置 Debian、Node.js、DSH 与 PRoot，完全不依赖 Termux。</span>
+              <span class="lang-en">No. DSHBox includes DSH and PRoot, and guides you through Debian and Node.js installation or offline import. There is no Termux dependency.</span>
+              <span class="lang-zh">不需要。DSHBox 随包提供 DSH 与 PRoot，并引导安装或离线导入 Debian、Node.js，无需依赖 Termux。</span>
             </p>
           </details>
           <details class="faq-item reveal" style="--i:2">
@@ -655,8 +658,8 @@
               <span class="lang-zh">我的数据存在哪里？</span>
             </summary>
             <p>
-              <span class="lang-en">All sessions, workspaces and the local web server live inside the app's private storage on your device. DSHBox does not upload your data anywhere by itself.</span>
-              <span class="lang-zh">所有会话、工作区和本地 Web 服务都在 App 私有存储中。DSHBox 不会自行上传你的数据。</span>
+              <span class="lang-en">Sessions and workspaces use app storage by default. Shared folders stay in system storage and are not automatically deleted on uninstall. Model calls and websites use the services you choose.</span>
+              <span class="lang-zh">会话与工作区默认位于应用存储；共享目录保存在系统存储中，卸载 App 不会自动删除其中内容。模型调用与网页访问使用你选择的服务。</span>
             </p>
           </details>
           <details class="faq-item reveal" style="--i:6">
@@ -665,8 +668,8 @@
               <span class="lang-zh">如何升级 DSH？</span>
             </summary>
             <p>
-              <span class="lang-en">DSHBox ships a pinned, tested DSH version (currently <span data-fact="dshVersion">0.2.0-rc.2</span>). Updates arrive with new DSHBox releases — check the Releases page for details.</span>
-              <span class="lang-zh">DSHBox 内置经过测试的固定 DSH 版本（当前为 <span data-fact="dshVersion">0.2.0-rc.2</span>），随 DSHBox 新版本一起更新，详情见 Releases 页面。</span>
+              <span class="lang-en">The bundled version is <span data-fact="dshVersion">0.2.0-rc.2</span>. Use Settings → Update DSH to check online mirrors. Back up before trying Alpha versions: reverting to RC can cause conversation-data incompatibility.</span>
+              <span class="lang-zh">随包版本为 <span data-fact="dshVersion">0.2.0-rc.2</span>，可在设置 → 在线更新 DSH 中选择镜像源升级。体验 Alpha 前请备份，回退 RC 可能出现对话数据兼容问题。</span>
             </p>
           </details>
           <details class="faq-item reveal" style="--i:7">
@@ -769,6 +772,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.4.0" defer></script>
+  <script src="./assets/js/main.js?v=1.5.0" defer></script>
 </body>
 </html>

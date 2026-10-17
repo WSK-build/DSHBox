@@ -1,0 +1,67 @@
+[
+  {
+    "file": "LGPL-2.1.txt",
+    "source": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/LGPL-2.1-only.txt",
+    "sha256": "5749785c8bdefafcb5d798270ed0a967036fe2ca63dcedade1627565dfef81d2"
+  },
+  {
+    "file": "Sora-Editor-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/Rosemoe/sora-editor/0.23.5/LICENSE",
+    "sha256": "20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331"
+  },
+  {
+    "file": "Shizuku-API-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/RikkaApps/Shizuku-API/master/LICENSE",
+    "sha256": "930975f35446e70a87a12ca68360144b056ea30748f755f3c393e90a431bc05c"
+  },
+  {
+    "file": "Zstd-JNI-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/luben/zstd-jni/v1.5.7-15/LICENSE",
+    "sha256": "289a6adada5726047b9e68bf607cc44fbbac953bbb4fd29f53ffe75b5cb3e7b1"
+  },
+  {
+    "file": "Zstd-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/facebook/zstd/v1.5.7/LICENSE",
+    "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+  },
+  {
+    "file": "CommonMark-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/commonmark/commonmark-java/commonmark-parent-0.13.0/LICENSE.txt",
+    "sha256": "4c1ea7a8104cd00a7e62b794cc317aedca2e68c647048b5f546fc7388dddd306"
+  },
+  {
+    "file": "GPL-3.0.txt",
+    "source": "source/LICENSE",
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  {
+    "file": "Apache-2.0.txt",
+    "source": "source/pilot/interlock-relay-core/LICENSE",
+    "sha256": "f57f6a2161ed2b417e9101d0f824f6ccdf1c6f5b8f9080b30c2588d08e8424ae"
+  },
+  {
+    "file": "Tabler-LICENSE.txt",
+    "source": "source/common/LICENSE-TABLER.txt",
+    "sha256": "b740a1d46122672da62833e97f7e7c8a13fa85cbc7445b584b297cc00dde93db"
+  },
+  {
+    "file": "XZ-COPYING.txt",
+    "source": "https://raw.githubusercontent.com/tukaani-project/xz-java/v1.9/COPYING",
+    "sha256": "28d2ee85b88a1d2f2fbf98099d59fc703caf10cf7515519f0e7884fb6cbf7544"
+  },
+  {
+    "file": "Bouncy-Castle-LICENSE.html",
+    "source": "https://raw.githubusercontent.com/bcgit/bc-java/r1rv78/LICENSE.html",
+    "sha256": "edbbb10380b1271998b867a2e36b1cbee226e03d438726e1a91f80c5dde11849"
+  },
+  {
+    "file": "GPL-2.0.txt",
+    "source": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-2.0-only.txt",
+    "sha256": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3"
+  },
+  {
+    "file": "LGPL-3.0.txt",
+    "source": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/LGPL-3.0-only.txt",
+    "sha256": "996af0513df21f7496288951c41428a03c174e9e4a9d63665c57d670f845ccb1"
+  }
+]

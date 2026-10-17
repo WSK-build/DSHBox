@@ -6,12 +6,14 @@
 
     <!-- Panneau -->
     <string name="pm_panel_title">Plugins Cordis</string>
+    <string name="pm_root_title">Panneau de plugins</string>
+    <string name="pm_panel_tagline">Gestion des plugins · Marché</string>
     <string name="pm_panel_hint">Comment traiter les plugins qui échouent au chargement.</string>
     <string name="pm_safety_mode">Mode sûr</string>
     <string name="pm_safety_mode_desc">Ignore les plugins qui échouent au chargement</string>
-    <string name="pm_absolute_mode">Mode sûr absolu</string>
+    <string name="pm_absolute_mode">Mode sûr</string>
     <string name="pm_absolute_mode_desc">Démarre sans charger aucun plugin tiers</string>
-    <string name="pm_absolute_on_hint">Le mode sûr absolu est activé : aucun plugin tiers ne sera chargé.</string>
+    <string name="pm_absolute_on_hint">Le mode sûr est activé : aucun plugin tiers ne sera chargé.</string>
     <string name="pm_load_log_row">Journal de chargement</string>
     <string name="pm_isolation_row">Plugins ignorés</string>
     <string name="pm_market_row">Marché de plugins</string>
@@ -203,6 +205,11 @@
     <string name="pm_adapt_section_title">Plugins d\'adaptation DSHBox</string>
     <string name="pm_adapt_mobile">Adaptation de page mobile DSH</string>
     <string name="pm_adapt_mobile_pilot">Connecter le téléphone à DSH</string>
+    <string name="pm_browser_adapter_title">Automatisation Browser DSH</string>
+    <string name="pm_browser_assembled">Adaptateur Browser assemblé</string>
+    <string name="pm_browser_removed">Adaptateur Browser supprimé</string>
+    <string name="pm_browser_assembly_failed">Impossible d’assembler l’adaptateur Browser.</string>
+    <string name="pm_browser_refresh_failed">Impossible de mettre à jour l’adaptateur Browser ; le paquet précédent reste disponible.</string>
     <string name="pm_adapt_ok">Assemblé</string>
     <string name="pm_adapt_fail">Échec de l\'assemblage ; annulé</string>
     <string name="pm_adapt_restart_hint">(Prend effet après le redémarrage de DSH)</string>
@@ -210,7 +217,7 @@
     <string name="pm_guard_toast_attempt_skipped">%1$d plugin(s) ignoré(s) : %2$s</string>
     <string name="pm_guard_toast_recovered_title">Le mode sûr a ignoré %1$d plugin(s) ; DSH est démarré</string>
     <string name="pm_guard_toast_recovered_skipped">Ignorés : %1$s</string>
-    <string name="pm_guard_toast_absolute">Le mode sûr absolu est activé</string>
+    <string name="pm_guard_toast_absolute">Le mode sûr est activé</string>
     <string name="pm_guard_toast_failed">DSH n\'a pas démarré ; nouvelle tentative automatique arrêtée</string>
     <!-- Extensions officielles DSH (capacités intégrées désactivées par défaut en amont) -->
     <string name="pm_official_section">Extensions officielles DSH</string>

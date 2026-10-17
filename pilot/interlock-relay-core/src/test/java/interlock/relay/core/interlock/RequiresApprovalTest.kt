@@ -36,7 +36,7 @@ class RequiresApprovalTest {
     /**
      * 系统授权界面一律当场问：会话授权压不住它，「完全访问」这一档也压不住。
      *
-     * 这条判据决定助手能否替用户答复第三方应用的权限申请，三种档位都要钉住：
+     * 验证助手代用户答复第三方权限申请时的三档审批策略：
      * 少钉一种，就留下「档位是完全访问于是授权框被静默点掉」这条路。
      */
     @Test
@@ -51,7 +51,7 @@ class RequiresApprovalTest {
                 }
             }
         }
-        // 反向也要钉住：不命中这条判据时，上面几条规则不该被它带偏。
+        // 验证未命中该判据时不影响其他审批规则。
         assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, TierCeiling.ANY, true, consentScreen = false))
     }
 

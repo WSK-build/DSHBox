@@ -21,9 +21,9 @@ SKIP_DIRS = {
     ".git", "__pycache__", ".playwright-mcp",
 }
 TEXT_EXT = {
-    ".kt", ".kts", ".java", ".md", ".xml", ".js", ".mjs", ".json", ".sh",
+    ".kt", ".kts", ".java", ".md", ".xml", ".js", ".mjs", ".cjs", ".json", ".sh",
     ".html", ".css", ".toml", ".properties", ".py", ".txt", ".yml", ".yaml",
-    ".pro", ".cfg", ".gitignore", ".xml",
+    ".pro", ".cfg", ".gitignore", ".bat", ".gradle", ".conf", ".mk", ".svg", ".webmanifest",
 }
 
 # (名称, 正则, 说明)
@@ -36,11 +36,12 @@ PATTERNS = [
     ("邮箱地址", re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"), "个人信息"),
     ("私网/代理地址", re.compile(r"\b(?:10|172|192\.168)\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"), "网络地址"),
     ("设备序列号样式", re.compile(r"\b[0-9A-Z]{14,16}\b"), "设备标识"),
+    ("API 令牌样式", re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9][A-Za-z0-9_-]{19,}(?![A-Za-z0-9])"), "疑似凭据"),
+    ("Google API 密钥样式", re.compile(r"(?<![A-Za-z0-9])AIza[A-Za-z0-9_-]{30,}(?![A-Za-z0-9])"), "疑似凭据"),
+    ("私钥头", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE " r"KEY-----"), "疑似凭据"),
     # 机型代号：厂商内部型号（如 "V" 开头四位数字、iPad 的 "iPA"、
     # 三星的 "SM-"、以及通用「字母+三位数字」形态）。
-    # 这类串写进文档等于把开发/测试用机固定暴露，且对读者毫无价值
-    # （应写成「手机」「平板」「Android 15 设备」）。
-    # 公开变更摘要 / 测试夹具 / 设备记录里都出现过，故补此规则。
+    # 仅生成待核查候选；需区分实际设备标识、测试占位值与兼容性常量。
     ("机型代号样式", re.compile(r"\b(?:[A-Z]\d{4}[A-Z]?|iP[AB]\d{4}|SM-[A-Z]\d{3}[A-Z]?|[A-Z]{1,2}\d{3}[A-Z]{1,3})\b"), "设备标识"),
 ]
 
@@ -77,16 +78,13 @@ ALLOW = [
 
     # —— 文档里的省略写法 ——
     re.compile(r"[A-Za-z]:[\\/]Users[\\/]\.\.\."),
-    re.compile(r"^\s*//"),                          # 注释里的说明
 
     # —— 单测夹具：测试自己造的 /tmp 路径，与本机无关（同上方「单测夹具虚构路径」口径）——
     re.compile(r"/tmp/(a\.deb|a|it|foo|bar|tool\.deb)\b"),   # DebUnpackInstaller / SandboxFiles / UpdateDetector 夹具
     re.compile(r"/tmp/(pilot-(snapshot-x|full-1)\.json|clip\.mp4|stub-artifact\.png|abs\.png|a\.png)"),  # mobile-pilot 单测夹具
 
-    # 以下四条**刻意写成拼接**：本文件自身也在扫描范围内，直写会让这些字面量被
-    # 对应规则再次命中（自匹配），拼接后源码文本里不再出现可命中的连续形态。
+    # 拆分字面量，避免规则定义被自身扫描命中。
     re.compile(r"/tmp/" r"dpkg-deb\."),                      # dpkg 临时目录名（单测夹具）
-    re.compile(r"back/home" r"/recents"),                    # 安卓导航三键名，被「Linux 家目录」正则误匹配
     re.compile(r"C:" r"/\.\.\."),                            # 注释里说明「盘符式写法」的举例，非本机路径
     re.compile("ESO" "CKETTIMEDOUT"),                        # 上游 pnpm 错误码，被「设备序列号」正则误匹配
 
@@ -97,11 +95,36 @@ ALLOW = [
 SECRET_FILES = [
     "keystore.properties", "local.properties", "*.jks", "*.keystore",
     "google-services.json", ".env", "*.p12", "*.pem", "id_rsa", "*.ppk",
+    "*.key", "*.p8", "*.mobileprovision", "secrets.json", "credentials.json",
 ]
 
 
-def is_allowed(line: str) -> bool:
-    return any(p.search(line) for p in ALLOW)
+def is_allowed(hit: str, line: str = "", rel: str = "", label: str = "") -> bool:
+    """仅豁免当前命中，不能用同一行的样例文本掩盖其他敏感值。"""
+    if hit == "/home/recents" and "back/home/recents" in line:
+        return True
+    relative = rel.replace("\\", "/")
+    if label == "设备序列号样式" and hit in {"MERCHAN" "TABILITY", "NONIN" "FRINGEMENT"}:
+        if relative.startswith("licenses/") or relative == "common/LICENSE-TABLER.txt":
+            return True
+    is_test = any(part in {"test", "tests", "androidTest"} for part in relative.split("/"))
+    if is_test:
+        # 仅豁免已核实的测试占位值，不跳过整个测试文件或整行。
+        if label == "临时目录" and hit.startswith("/tmp/"):
+            if hit[5:] in {"junitXXX", "site", "private", "elsewhere.png", "secret.zip", "body-1.bin"}:
+                return True
+        if label == "Windows 盘符路径" and hit.replace("\\", "/") == "C:" + "/secret.txt":
+            return True
+        if label == "邮箱地址":
+            local, _, domain = hit.rpartition("@")
+            placeholder = re.fullmatch(r"(?:a|u|user|name|pw|pass|password|secret|private|(?:[a-z]+[-_])?(?:pass(?:word)?|secret|token)(?:[-_][a-z]+)?)", local)
+            reserved = domain.endswith((".test", ".invalid", ".example")) or domain in {"example.com", "example.org", "example.net"}
+            if placeholder and reserved:
+                return True
+        if label == "机型代号样式" and ("U+" + hit) in line:
+            if re.fullmatch(r"[0-9A-F]{4,6}", hit) and int(hit, 16) <= 0x10FFFF:
+                return True
+    return any(p.search(hit) for p in ALLOW)
 
 
 def scan(root: str):
@@ -117,11 +140,10 @@ def scan(root: str):
             try:
                 with open(path, "r", encoding="utf-8", errors="replace") as fh:
                     for lineno, line in enumerate(fh, 1):
-                        if is_allowed(line):
-                            continue
                         for label, rx, kind in PATTERNS:
                             for m in rx.finditer(line):
-                                findings.append((rel, lineno, label, kind, m.group(0)))
+                                if not is_allowed(m.group(0), line, rel, label):
+                                    findings.append((rel, lineno, label, kind, m.group(0)))
             except OSError:
                 continue
     return findings
@@ -158,6 +180,10 @@ def is_gitignored(rel_path: str, patterns) -> bool:
         pat = raw.lstrip("/").rstrip("/")
         if not pat:
             continue
+        if raw.startswith("/"):
+            if fnmatch.fnmatch(rel, pat) or (raw.endswith("/") and rel.startswith(pat + "/")):
+                return True
+            continue
         if fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(rel, pat):
             return True
         # 目录前缀写法：build/ 应覆盖 build/xxx
@@ -177,7 +203,7 @@ def main():
     args = ap.parse_args()
     root = os.path.abspath(args.root)
 
-    print(f"审查根目录：{root}\n")
+    print("审查对象：指定源码树（输出不包含命中原文或本机绝对路径）\n")
     ignore_lines = gitignored_patterns(root)
 
     print("=== ① 凭据/密钥文件 ===")
@@ -187,8 +213,8 @@ def main():
         for s in secrets:
             covered = is_gitignored(s, ignore_lines)
             secret_ignored[s] = covered
-            tag = "已被 .gitignore 覆盖（仅本地，不会随发布泄露）" if covered \
-                else "!! 未被 .gitignore 覆盖，有随发布泄露的风险"
+            tag = "匹配根 .gitignore 规则；直接打包前仍须排除本机文件" if covered \
+                else "!! 未匹配根 .gitignore 规则，须核查并排除"
             print(f"  ! {s}")
             print(f"      {tag}")
     else:
@@ -208,8 +234,8 @@ def main():
             by_file.setdefault(rel, []).append((lineno, label, kind, hit))
         for rel in sorted(by_file):
             print(f"\n  {rel}")
-            for lineno, label, kind, hit in by_file[rel][:12]:
-                print(f"    L{lineno}  [{label}/{kind}] {hit}")
+            for lineno, label, kind, _hit in by_file[rel][:12]:
+                print(f"    L{lineno}  [{label}/{kind}] <已脱敏>")
             if len(by_file[rel]) > 12:
                 print(f"    … 另有 {len(by_file[rel]) - 12} 处")
 
@@ -220,7 +246,7 @@ def main():
             print(f"  — 待发布内容中的发现（{len(blocking)} 处）—")
             dump(blocking)
         if local_only:
-            print(f"\n  — 已被 .gitignore 覆盖的本地文件（{len(local_only)} 处，不会随发布泄露）—")
+            print(f"\n  — 匹配根忽略规则的本地文件（{len(local_only)} 处，打包时须另行排除）—")
             dump(local_only)
 
     unignored_secrets = [s for s, cov in secret_ignored.items() if not cov]
@@ -230,11 +256,11 @@ def main():
 
     print(f"\n{'=' * 56}")
     if blockers == 0:
-        print("结论：待发布内容未发现个人数据泄露 ✔")
+        print("结论：当前启发式规则未检出待发布阻断项，不代表完整安全认证。")
         if local_only or secrets:
-            print("       （本地凭据文件已列出，但均被 .gitignore 覆盖，不会进入仓库）")
+            print("       （已列出本机配置/凭据文件；根忽略规则不能替代发布副本核查。）")
     else:
-        print(f"结论：{blockers} 处会随发布泄露，必须处理（见上）")
+        print(f"结论：{blockers} 处待核查或排除项，匹配结果不等于已确认公开泄露。")
     return 0 if blockers == 0 else 1
 
 

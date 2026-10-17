@@ -115,14 +115,23 @@ object Constants {
     const val OPENCODE_LAUNCHER = "$OPENCODE_GUEST_DIR/node_modules/.bin/opencode"
 
     /**
-     * 我方**随包资产**在工作区内的固定目录（app 管理、只读保护）。
+     * 共享区在 guest 内的挂载根：宿主 Android 公共存储的 `DSHBox` 目录绑定为
+     * `/root/share/DSHBox`；用户后续自选挂载的目录也落在本挂载根之下。
+     * 宿主目录不存在（未授权或未创建）时不绑定，会话照常启动。
+     */
+    const val SHARE_AREA_GUEST_DIR = "/root/share"
+
+    /** 共享区内建目录名（宿主公共存储与 guest 两侧同名，即所有应用可见的那个文件夹）。 */
+    const val SHARE_AREA_DIR_NAME = "DSHBox"
+
+    /**
+     * 应用管理的随包资产在工作区内的固定目录。
      *
      * 与 DSH 自己的数据（profiles / sessions / settings.yaml / storages / credentials）
-     * 明确分开：**这里的一切都是我们的固定资产——用户可看、不可改，DSH 也改不动**
-     * （其中 `bin/` 目录 0555 / 文件 0444-0555，每次 bootstrap 重新固化，见 SandboxService；
-     * 其余子目录保持可写，因为各有运行期写者）。
+     * 分开存放：`bin/` 目录使用 0555，文件使用 0444-0555，bootstrap 时重新设置权限；
+     * 其余子目录保留运行期写入能力。
      *
-     * 目录布局以"名称直白、一目录一归属"为准：
+     * 子目录用途：
      * - `bin/`                     CLI 包装脚本（基础设施）
      * - `dshbox-plugins/`          我方自有插件包的装配暂存
      * - `dsh-official-plugin/`     「DSH官方插件」的覆盖层
@@ -135,11 +144,7 @@ object Constants {
     const val DSHBOX_ASSETS_GUEST_DIR = "/root/projects/$DSHBOX_ASSETS_RELATIVE_DIR"
 
     /**
-     * 两个自有插件包的装配暂存在资产目录内的父目录。
-     *
-     * 与源码目录 `plugin-manager/dshbox-plugins/` 同名。刻意不叫 "official"：那个词在面板里
-     * 指的是**上游**官方插件（见 [DSH_OFFICIAL_PLUGIN_OVERLAY_RELATIVE_PATH]），而这两个包是
-     * 我们自己做的（`@local/` 前缀）。
+     * 自有插件包的装配暂存目录名，与源码目录 `plugin-manager/dshbox-plugins/` 同名。
      */
     const val DSHBOX_PLUGINS_LEAF = "dshbox-plugins"
 
@@ -150,7 +155,7 @@ object Constants {
     const val DSHBOX_PLUGINS_GUEST_DIR = "/root/projects/$DSHBOX_PLUGINS_RELATIVE_DIR"
 
     /**
-     * dsh `web` profile 在 guest 内的目录 —— 两个自有插件包都装配到这里。
+     * DSH `web` profile 在 guest 内的目录，自有插件装配到此目录。
      *
      * 宿主侧即 `user-data/.dsh/profiles/web`。由 dsh 自己创建：
      * 该目录不存在（DSH 从没跑过）时我们不装配，也不替它建目录。
@@ -233,6 +238,10 @@ object Constants {
      * dsh 启动前确保该包装配到位（见 `SandboxService.ensureOwnPluginsAssembled`）。
      */
     const val PREF_MOBILE_PILOT_ENABLED = "mobile_pilot_enabled"
+
+    /** Whether the Browser Cordis adapter should be assembled in the DSH profile. */
+    const val PREF_BROWSER_PLUGIN_ENABLED = "browser_adapter_plugin_enabled"
+    const val PREF_BROWSER_PLUGIN_LAST_ERROR = "browser_plugin_last_error"
 
     /**
      * 改名前的旧键（`mobile-pilot` 一度叫 `pilot`，且当时的开关只记状态、不做任何动作）。

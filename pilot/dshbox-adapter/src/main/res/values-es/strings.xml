@@ -6,6 +6,7 @@
     <string name="pilot_notify_channel_name">Mensajes del asistente</string>
     <string name="pilot_err_surface_api_level">La ejecución en segundo plano requiere Android 13 o posterior.</string>
     <string name="pilot_page_overview">Asistente del teléfono</string>
+    <string name="pilot_page_tagline">Conecta DSH y tu teléfono</string>
     <string name="pilot_page_capabilities">Capacidades</string>
     <string name="pilot_page_capability_detail">Capacidad</string>
     <string name="pilot_page_surface">Modo de ejecución</string>

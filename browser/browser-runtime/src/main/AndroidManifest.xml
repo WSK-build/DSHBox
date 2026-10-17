@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name="com.dshbox.browser.runtime.BrowserControlApprovalReceiver"
+            android:exported="false"
+            android:process=":browser" />
+        <provider
+            android:name="com.dshbox.browser.runtime.BrowserUploadProvider"
+            android:authorities="${applicationId}.browser.upload"
+            android:exported="false"
+            android:grantUriPermissions="true"
+            android:process=":browser" />
+        <provider
+            android:name="com.dshbox.browser.runtime.BrowserDownloadProvider"
+            android:authorities="${applicationId}.browser.download"
+            android:exported="false"
+            android:grantUriPermissions="true"
+            android:process=":browser" />
+        <activity
+            android:name="com.dshbox.browser.runtime.BrowserActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|locale|layoutDirection"
+            android:exported="false"
+            android:enableOnBackInvokedCallback="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:process=":browser"
+            android:taskAffinity="${applicationId}.browser"
+            android:theme="@style/BrowserRuntimeTheme"
+            android:windowSoftInputMode="adjustResize" />
+        <service
+            android:name="com.dshbox.browser.runtime.BrowserCommandService"
+            android:exported="false"
+            android:permission="${applicationId}.permission.BROWSER_INTERNAL"
+            android:process=":browser" />
+    </application>
+</manifest>

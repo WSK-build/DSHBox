@@ -1,0 +1,102 @@
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.OutputDirectory
+
+abstract class LicenseAssetsTask extends DefaultTask {
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
+}
+
+// Keep each dependency's legal texts separate; resource packaging exclusions
+// must not discard the only distributed copy of a license or attribution.
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    def variantName = variant.name
+    def runtime = configurations.named("${variantName}RuntimeClasspath")
+    // Project components expose several Android artifact types. Their notices
+    // are copied explicitly below; inspect the original external archives only.
+    def artifacts = runtime.get().incoming.artifactView {
+        componentFilter { it instanceof ModuleComponentIdentifier }
+    }.artifacts
+    def legalSources = [rootProject.file('LICENSE'), rootProject.file('THIRD_PARTY_NOTICES.md'),
+        rootProject.file('TRADEMARK.md'), rootProject.file('licenses'),
+        rootProject.file('pilot/interlock-relay-core/LICENSE'), rootProject.file('pilot/interlock-relay-core/NOTICE')]
+    def pluginsRoot = rootProject.file('plugin-manager/dshbox-plugins/assets/plugins')
+    def pluginNames = ['dsh-mobile-adapt', 'mobile-pilot', 'browser-use']
+    pluginNames.each { name ->
+        legalSources.add(new File(pluginsRoot, "${name}/plugin/LICENSE"))
+        legalSources.add(new File(pluginsRoot, "${name}/plugin/NOTICE"))
+    }
+    def generate = tasks.register("generate${variantName.capitalize()}LicenseAssets", LicenseAssetsTask) {
+        inputs.files(legalSources)
+        inputs.files(artifacts.artifactFiles)
+        doLast {
+            File assetRoot = outputDirectory.get().asFile
+            if (!assetRoot.toPath().normalize().startsWith(layout.buildDirectory.get().asFile.toPath().normalize())) {
+                throw new GradleException('License assets must be generated inside the build directory')
+            }
+            File destination = new File(assetRoot, 'licenses')
+            delete(assetRoot)
+            destination.mkdirs()
+            def write = { String name, byte[] content ->
+                File target = new File(destination, name)
+                if (name.tokenize('/').contains('..') ||
+                        !target.toPath().normalize().startsWith(destination.toPath().normalize())) {
+                    throw new GradleException('Invalid license output path')
+                }
+                target.parentFile.mkdirs()
+                target.bytes = content
+            }
+            copy { from(rootProject.file('licenses')); into(new File(destination, 'texts')) }
+            ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'TRADEMARK.md'].each { name ->
+                write(name, rootProject.file(name).bytes)
+            }
+            ['LICENSE', 'NOTICE'].each { name ->
+                write("interlock-relay-core/${name}", rootProject.file("pilot/interlock-relay-core/${name}").bytes)
+            }
+            pluginNames.each { name ->
+                ['LICENSE', 'NOTICE'].each { file ->
+                    write("plugins/${name}/${file}", new File(pluginsRoot, "${name}/plugin/${file}").bytes)
+                }
+            }
+            def isLegal = { String name ->
+                def basename = name.tokenize('/').last().toLowerCase(Locale.ROOT)
+                !basename.endsWith('.class') &&
+                    basename ==~ /(?:license|licence|notice|copying|copyright|al2\.0|lgpl2\.1)(?:[._-].*)?/
+            }
+            def dependencies = ['Local: zstd-jni-1.5.7-15-classes.jar; native counterparts: see THIRD_PARTY_NOTICES.md']
+            artifacts.artifacts.toList().sort { it.id.componentIdentifier.displayName + it.file.name }.each { artifact ->
+                def id = artifact.id.componentIdentifier.displayName
+                def key = "${id}/${artifact.file.name}".replaceAll(/[^a-zA-Z0-9._-]/, '_')
+                dependencies.add("${id} | ${artifact.file.name}")
+                if (artifact.file.name.endsWith('.jar') || artifact.file.name.endsWith('.aar')) {
+                    new ZipFile(artifact.file).withCloseable { zip ->
+                        zip.entries().each { entry ->
+                            if (!entry.directory && isLegal(entry.name)) {
+                                write("dependencies/${key}/${entry.name}", zip.getInputStream(entry).withCloseable { it.bytes })
+                            }
+                            if (!entry.directory && entry.name.endsWith('.jar')) {
+                                new ZipInputStream(zip.getInputStream(entry)).withCloseable { nested ->
+                                    def child
+                                    while ((child = nested.nextEntry) != null) {
+                                        if (!child.directory && isLegal(child.name)) {
+                                            write("dependencies/${key}/${entry.name}/${child.name}", nested.readAllBytes())
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            write('DEPENDENCIES.txt', (dependencies.unique().join('\n') + '\n').getBytes('UTF-8'))
+            def entries = fileTree(destination).files.collect {
+                destination.toPath().relativize(it.toPath()).toString().replace('\\', '/')
+            }.sort()
+            write('INDEX.txt', (entries.join('\n') + '\n').getBytes('UTF-8'))
+            logger.lifecycle("Packaged ${entries.size()} legal documents for ${variantName}")
+        }
+    }
+    variant.sources.assets.addGeneratedSourceDirectory(generate) { it.outputDirectory }
+}

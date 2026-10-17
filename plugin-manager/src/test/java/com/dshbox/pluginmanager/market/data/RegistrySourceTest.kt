@@ -12,7 +12,7 @@ import org.junit.Test
  * 目录拉取的重试语义。
  *
  * 这里只覆盖失败路径：成功路径要解析 JSON，而 Android 的 `org.json` 在本地
- * 单测里是桩实现。失败路径恰恰是最需要钉住的部分——试了几次、源之间的顺序、
+ * 单测里是桩实现。本测试验证重试次数、数据源尝试顺序，
  * 失败说明里有没有原因与次数，都是"失败绝不回喂旧数据"这条规则的具体形态。
  */
 class RegistrySourceTest {
@@ -20,7 +20,7 @@ class RegistrySourceTest {
     /** 按脚本回放的取回点：给状态码就回响应，给异常就抛。 */
     private class FakeFetcher(private val script: MutableList<Any>) : RegistryFetcher {
 
-        /** 按调用顺序记下被请求过的地址——用来钉住"轮次在外、地址在内"的尝试顺序。 */
+        /** 记录请求地址顺序，用于验证按轮次遍历数据源的重试顺序。 */
         val urls = mutableListOf<String>()
 
         override fun get(url: String, timeoutMs: Int): RegistryFetch {

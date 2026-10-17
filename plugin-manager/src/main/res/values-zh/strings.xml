@@ -6,12 +6,14 @@
 
     <!-- 面板页 -->
     <string name="pm_panel_title">Cordis 插件面板</string>
+    <string name="pm_root_title">插件面板</string>
+    <string name="pm_panel_tagline">插件管理 · 市场</string>
     <string name="pm_panel_hint">插件加载失败时如何处置。</string>
     <string name="pm_safety_mode">安全模式</string>
     <string name="pm_safety_mode_desc">加载失败时自动跳过出错插件</string>
-    <string name="pm_absolute_mode">绝对安全模式</string>
+    <string name="pm_absolute_mode">安全模式</string>
     <string name="pm_absolute_mode_desc">不加载任何第三方插件启动</string>
-    <string name="pm_absolute_on_hint">绝对安全模式已开启：不会加载任何第三方插件。</string>
+    <string name="pm_absolute_on_hint">安全模式已开启：不会加载任何第三方插件。</string>
     <string name="pm_load_log_row">插件加载记录</string>
     <string name="pm_isolation_row">失败隔离清单</string>
     <string name="pm_market_row">插件市场</string>
@@ -206,13 +208,18 @@
     <string name="pm_guard_toast_attempt_skipped">已跳过 %1$d 个插件：%2$s</string>
     <string name="pm_guard_toast_recovered_title">安全模式已跳过 %1$d 个插件，DSH 已启动</string>
     <string name="pm_guard_toast_recovered_skipped">已跳过：%1$s</string>
-    <string name="pm_guard_toast_absolute">已开启绝对安全模式</string>
+    <string name="pm_guard_toast_absolute">已开启安全模式</string>
     <string name="pm_guard_toast_failed">DSH 未能启动，已停止重试</string>
 
     <!-- DSHBox 专属适配插件（原设置页装配行迁移至此） -->
     <string name="pm_adapt_section_title">DSHBox专属适配插件</string>
     <string name="pm_adapt_mobile">DSH移动端页面适配</string>
     <string name="pm_adapt_mobile_pilot">DSH连接手机</string>
+    <string name="pm_browser_adapter_title">DSH浏览器自动化</string>
+    <string name="pm_browser_assembled">Browser 适配包已装配</string>
+    <string name="pm_browser_removed">Browser 适配包已移除</string>
+    <string name="pm_browser_assembly_failed">Browser 适配包装配失败。</string>
+    <string name="pm_browser_refresh_failed">Browser 适配包更新失败；原有包仍可使用。</string>
     <string name="pm_adapt_restart_hint">，重启 DSH 后生效</string>
     <string name="pm_adapt_ok">装配成功</string>
     <string name="pm_adapt_fail">装配失败，已回滚</string>
@@ -237,4 +244,3 @@ DSHBox 刚刚建立起来的收录仓库，便于扩展移动端场景的插件�
     <string name="pm_market_source_official_desc">DeepSeek Harness 社区最大插件精选列表！但主要面向电脑端使用，部分插件在移动端会存在页面不适配和兼容性问题。</string>
     <string name="pm_market_source_open_failed">没有可以打开这个链接的应用</string>
 </resources>
-

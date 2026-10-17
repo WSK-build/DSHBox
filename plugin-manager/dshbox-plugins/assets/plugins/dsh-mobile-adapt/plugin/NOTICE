@@ -1,0 +1,14 @@
+@local/dsh-mobile-adapt
+Copyright (c) 2026 WSK-build
+SPDX-License-Identifier: GPL-3.0-only
+
+This DSHBox-maintained plugin is licensed under the GNU General Public
+License, version 3 only. The complete license is in LICENSE beside this file.
+This notice covers the original code in this plugin package; dependencies
+and external components retain their own licenses and copyright notices.
+
+Source: https://github.com/WSK-build/DSHBox
+Package path: plugin-manager/dshbox-plugins/assets/plugins/dsh-mobile-adapt/plugin
+The complete DSHBox source and build instructions are available in that
+repository. This plugin requires the matching DSHBox runtime/bridge services;
+a separate license file does not imply standalone functionality.

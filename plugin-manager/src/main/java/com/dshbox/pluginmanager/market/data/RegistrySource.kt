@@ -118,14 +118,8 @@ object RegistryCategories {
 /**
  * 从 `JSONObject.opt` 取到的值里读出文本。
  *
- * **绝对不要用 `JSONObject.optString`**：Android 的实现对 JSON `null` 返回**字符串 `"null"`**，
- * 而 JVM 参考实现（单测里挂的那份）返回空串 —— 这个差异在真机上会要命：
- * 目录里大量条目写的是 `"npm": null`，用 `optString` 取回来全是 `"null"`，
- * 于是它们的去重身份（`npm ?: owner/name`）全都相同，**第一条之后全被当成重复条目丢掉**。
- * 真机实测：上游目录 4347 条只剩 2185 条、移动端 45 条只剩 33 条 —— 而取数日志显示
- * 正文是完整的（4,735,725 / 50,930 字符），少的全在解析这一步；JVM 探针永远复现不出来。
- *
- * 走 `opt` + 显式判 [JSONObject.NULL] 在两种实现下行为一致，因此这条规则**能被单测钉住**。
+ * 显式将 null 和 [JSONObject.NULL] 转为空串，避免不同 JSONObject 实现的
+ * optString 行为差异使缺失字段变为字面量 "null"，影响插件身份去重。
  */
 internal fun jsonText(value: Any?): String =
     if (value == null || value === JSONObject.NULL) "" else value.toString().trim()

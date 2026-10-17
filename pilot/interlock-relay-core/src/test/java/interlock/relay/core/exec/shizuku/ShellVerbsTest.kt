@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 动词表是这条能力唯一的把关处，所以在 JVM 侧逐条钉住：表外动词、元字符、
+ * JVM 侧逐项验证动词表的输入校验：表外动词、元字符、
  * 删除一类与"要改系统但还没开关"必须各回各的话。
  */
 class ShellVerbsTest {

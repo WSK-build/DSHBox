@@ -9,6 +9,7 @@
 
     <!-- ===== 界面层文案 ===== -->
     <string name="pilot_page_overview">Phone assistant</string>
+    <string name="pilot_page_tagline">Connects DSH and your phone</string>
     <string name="pilot_page_capabilities">Capabilities</string>
     <string name="pilot_page_capability_detail">Capability</string>
     <string name="pilot_page_surface">Execution mode</string>

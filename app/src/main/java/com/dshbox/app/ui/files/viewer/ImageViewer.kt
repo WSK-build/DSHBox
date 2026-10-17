@@ -57,12 +57,11 @@ import kotlinx.coroutines.withContext
  * 图片查看（零依赖原生实现，不引 Coil）。
  *
  * - 常规图：BitmapFactory `inSampleSize` 按屏幕尺寸降采样 + Compose 手势自绘
- *   （双指缩放/拖动/双击放大，缩放锚定点击点、位移钳制在画面内——返工修正 #10）；
+ *   （双指缩放/拖动/双击放大，缩放锚定点击点，位移限制在可见范围）；
  * - 超长图：[BitmapRegionDecoder] 按屏幕高度的条带懒解码（LazyColumn 只渲染可见条带，
- *   离开组合经 DisposableEffect [BitmapRegionDecoder.recycle] 释放 native 资源——返工修正 #2）；
+ *   离开组合经 DisposableEffect [BitmapRegionDecoder.recycle] 释放 native 资源）；
  * - GIF / 动态 WebP：`ImageDecoder.decodeDrawable` → `AnimatedImageDrawable` 播放
- *   （API 28+，minSdk 29 天然满足）。**仅动图候选才走整图 drawable 解码**（返工修正 #1：
- *   gif 由 AnimatedImageDrawable 流式解码、单帧内存恒定；动态 WebP 以头部 ANMF 块识别）——
+ *   （API 28+）。仅动图候选尝试整图 drawable 解码，动态 WebP 以头部 ANMF 块识别；
  *   静态图一律先过采样预算，杜绝 7000×5000 级静态大图整图解码 OOM；
  * - AVIF / HEIF：解码能力随系统（AVIF 需 API 31+），解码失败落错误态并可外部打开；
  * - 只读不做内建编辑。
@@ -113,7 +112,7 @@ internal fun ImageViewer(
             )
         }
         is ImageUiState.LongImage -> {
-            // 返工修正 #2：区域解码器持 native 资源，离开组合/切文件时显式 recycle
+            // 区域解码器持有 native 资源，离开组合或切换文件时显式释放。
             DisposableEffect(s.decoder) {
                 onDispose { runCatching { s.decoder.recycle() } }
             }
@@ -225,7 +224,7 @@ private fun sampleSizeFor(width: Int, target: Int): Int {
     return sample
 }
 
-/** 位移钳制：缩放后的内容始终至少部分留在视口内（返工修正 #10①）。 */
+/** 限制位移，使缩放后的内容至少部分留在视口内。 */
 private fun clampOffset(offset: Offset, scale: Float, bitmap: Bitmap, viewport: IntSize): Offset {
     if (viewport == IntSize.Zero || scale <= 1f) return Offset.Zero
     val fit = minOf(
@@ -246,8 +245,7 @@ private fun decodeImage(file: File): ImageUiState {
     if (width <= 0 || height <= 0) {
         return ImageUiState.Failed
     }
-    // 返工修正 #1：仅动图候选才尝试整图 drawable 解码——
-    // gif 经 AnimatedImageDrawable 流式解码（单帧内存，大小无关）；
+    // 仅动图候选尝试整图 drawable 解码；GIF 由 AnimatedImageDrawable 播放。
     // 动态 WebP 以头部 ANMF 块识别；静态图（含静态 WebP）一律走下方采样/区域路径，
     // 绝不绕过采样预算整图解码（7000×5000 ≈ 140MB 位图）。
     val mime = bounds.outMimeType

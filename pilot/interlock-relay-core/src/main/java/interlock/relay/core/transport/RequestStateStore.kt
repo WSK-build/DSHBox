@@ -463,7 +463,7 @@ class RequestStateStore(
         /**
          * 两条阶段事件在调用点填的字段名，与模板占位符必须逐个相等：
          * 多一个少一个都会让 [interlock.relay.core.log.RunLog] 把残留的 `%{…}` 落成
-         * `unresolved=…`，读日志的人会把模板残片当成消息内容。测试按这两组钉死。
+         * `unresolved=…`。对应测试验证两组字段与模板一致。
          */
         internal val ADMITTED_FIELDS = setOf("id")
         internal val WAITING_FIELDS = setOf("id", "kind")

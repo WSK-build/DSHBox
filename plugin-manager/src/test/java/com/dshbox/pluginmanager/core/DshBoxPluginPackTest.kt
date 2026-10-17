@@ -96,8 +96,7 @@ class DshBoxPluginPackTest {
 
     @Test
     fun mobilePilotPackDeclaresAllPhoneTools() {
-        // 这个包的交付价值就是那组 DSH 原生工具：装完 DSH 的工具列表里应出现 14 个 phone_*。
-        // 名单少一个不会报错，只会「装配成功但少了个工具」，所以在这里按名字清单钉住。
+        // 逐项校验插件应提供的 14 个 phone_* 工具名。
         val tools = read("mobile-pilot/plugin/lib/tools.js")
         val declared = Regex("name: '(phone_[A-Za-z]+)'")
             .findAll(tools)

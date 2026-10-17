@@ -1,0 +1,18 @@
+@local/mobile-pilot
+Copyright (c) 2026 WSK-build
+SPDX-License-Identifier: GPL-3.0-only
+
+This DSHBox-maintained plugin is licensed under the GNU General Public
+License, version 3 only. The complete license is in LICENSE beside this file.
+This notice covers the original code in this plugin package; dependencies
+and external components retain their own licenses and copyright notices.
+
+Source: https://github.com/WSK-build/DSHBox
+Package path: plugin-manager/dshbox-plugins/assets/plugins/mobile-pilot/plugin
+The complete DSHBox source and build instructions are available in that
+repository. This plugin requires the matching DSHBox runtime/bridge services;
+a separate license file does not imply standalone functionality.
+
+The plugin adapter is distinct from interlock-relay-core. The latter retains
+Apache-2.0; its LICENSE and NOTICE are in pilot/interlock-relay-core/ in the
+DSHBox source. This notice does not relicense that core or Shizuku.

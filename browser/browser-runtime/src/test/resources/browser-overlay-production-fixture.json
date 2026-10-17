@@ -1,0 +1,113 @@
+{
+  "elements": [
+    {
+      "index": 0,
+      "tag": "button",
+      "type": "",
+      "role": "button",
+      "accessibleName": "Behind",
+      "placeholder": "",
+      "label": "Behind",
+      "href": "",
+      "frameOrdinal": 0,
+      "shadowDepth": 0
+    },
+    {
+      "index": 1,
+      "tag": "button",
+      "type": "",
+      "role": "button",
+      "accessibleName": "Close dialog",
+      "placeholder": "",
+      "label": "Close dialog",
+      "href": "",
+      "frameOrdinal": 0,
+      "shadowDepth": 0
+    }
+  ],
+  "overlayObservation": {
+    "overlays": [
+      {
+        "kind": "modal",
+        "tag": "div",
+        "role": "dialog",
+        "name": "",
+        "box": {
+          "x": 0,
+          "y": 0,
+          "width": 360,
+          "height": 677
+        },
+        "viewportBox": {
+          "x": 0,
+          "y": 0,
+          "width": 360,
+          "height": 677
+        },
+        "viewportCoverageRatio": 1,
+        "evidence": {
+          "fixed": true,
+          "sticky": false,
+          "dialog": false,
+          "modal": true,
+          "zIndex": 1004,
+          "semanticHint": "modal"
+        },
+        "occlusion": {
+          "sampled": 24,
+          "covered": 24,
+          "ratio": 1
+        },
+        "pseudo": [
+          {
+            "source": "before",
+            "boundedContent": "\"Owned visible notice\""
+          }
+        ],
+        "dismiss": {
+          "status": "available",
+          "candidates": [
+            {
+              "refIndex": 1,
+              "tag": "button",
+              "role": "button",
+              "name": "Close dialog",
+              "box": {
+                "x": 188.078125,
+                "y": 30,
+                "width": 78.09375,
+                "height": 59
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "scope": {
+      "topFrameOnly": true,
+      "includesCrossOriginFrames": false,
+      "frameCoverage": "not_inspected",
+      "complete": false
+    },
+    "coverage": {
+      "partial": false,
+      "candidateScan": 8,
+      "candidateScanLimit": 256,
+      "candidateLimitReached": false,
+      "viewportSampleCount": 25,
+      "viewportSampleLimit": 25,
+      "overlayOutputCount": 1,
+      "overlayOutputLimit": 8,
+      "outputTruncated": false,
+      "textNodesVisited": 1,
+      "textChars": 93,
+      "textLimitReached": false,
+      "errors": []
+    },
+    "action": {
+      "performed": false,
+      "automaticDismiss": false,
+      "captchaSolved": false
+    }
+  }
+}

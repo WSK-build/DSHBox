@@ -19,9 +19,7 @@ object TerminalEnvFactory {
         "HOME=/root",
         "USER=root",
         "LOGNAME=root",
-        // PATH 头部是 DSH CLI 的包装脚本目录：`dsh` 不是 npm 全局安装的，而是 app 写进
-        // 工作区的一个小包装脚本（见 SandboxService.provisionDshCliShim），因此必须显式
-        // 加到 PATH 才能直接敲 `dsh`。
+        // PATH 包含应用生成的 DSH CLI 包装脚本目录，以支持直接调用 dsh 命令。
         "PATH=/root/projects/.dsh/dshbox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin:/system/xbin",
         "SHELL=/usr/bin/bash",
         "TERM=xterm-256color",

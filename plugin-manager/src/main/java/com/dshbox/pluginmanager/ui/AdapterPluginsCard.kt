@@ -26,7 +26,7 @@ import com.dshbox.pluginmanager.R
  * 「DSHBox专属适配插件」卡片：两个开关（移动端适配包 / DSH连接手机）。
  *
  * 视觉与设置页原来的装配行一致——同样的开关配色、同样的行结构与内边距；
- * 只有标题按小节样式写成小字。
+ * 分组标题不在这里画：宿主（面板根页）以分组标签的版式放在卡外。
  */
 @Composable
 fun AdapterPluginsCard(
@@ -37,6 +37,9 @@ fun AdapterPluginsCard(
     val mobileBusy by controller.busy.collectAsState()
     val mobilePilotEnabled by controller.mobilePilotEnabled.collectAsState()
     val mobilePilotBusy by controller.mobilePilotBusy.collectAsState()
+    val browserPluginEnabled by controller.browserPluginEnabled.collectAsState()
+    val browserPluginBusy by controller.browserPluginBusy.collectAsState()
+    val browserError = controller.browserLastError()
     val lastError = if (mobileInstalled) null else controller.lastError()
     Card(
         modifier = Modifier
@@ -46,13 +49,7 @@ fun AdapterPluginsCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
-        Column(Modifier.padding(top = 12.dp, bottom = 4.dp)) {
-            Text(
-                text = stringResource(R.string.pm_adapt_section_title),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
-            )
+        Column(Modifier.padding(top = 4.dp, bottom = 4.dp)) {
             ToggleRow(
                 label = stringResource(R.string.pm_adapt_mobile),
                 checked = mobileInstalled,
@@ -65,6 +62,20 @@ fun AdapterPluginsCard(
                 enabled = !mobilePilotBusy && !dimmed,
                 onToggle = { controller.toggleMobilePilot() },
             )
+            ToggleRow(
+                label = stringResource(R.string.pm_browser_adapter_title),
+                checked = browserPluginEnabled,
+                enabled = !browserPluginBusy && !dimmed,
+                onToggle = { controller.toggleBrowserPlugin() },
+            )
+            if (!browserError.isNullOrBlank()) {
+                Text(
+                    text = browserError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+                )
+            }
             if (!mobileInstalled && !lastError.isNullOrBlank()) {
                 Text(
                     text = stringResource(R.string.pm_market_act_why_empty) + "\n" + lastError,
@@ -115,16 +126,18 @@ internal fun ToggleRow(
             checked = checked,
             enabled = enabled,
             onCheckedChange = { onToggle() },
-            // 与设置页装配行同款配色：打开=品牌绿、关闭=灰白。
+            // 与设置页装配行同款配色：打开=品牌绿，
+            // 关闭/禁用态取主题描边与内容色，深浅主题各自成立。
             colors = SwitchDefaults.colors(
                 checkedTrackColor = Color(0xFF10A37F),
-                uncheckedTrackColor = Color(0xFFD5D5D5),
+                uncheckedTrackColor = MaterialTheme.colorScheme.outline,
                 checkedThumbColor = Color.White,
-                uncheckedThumbColor = Color(0xFF9E9E9E),
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 checkedBorderColor = Color(0xFF10A37F),
-                uncheckedBorderColor = Color(0xFFBDBDBD),
+                uncheckedBorderColor = MaterialTheme.colorScheme.outline,
                 disabledCheckedTrackColor = Color(0x6610A37F),
-                disabledUncheckedTrackColor = Color(0xFFE3E3E3),
+                disabledUncheckedTrackColor =
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
             ),
         )
     }

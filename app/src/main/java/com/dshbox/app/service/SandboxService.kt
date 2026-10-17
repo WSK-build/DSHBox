@@ -34,6 +34,7 @@ import com.dshbox.app.runtime.GuestUserProvisioner
 import com.dshbox.app.sandbox.BundledRuntimeInstaller
 import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.sandbox.SandboxState
+import com.dshbox.pluginmanager.core.BrowserAdapterAssemblyGate
 import com.dshbox.app.ui.theme.AppLocaleState
 import com.dshbox.app.ui.webview.dshBrowserChooser
 import kotlinx.coroutines.CoroutineScope
@@ -42,8 +43,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.UUID
 import dshbox.adapter.dshboxRelayConfig
 import interlock.relay.core.runtime.RelayRuntime
 
@@ -63,6 +68,18 @@ class SandboxService : Service() {
 
     @Volatile
     private var restartInProgress = false
+
+    @Volatile
+    private var browserStageProvisioned = false
+
+    /**
+     * 自有插件包装配的串行化锁。
+     *
+     * 装配有多个触发点（启动期对齐、首次运行补装、DSH 进入 READY），彼此可能重叠；
+     * 而安装脚本用 `rm -rf` + `cp -r` 直接改 profile —— 两个装配并行会互相删掉对方
+     * 正在复制的目录，在 profile 里留下半装配的包。
+     */
+    private val pluginAssemblyMutex = Mutex()
 
     private val sandboxManager
         get() = (application as DshApp).container.sandboxManager
@@ -87,7 +104,56 @@ class SandboxService : Service() {
                 updateNotification()
             }
         }
+        serviceScope.launch { alignPluginsOnDshReady() }
         serviceScope.launch { bootstrap() }
+    }
+
+    /**
+     * DSH 就绪即把自有插件包与开关对齐。
+     *
+     * ## 为什么需要这条触发
+     *
+     * 随 APK 的运行时资产里没有 base / node 层（体积考虑，由「在线导入」装上），
+     * 而 [bootstrap] 里两次装配都位于 `isRuntimeInstalled()` 之内 ——
+     * 新装用户这条路径上一次都不会执行，于是出现「面板开关亮着、profile 里什么都没有」。
+     * DSH 能进入 READY，说明运行环境与 profile 都已就位，这是唯一必然成立的时机；
+     * 在线导入的两条链路（Linux 层 / node 层）末尾都会尝试启动 DSH（Linux 层那条
+     * 要求 node 层已在位），最终启动成功的那一次都会进入 READY，因此一并覆盖。
+     * 若此刻 profile 尚未就位（探测返回 PROFILE_MISSING），本次跳过，等下一次 READY 跳变再对齐。
+     *
+     * ## 语义要点
+     *
+     * - 用 [collect] 而不是 `collectLatest`：装配是一条长 guest 命令，`collectLatest`
+     *   会在下一次状态发射时把进行中的装配取消在半途。
+     * - `dshState` 是 StateFlow，同值不重复发射，因此这里等价于「**进入 READY 的那次跳变**」；
+     *   跑到 ERROR 再回到 READY（自动重启成功 / 用户手动重启）会再来一次 —— 这正是想要的，
+     *   上一次被跳过或失败的包有机会补上（合并窗口内发生的往返会被 StateFlow 折叠成一次，
+     *   那种情况下这次补装推迟到再下一次跳变）。
+     * - 装配本身幂等（探测到已是最新即跳过），与 [bootstrap] 的调用重叠由
+     *   [pluginAssemblyMutex] 串行化，第二次只会多做一次探测。
+     * - 此刻 DSH 正在运行；脚本会改动 profile 内的 node_modules 与 `package.json`，
+     *   装配结果在 DSH **下次启动**时生效 —— 与「用户手动装配」同一语义。
+     * - 单次装配最长可占住本收集器到 guest 命令超时（10 分钟，见 SandboxProcessRunner）；
+     *   期间发生的状态往返会被 StateFlow 合并成一次，代价只是少跑一次幂等探测。
+     */
+    private suspend fun alignPluginsOnDshReady() {
+        var previous: DshState? = null
+        sandboxManager.dshState.collect { state ->
+            val trigger = PluginAssemblyTrigger.shouldAssemble(previous, state)
+            previous = state
+            if (trigger) {
+                Log.i(TAG, "dsh ready: aligning bundled plugin packages with switches")
+                try {
+                    ensureOwnPluginsAssembled()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    // 这条收集器要活过整个服务生命周期：一次装配失败不能带走触发通道，
+                    // 否则此后所有 READY 都不再对齐，退回"开关亮着、profile 里没有"。
+                    Log.w(TAG, "dsh ready: plugin alignment failed: ${t.message}", t)
+                }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -169,8 +235,14 @@ class SandboxService : Service() {
         // —— 见 hardenDshboxAssets 的 KDoc（为什么这样做、以及它挡得住什么挡不住什么）。
         setDshboxAssetsWritable(true)
         try {
-            provisionMobileAdaptPlugin()
-            provisionMobilePilotPlugin()
+            // 暂存内容重写与装配互斥：READY 触发的装配可能与本次重写并发，
+            // 那时装配会从写了一半的暂存树里推导指纹（见 stagedPluginFiles）。
+            // 两侧的 chmod（解只读 / 固化）只改模式、不删文件，在锁外无碍。
+            pluginAssemblyMutex.withLock {
+                provisionMobileAdaptPlugin()
+                provisionMobilePilotPlugin()
+                provisionBrowserUsePlugin()
+            }
             provisionDshLinkShim()
             provisionDshCliShim()
         } finally {
@@ -224,7 +296,7 @@ class SandboxService : Service() {
                 else -> Unit
             }
             provisionBundledDsh()
-            // 两个自有插件包按开关对齐 profile。放在 startDsh 之前：装好当次启动即加载，
+            // 自有插件包按开关对齐 profile。放在 startDsh 之前：装好当次启动即加载，
             // 用户不必手动移除再装配。
             ensureOwnPluginsAssembled()
             val firstRun = !prefs.getBoolean(Constants.PREF_FIRST_RUN_COMPLETED, false)
@@ -293,8 +365,51 @@ class SandboxService : Service() {
         }
     }
 
+    private suspend fun provisionBrowserUsePlugin() {
+        browserStageProvisioned = BrowserAdapterAssemblyGate.withLock {
+            withContext(Dispatchers.IO) {
+                val parent = pluginsStageRoot()
+                val stageDir = File(parent, "browser-use")
+                val staged = File(parent, ".browser-use-stage-${UUID.randomUUID()}")
+                val backup = File(parent, ".browser-use-backup-${UUID.randomUUID()}")
+                try {
+                    check(parent.mkdirs() || parent.isDirectory) { "Browser stage parent is unavailable" }
+                    check(staged.mkdir()) { "Could not create Browser stage transaction directory" }
+                    copyAssetTree("plugins/browser-use", staged)
+                    check(File(staged, "install.sh").isFile && File(staged, "uninstall.sh").isFile &&
+                        File(staged, "plugin/browser-use-install.json").isFile) { "Browser adapter assets are incomplete" }
+                    if (stageDir.exists()) {
+                        check(stageDir.isDirectory && !java.nio.file.Files.isSymbolicLink(stageDir.toPath())) {
+                            "Browser stage path is not a regular owned directory"
+                        }
+                        check(readBrowserStageOwner(File(stageDir, "plugin/browser-use-install.json")) ||
+                            readBrowserStageOwner(File(stageDir, "plugin/.browser-use-install.json"))) {
+                            "Browser stage is not owned by this adapter"
+                        }
+                        check(stageDir.renameTo(backup)) { "Could not preserve the previous Browser stage" }
+                    }
+                    if (!staged.renameTo(stageDir)) {
+                        if (backup.exists()) backup.renameTo(stageDir)
+                        error("Could not publish Browser stage assets")
+                    }
+                    backup.deleteRecursively()
+                    true
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    staged.deleteRecursively()
+                    if (backup.exists() && !stageDir.exists()) backup.renameTo(stageDir)
+                    throw cancelled
+                } catch (t: Throwable) {
+                    staged.deleteRecursively()
+                    if (backup.exists() && !stageDir.exists()) backup.renameTo(stageDir)
+                    Log.w(TAG, "bootstrap: Browser adapter staging failed: ${t.message}")
+                    false
+                }
+            }
+        }
+    }
+
     /**
-     * 确保两个自有插件包（移动端适配 / DSH连接手机）在 dsh 启动前**装配到位**。
+     * 确保自有适配包在 dsh 启动前**装配到位**。
      *
      * ## 开关为开 = 真的装进去
      *
@@ -315,28 +430,46 @@ class SandboxService : Service() {
      * （proot 失败 / guest 异常 / 脚本被中断）一律跳过，下次启动再试。
      */
     private suspend fun ensureOwnPluginsAssembled() {
-        ensureOwnPlugin(
-            label = "mobile-adapt",
-            bundleId = "@local/dsh-mobile-adapt",
-            intentKey = Constants.PREF_MOBILE_ADAPT_INSTALLED,
-            errorKey = Constants.PREF_MOBILE_ADAPT_LAST_ERROR,
-            stageName = "mobile-adapt",
-        )
-        ensureOwnPlugin(
-            label = "mobile-pilot",
-            bundleId = "@local/mobile-pilot",
-            intentKey = Constants.PREF_MOBILE_PILOT_ENABLED,
-            errorKey = Constants.PREF_MOBILE_PILOT_LAST_ERROR,
-            stageName = "mobile-pilot",
-        )
+        pluginAssemblyMutex.withLock {
+            ensureOwnPlugin(
+                label = "mobile-adapt",
+                bundleId = "@local/dsh-mobile-adapt",
+                intentKey = Constants.PREF_MOBILE_ADAPT_INSTALLED,
+                errorKey = Constants.PREF_MOBILE_ADAPT_LAST_ERROR,
+                stageName = "mobile-adapt",
+            )
+            ensureOwnPlugin(
+                label = "mobile-pilot",
+                bundleId = "@local/mobile-pilot",
+                intentKey = Constants.PREF_MOBILE_PILOT_ENABLED,
+                errorKey = Constants.PREF_MOBILE_PILOT_LAST_ERROR,
+                stageName = "mobile-pilot",
+            )
+            BrowserAdapterAssemblyGate.withLock {
+                if (!browserStageProvisioned) {
+                    val error = "Browser adapter assets could not be staged; will retry on next startup"
+                    prefs.edit().putString(Constants.PREF_BROWSER_PLUGIN_LAST_ERROR, error).apply()
+                    Log.w(TAG, "bootstrap: Browser adapter stage is unavailable; leaving profile untouched")
+                    return@withLock
+                }
+                ensureOwnPlugin(
+                    label = "browser-use",
+                    bundleId = "@local/browser-use",
+                    intentKey = Constants.PREF_BROWSER_PLUGIN_ENABLED,
+                    errorKey = Constants.PREF_BROWSER_PLUGIN_LAST_ERROR,
+                    stageName = "browser-use",
+                )
+            }
+        }
     }
 
     /**
      * 单个自有插件包与 profile 对齐：开关为关则不动；为开则按探测结论决定是否跑 `install.sh`。
      *
-     * 失败时把开关**回退为 false** 并把原因写进偏好：启动期没有前台 UI 可弹提示，
-     * 但页面上必须能看出"没装成"——否则开关继续显示为开，用户以为装好了，
-     * 实际跑的是旧插件或根本没有插件。
+     * **失败不动开关**：开关表达的是「用户要不要这个包」，装配失败（guest 异常、脚本报错等）
+     * 只把原因写进 [errorKey]，下一次对齐（启动期 / DSH 就绪）自动重试。反过来做 ——
+     * 失败就把开关落成「关」—— 会让一次瞬时故障变成永久关闭：此后对齐在开关处提前返回，
+     * 用户再也等不到补装，而面板还看不出这是自动关的（mobile-pilot 没有错误展示位）。
      *
      * @param intentKey 「用户要不要这个包」的偏好键
      * @param errorKey 失败原因落盘的位置（面板读取展示）
@@ -377,6 +510,9 @@ class SandboxService : Service() {
         val marker = probeOutcome.get()
         if (OwnPluginProbe.actionFor(marker) == OwnPluginProbe.Action.SKIP) {
             Log.i(TAG, "bootstrap: $label not assembled (marker=${marker ?: "none"}); leaving profile untouched")
+            if (label == "browser-use" && marker == OwnPluginProbe.MARKER_UP_TO_DATE) {
+                prefs.edit().remove(errorKey).apply()
+            }
             return
         }
 
@@ -393,15 +529,48 @@ class SandboxService : Service() {
             }
             is AppResult.Failure -> {
                 Log.w(TAG, "bootstrap: $label assembly failed: ${res.error.message}")
-                // 回退开关：让面板显示真实状态（未装配），用户可手动重装并看到失败原因。
-                prefs.edit()
-                    .putBoolean(intentKey, false)
-                    .putString(errorKey, res.error.message.ifBlank { res.error.code })
-                    .apply()
-                Log.w(TAG, "bootstrap: cleared $label flag so the UI reflects the failed assembly")
+                prefs.edit().putString(errorKey, res.error.message.ifBlank { res.error.code }).apply()
             }
         }
     }
+
+    private fun readBrowserStageOwner(file: File): Boolean = runCatching {
+        val path = file.toPath()
+        val parent = java.nio.file.Files.readAttributes(
+            path.parent,
+            java.nio.file.attribute.BasicFileAttributes::class.java,
+            java.nio.file.LinkOption.NOFOLLOW_LINKS,
+        )
+        check(parent.isDirectory && !parent.isSymbolicLink)
+        val before = java.nio.file.Files.readAttributes(
+            path,
+            java.nio.file.attribute.BasicFileAttributes::class.java,
+            java.nio.file.LinkOption.NOFOLLOW_LINKS,
+        )
+        check(before.isRegularFile && !before.isSymbolicLink)
+        java.nio.file.Files.newByteChannel(
+            path,
+            setOf(java.nio.file.StandardOpenOption.READ, java.nio.file.LinkOption.NOFOLLOW_LINKS),
+        ).use { channel ->
+            val opened = java.nio.file.Files.readAttributes(
+                path,
+                java.nio.file.attribute.BasicFileAttributes::class.java,
+                java.nio.file.LinkOption.NOFOLLOW_LINKS,
+            )
+            check(before.fileKey() != null && opened.isRegularFile && opened.fileKey() == before.fileKey())
+            java.nio.channels.Channels.newInputStream(channel).reader().buffered().use { markerReader ->
+                android.util.JsonReader(markerReader).use { reader ->
+                    var packageName: String? = null
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        if (reader.nextName() == "package") packageName = reader.nextString() else reader.skipValue()
+                    }
+                    reader.endObject()
+                    packageName == "@local/browser-use"
+                }
+            }
+        }
+    }.getOrDefault(false)
 
     /**
      * Stage the APK-bundled **Android hard-link compatibility shim** into the
@@ -616,7 +785,7 @@ class SandboxService : Service() {
     /**
      * 暂存包里参与一致性比对的文件（相对 `plugin/` 根，已排序）。
      *
-     * 由**暂存包的实际内容**推导，而不是写死一份清单：两个包的组成并不相同
+     * 由**暂存包的实际内容**推导，而不是写死一份清单：各适配包的组成并不相同
      * （适配包有 `lib/client.js`，mobile-pilot 空壳只有 `lib/index.js`）。
      * 写死的清单一旦包含包里并不存在的文件，探测就永远判不出「已最新」——
      * 表现为每次启动都重装一遍，而日志只像是"又更新了"。
@@ -632,7 +801,7 @@ class SandboxService : Service() {
     }
 
     /**
-     * 把 `.dsh/dshbox`（我方随包资产：dsh/pnpm 包装脚本、两个自有插件包的装配暂存）
+     * 把 `.dsh/dshbox`（我方随包资产：dsh/pnpm 包装脚本、自有插件包的装配暂存）
      * **固化或临时解锁**。
      *
      * ## 为什么
@@ -652,7 +821,7 @@ class SandboxService : Service() {
      *   同一 uid 下我们也拿不到 `chattr +i`（需 CAP_LINUX_IMMUTABLE）或换 owner（需 root）。
      * - **真正的保障是"每次都重铺"**：`.dsh/dshbox` 里的内容每次启动都由 APK 资产重新覆盖
      *   （`provisionMobileAdaptPlugin` / `provisionDshCliShim`），所以 guest 侧的任何篡改
-     *   **在下次启动就会被还原**；两个自有插件包还有指纹比对（OwnPluginProbe）兜底。
+     *   **在下次启动就会被还原**；自有插件包还有指纹比对（OwnPluginProbe）兜底。
      *   也就是说：这是"我们拥有 + 自动还原"，不是"用户改不动"。
      *   若哪天真要做到不可改，只能把母本放到工作区之外并让 guest 只读地看 —— 代价是
      *   用户在文件页里根本看不到这个目录。

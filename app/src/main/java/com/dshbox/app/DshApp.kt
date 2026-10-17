@@ -12,13 +12,28 @@ import com.dshbox.app.ui.theme.AppThemeState
 import com.dshbox.app.util.FileOps
 import com.dshbox.app.util.MoveEngine
 import java.io.File
+import com.dshbox.browser.bridge.BrowserCliBroker
+import com.dshbox.browser.api.BrowserContract
+import android.content.Intent
+import com.dshbox.app.sandbox.SandboxState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DshApp : Application() {
+    private val browserScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var browserBroker: BrowserCliBroker? = null
     lateinit var container: AppContainer
         private set
 
     override fun onCreate() {
         super.onCreate()
+        if (Application.getProcessName() == "$packageName:browser") {
+            android.webkit.WebView.setDataDirectorySuffix("browser")
+            return
+        }
         container = ServiceLocator.createAppContainer(this)
         AppThemeState.load(this)
         // 资产目录布局的一次性迁移（旧名 → 新名）。**必须早于任何往新路径写文件的代码**：
@@ -51,6 +66,38 @@ class DshApp : Application() {
         // 这是**尽力而为**：进程也可能是被系统在后台拉起来的（绑定无障碍服务），此时不允许启动
         // 前台服务。`SandboxService.start` 已经把那种情况吞掉并返回 false；这里再兜一层，
         // 是因为 **`onCreate` 里任何异常都会让整个进程启动即崩**，而"沙盒晚几秒起"绝不能是崩溃的理由。
-        runCatching { SandboxService.start(this) }
+        initializeBrowserTools()
+    }
+
+    private fun initializeBrowserTools() {
+        val broker = runCatching {
+            BrowserCliBroker(this, container.sandboxConfig.browserEntryDir).also { it.entryDir.mkdirs() }
+        }.getOrElse {
+            android.util.Log.w("BrowserTools", "CLI initialization unavailable")
+            runCatching { SandboxService.start(this) }
+            return
+        }
+        browserBroker = broker
+        browserScope.launch {
+            runCatching { broker.prepareAssets() }
+                .onFailure { android.util.Log.w("BrowserTools", "CLI assets unavailable") }
+            launch {
+                container.sandboxManager.sandboxState.collect { state ->
+                    runCatching {
+                        when (state) {
+                            SandboxState.STARTING, SandboxState.RUNNING, SandboxState.RECOVERING -> broker.start()
+                            else -> {
+                                broker.stop()
+                                sendBroadcast(
+                                    Intent(BrowserContract.ACTION_REVOKE_CONTROL).setPackage(packageName),
+                                    BrowserContract.internalPermission(packageName),
+                                )
+                            }
+                        }
+                    }.onFailure { android.util.Log.w("BrowserTools", "CLI channel unavailable") }
+                }
+            }
+            withContext(Dispatchers.Main) { runCatching { SandboxService.start(this@DshApp) } }
+        }
     }
 }

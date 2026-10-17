@@ -33,19 +33,15 @@ class TerminalOverlayInstaller(
     /** Returns the guest-side init snippet when an install is pending, else null. */
     @Synchronized
     fun prepare(paths: TerminalPaths): String? {
-        // Self-healing guard: the presence of the actual tools decides — no
-        // marker file (a stale marker once produced a no-op install). If a
-        // previous run half-failed, this re-runs; extraction is idempotent.
+        // Probe actual tools rather than a marker file; retry incomplete extraction.
         val vim = present(paths.debianRootfs, "usr/bin/vim")
         val vimBasic = present(paths.debianRootfs, "usr/bin/vim.basic")
         val htop = present(paths.debianRootfs, "usr/bin/htop")
-        // vi 是 vim postinst 注册的替代名：直解流程只补了 /usr/bin/vim，
-        // 早于该修复装配的旧层会缺 vi，靠这条探测触发重跑即可自愈。
+        // vi 为 vim 的替代名，缺失时重新装配 overlay。
         val vi = present(paths.debianRootfs, "usr/bin/vi")
-        // 常用小工具：任一缺失即视为 overlay 未就位（旧层升级后靠此自愈补齐）。
+        // 常用工具任一缺失即重新装配 overlay。
         val toolsOk = TOOL_PROBES.all { present(paths.debianRootfs, it) }
-        // 我们的 PATH 片段也算"overlay 已就位"的一部分：它是 dsh/pnpm 能被找到的前提，
-        // 缺了就必须重跑（运行环境换层后它会消失）。
+        // PATH 片段参与装配完整性检查，缺失时重新生成。
         val pathSnippet = present(paths.debianRootfs, PATH_SNIPPET_REL)
         if ((vim || vimBasic) && htop && vi && toolsOk && pathSnippet) return null
 
@@ -86,16 +82,14 @@ class TerminalOverlayInstaller(
         /** 落到 guest rootfs 里的 PATH 片段（终端 `bash --login` 时由 /etc/profile.d 加载）。 */
         private const val PATH_SNIPPET_REL = "etc/profile.d/zz-dshbox-path.sh"
 
-        /** 小工具在位性探测（缺任一 → overlay 重跑，旧层升级后自愈补齐）。 */
+        /** 常用工具在位性探测，任一缺失时重新装配 overlay。 */
         private val TOOL_PROBES = listOf(
             "usr/bin/jq",
             "usr/bin/sqlite3",
             "usr/bin/patch",
             "usr/bin/strings",
             "usr/bin/nano",
-            // 包管理器侧的两个资产：属主虚拟化工具（fakeroot 的 tcp 变体，见 overlay 说明）
-            // 与服务启停策略文件。它们参与「overlay 是否已就位」的判定，因此已装旧 overlay
-            // 的设备在升级后会自动重跑一次 overlay，把这两样补上。
+            // 属主虚拟化工具与服务启停策略文件均参与装配完整性检查。
             "usr/bin/fakeroot-tcp",
             "usr/sbin/policy-rc.d",
         )
@@ -116,21 +110,19 @@ class TerminalOverlayInstaller(
                 // which plain extraction skips. Recreate it manually.
                 "if [ -x /usr/bin/vim.basic ]; then ln -sf vim.basic /usr/bin/vim; fi; " +
                 // vim 的 postinst 还会用 update-alternatives 注册四个替代名（vi/editor/ex/view）。
-                // 直解流程跳过了 postinst，所以这里补注册——否则终端里 `vi` 是 command not found。
+                // 直接解包不执行 postinst，需在此注册替代名。
                 // 注册同时会把记录写进 /var/lib/dpkg/alternatives/，让 dpkg 侧账本也完整。
                 "for a in vi editor ex view; do " +
                 "update-alternatives --install /usr/bin/\$a \$a /usr/bin/vim.basic 30 " +
                 ">/dev/null 2>&1; done; " +
                 "rm -rf /root/dshpkgs; " +
-                // 我们的 PATH 片段必须在 guest 的 /etc/profile 之后再生效：终端跑的是
-                // `bash --login`，而 Debian 的 /etc/profile 会把 root 的 PATH **整个重置**
-                // （进程环境里注入的 PATH 会被冲掉，dsh 变成 command not found）。
-                // /etc/profile.d 是在设置 PATH 之后才被 source 的，所以放这里最稳。
+                // 登录 shell 的 /etc/profile 重置 PATH 后加载 profile.d，
+                // 在该目录追加 DSH CLI 路径，避免被默认 PATH 覆盖。
                 "mkdir -p /etc/profile.d; " +
                 "printf '%s\n' 'export PATH=\"/root/projects/.dsh/dshbox/bin:\$PATH\"' " +
                 "> /etc/profile.d/zz-dshbox-path.sh; " +
                 // 容器通行做法：policy-rc.d 返回 101，使维护脚本里的服务启停被跳过。
-                // 本环境没有 systemd，放任 postinst 去 start 服务只会报错，并把包事务拖成半途而废。
+                // 当前环境没有 systemd，跳过服务启停，避免维护脚本中断包事务。
                 "mkdir -p /usr/sbin; " +
                 "printf '%s\n' '#!/bin/sh' 'exit 101' > /usr/sbin/policy-rc.d; " +
                 "chmod 755 /usr/sbin/policy-rc.d; " +

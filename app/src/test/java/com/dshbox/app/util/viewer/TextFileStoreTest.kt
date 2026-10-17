@@ -24,7 +24,7 @@ class TextFileStoreTest {
 
     @Test
     fun newFileSaveSucceedsWithoutForce() {
-        // 返工修正 #5：新建文件（expected=null 且目标不存在）直接写入，
+        // 新建文件（expected=null 且目标不存在）直接写入，
         // 不得被判 ExternalChanged(null)
         val target = File(tempDir(), "brand-new-${System.nanoTime()}.txt")
         val outcome = TextFileStore.save(target, "hello".toByteArray(), expected = null)

@@ -28,6 +28,15 @@ data class SandboxConfig(
      * 暂时状态。只有连续失败超过该窗口才进入有界重启。
      */
     val dshUnresponsiveGraceMs: Long = 120_000L,
+    /** Browser CLI assets and screenshots, exposed only to guest as `/opt/browser`. */
+    val browserEntryDir: File = File(appFilesDir, "browser-tools"),
+    /**
+     * 共享区绑定清单提供者（guest 别名 → 宿主目录）：内建 `DSHBox` + 用户挂载目录。
+     *
+     * 每次起会话时现取——用户新授权或新增挂载后无需重建配置；目录缺失的条目由
+     * 调用侧按存在性跳过，会话照常启动。
+     */
+    val shareBindsProvider: () -> List<Pair<String, File>> = { emptyList() },
 ) {
     val runtimeDir: File = File(appFilesDir, "runtime")
     val sandboxDir: File = File(appFilesDir, "sandbox")

@@ -80,8 +80,7 @@ internal fun PackageFacts.hasUsableEntry(): Boolean =
  *
  * 本文件里所有面向用户的失败说明都是"中文 / English"双语串，由 UI 侧的
  * `localizeBilingual` 按界面语言择半。**同一时刻只支持 zh / en 两种**：
- * ar / es / fr / ru 会回退到英文那一半。这不是"已完整本地化"，是刻意保留的
- * 最小实现——把这些串搬进 `strings.xml` 才是完整做法，本轮没做。
+ * ar / es / fr / ru 回退到英文。
  */
 class ProfileReader(private val paths: PluginPaths) : PackageFactsSource, DependencyNamesSource {
 
@@ -215,9 +214,7 @@ class ProfileReader(private val paths: PluginPaths) : PackageFactsSource, Depend
 /**
  * 纯解析：一份包清单正文 → 磁盘事实。
  *
- * 与文件 IO 分开是为了让"`dsh` 字段怎么读"这件事能被单测直接钉住（本地单测
- * 里造不出 `android.content.Context`，所以 [ProfileReader.facts] 本身没法
- * 在 JVM 上跑）。正文不是合法 JSON 时抛异常，由调用方转成"清单读不出来"。
+ * 解析逻辑与文件 IO 分离。正文不是合法 JSON 时抛异常，由调用方呈现读取失败。
  *
  * @param entryExists 判断 `dsh.bundle` / `dsh.client` 声明的路径是否真的存在；
  *   默认恒 false（纯解析拿不到文件系统），由 [ProfileReader.facts] 注入真实实现。
@@ -231,9 +228,7 @@ private val ENTRY_KEYS = listOf("import", "require", "default", "browser", "node
  * ## 入口产物到底指什么
  *
  * `dsh.bundle` 的值形态不固定：可能是一个对象（`{patch: "./cordis.patch.yml"}`，
- * dshmarket 就是这样），也可能是字符串。**patch 文件只描述组合层，不是可加载入口**——
- * 之前把 `dsh.bundle` 当路径字符串去查文件，任何"对象形态"的插件都会被误判成
- * "产物不存在"，装好的包随即被守卫回收（真机上把 dshmarket 删了）。
+ * dshmarket 即采用此结构），也可能是字符串。patch 文件描述组合层，不作为可加载入口。
  *
  * 可加载入口是**包自身的 JS 入口**：`main` / `exports` / 兜底的 `lib/index.js`、
  * `index.js`。纯客户端包则看 `exports["./client"]`。

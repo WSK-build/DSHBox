@@ -746,8 +746,8 @@ class ControlChannelServer(
         internal const val ASK_STALE_GRACE_MS = 12_000L
 
         /**
-         * 这件 ask 在收件箱里躺了多久（毫秒，0 = 还算新鲜）。抽成纯函数是为了能在
-         * 纯 JVM 上钉住边界（时钟异常、刚好压线两种），呈现链路的其余部分需要设备。
+         * 超过超时预算及宽限期时返回请求年龄（毫秒），否则返回 0。
+         * 提交时间无效时返回 0。
          */
         internal fun askStaleMs(submittedAtWall: Long, timeoutMs: Long, nowWall: Long): Long {
             if (submittedAtWall <= 0L) return 0L

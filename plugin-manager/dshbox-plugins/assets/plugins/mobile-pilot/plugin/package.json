@@ -1,5 +1,6 @@
 {
   "name": "@local/mobile-pilot",
+  "license": "GPL-3.0-only",
   "version": "1.5.0",
   "description": "deepseek0.1.5-rc.2,DSHBox1.4.0手机助手插件：把宿主应用绑进沙盒的 /opt/pilot 那组东西收成一个固定入口（mobile-pilot CLI），并把它注册成 DSH 原生工具（phone_status / phone_observe / phone_click / phone_setValue / phone_scroll / phone_node / phone_waitFor / phone_key / phone_launch / phone_capture / phone_intent / phone_surface / phone_call / phone_ask）",
   "private": true,

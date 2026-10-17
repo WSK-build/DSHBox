@@ -10,7 +10,7 @@ import org.junit.Test
  *
  * 判据**基于包名**（loader 条目 id 与包名常常不同名），且官方集合由
  * `HostPackages` 在运行时推导（安装层实际有什么）+ 两条永不陈旧的前缀规则组成。
- * 这里把四种情形都钉住：命名空间、loader 命名空间、推导命中、判不出。
+ * 覆盖命名空间、loader 命名空间、推导命中及无法判定四种情形。
  */
 class HostInfrastructureWhitelistTest {
 

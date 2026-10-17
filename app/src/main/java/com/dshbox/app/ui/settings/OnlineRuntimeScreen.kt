@@ -92,8 +92,10 @@ fun OnlineImportHubScreen(
     onOpenDebian: () -> Unit,
     onOpenNode: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 宿主页签失活时关闭返回接管，避免不可见子页吞掉其它页签的返回键。 */
+    backEnabled: Boolean = true,
 ) {
-    BackHandler(onBack = onBack)
+    BackHandler(enabled = backEnabled, onBack = onBack)
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -165,12 +167,15 @@ private fun HubEntryCard(title: String, desc: String, onClick: () -> Unit) {
 fun OnlineDebianImportScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 宿主页签失活时关闭返回接管，避免不可见子页吞掉其它页签的返回键。 */
+    backEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as DshApp).container
     val manager = container.onlineRuntimeImportManager
     OnlineLayerImportScreen(
         onBack = onBack,
+        backEnabled = backEnabled,
         title = stringResource(R.string.online_hub_debian),
         intro = stringResource(R.string.online_import_explain),
         state = manager.debianState.collectAsState().value,
@@ -192,6 +197,8 @@ fun OnlineDebianImportScreen(
 fun OnlineNodeImportScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 宿主页签失活时关闭返回接管，避免不可见子页吞掉其它页签的返回键。 */
+    backEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     val container = (context.applicationContext as DshApp).container
@@ -201,6 +208,7 @@ fun OnlineNodeImportScreen(
     val debianMissing = remember { !manager.isDebianLayerInstalled() }
     OnlineLayerImportScreen(
         onBack = onBack,
+        backEnabled = backEnabled,
         title = stringResource(R.string.online_hub_node),
         intro = stringResource(R.string.online_node_intro),
         state = manager.nodeState.collectAsState().value,
@@ -247,6 +255,8 @@ private fun <S> OnlineLayerImportScreen(
     /** 非空时展示前置条件警示并禁用启动（如 node 页在 Linux 层未导入时）。 */
     blockedReason: String? = null,
     modifier: Modifier = Modifier,
+    /** 宿主页签失活时关闭返回接管，避免不可见子页吞掉其它页签的返回键。 */
+    backEnabled: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -287,7 +297,7 @@ private fun <S> OnlineLayerImportScreen(
     }
 
     // 返回（手势/返回键）一律走 leave()：先清结果与"刚刚更新"标记再退出。
-    BackHandler(onBack = { leave() })
+    BackHandler(enabled = backEnabled, onBack = { leave() })
 
     fun startProbe() {
         if (probing || state.running) return

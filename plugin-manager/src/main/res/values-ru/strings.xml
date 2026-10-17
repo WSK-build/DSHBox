@@ -6,12 +6,14 @@
 
     <!-- Панель -->
     <string name="pm_panel_title">Плагины Cordis</string>
+    <string name="pm_root_title">Панель плагинов</string>
+    <string name="pm_panel_tagline">Управление плагинами · Маркет</string>
     <string name="pm_panel_hint">Что делать с плагинами, которые не загружаются.</string>
     <string name="pm_safety_mode">Безопасный режим</string>
     <string name="pm_safety_mode_desc">Пропускает плагины, которые не загрузились</string>
-    <string name="pm_absolute_mode">Абсолютно безопасный режим</string>
+    <string name="pm_absolute_mode">Безопасный режим</string>
     <string name="pm_absolute_mode_desc">Запуск без загрузки сторонних плагинов</string>
-    <string name="pm_absolute_on_hint">Абсолютно безопасный режим включён: сторонние плагины не загружаются.</string>
+    <string name="pm_absolute_on_hint">Безопасный режим включён: сторонние плагины не загружаются.</string>
     <string name="pm_load_log_row">Журнал загрузки</string>
     <string name="pm_isolation_row">Пропущенные плагины</string>
     <string name="pm_market_row">Магазин плагинов</string>
@@ -203,6 +205,11 @@
     <string name="pm_adapt_section_title">Плагины адаптации DSHBox</string>
     <string name="pm_adapt_mobile">Адаптация страницы DSH для мобильных</string>
     <string name="pm_adapt_mobile_pilot">Подключить телефон к DSH</string>
+    <string name="pm_browser_adapter_title">Автоматизация Browser в DSH</string>
+    <string name="pm_browser_assembled">Адаптер Browser установлен</string>
+    <string name="pm_browser_removed">Адаптер Browser удалён</string>
+    <string name="pm_browser_assembly_failed">Не удалось установить адаптер Browser.</string>
+    <string name="pm_browser_refresh_failed">Не удалось обновить адаптер Browser; предыдущий пакет остаётся доступен.</string>
     <string name="pm_adapt_ok">Собрано</string>
     <string name="pm_adapt_fail">Сборка не удалась; откат выполнен</string>
     <string name="pm_adapt_restart_hint">(Вступит в силу после перезапуска DSH)</string>
@@ -210,7 +217,7 @@
     <string name="pm_guard_toast_attempt_skipped">Пропущено плагинов: %1$d — %2$s</string>
     <string name="pm_guard_toast_recovered_title">Безопасный режим пропустил плагинов: %1$d; DSH запущен</string>
     <string name="pm_guard_toast_recovered_skipped">Пропущены: %1$s</string>
-    <string name="pm_guard_toast_absolute">Абсолютно безопасный режим включён</string>
+    <string name="pm_guard_toast_absolute">Безопасный режим включён</string>
     <string name="pm_guard_toast_failed">DSH не запустился; автоповтор остановлен</string>
     <!-- Официальные плагины DSH (встроенные возможности, отключённые в источнике по умолчанию) -->
     <string name="pm_official_section">Официальные плагины DSH</string>

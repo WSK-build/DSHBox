@@ -223,14 +223,6 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         }.getOrDefault(false)
     }
 
-    /**
-     * 应用整体是否在前台：读自身进程的 importance，而不是只看助手页可见。
-     *
-     * 用到它的只有剪贴板那一档——系统只要求「本应用持有输入焦点」，宿主任一自有界面
-     * 或任一自有 Activity 在前台都满足；把「必须停在助手页」当前置条件是过度约束，
-     * 真机实测因此把一次本可成功的读剪贴板挡成 E_CLIPBOARD_NO_FOCUS。
-     * 读自身进程不需要额外权限，失败按不在前台处理（宁可保守，不给假放行）。
-     */
     /** 按角色取宿主注入的通知渠道配置；缺省回 core 默认值。 */
     private fun notifyChannelSpec(role: RelayChannelRole): RelayNotificationChannelSpec =
         surfaces.notificationChannels().firstOrNull { it.role == role }
@@ -284,10 +276,7 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     private val directBackend = DirectBackend(
         appContext,
         reaper,
-        // 剪贴板只要求「本应用持有输入焦点」，不要求用户停在助手页。宿主界面的可见性
-        // 由 [RelaySurfaces.uiInForeground] 提供：宿主停在别的自有界面时，应用明明有焦点、
-        // 剪贴板本可用，却被这条判据挡成 E_CLIPBOARD_NO_FOCUS（真机实测踩到过）。
-        // 界面在前即应用在前台；否则按自身进程的 importance 兜一档。
+        // 剪贴板可用性由应用界面可见性或自身进程前台状态判断，不限于助手页。
         clipboardUsable = { surfaces.uiInForeground() || appInForeground() },
         projection = screenProjection,
         // 自指启动（收尾回宿主页）的判据：已经在里面就别再启动一次，否则 singleTask
@@ -827,10 +816,8 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     }
 
     /**
-     * 执行侧的用户服务是否已连接。**与 [shizukuState] 的 running/granted 是两回事**：
-     * 后者只证明 Shizuku 本体在跑且已授权，而所有 shell 能力与虚拟屏都经用户服务
-     * （独立进程）执行——服务没绑上时调用必失败，真机实测出现过「界面显示正常连接、
-     * 实际 execute 全断」的口径分裂。页面必须读这一条才有真相。
+     * 执行侧用户服务的绑定状态。独立于 [shizukuState] 的运行和授权状态，
+     * 用于判断 shell 与虚拟屏执行所依赖的用户服务是否已连接。
      */
     fun shizukuBound(): Boolean = shizukuBackend.boundSnapshot
 

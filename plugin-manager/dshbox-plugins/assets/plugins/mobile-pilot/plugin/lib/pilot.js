@@ -830,8 +830,7 @@ module.exports = {
   timeoutFor,
   timeoutPlan,
   preview,
-  // 提问载荷的校验与预算单独露出：窗口夹紧、长度上限与余量都是要在纯 JS 层钉住的契约，
-  // 不必起一个假入口进程去验证。
+  // 导出提问载荷及预算计算，支持不启动入口进程的契约测试。
   askPayload,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_MAX_QUEUED,

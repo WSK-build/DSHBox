@@ -1,0 +1,3 @@
+- insert:
+    - id: '@local/browser-use'
+      name: '@local/browser-use'

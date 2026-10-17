@@ -1,13 +1,13 @@
 <!doctype html>
 <!--
-  M17 回归夹具：右栏（rightbarCol）在移动端适配插件下**必须仍可被 dsh 打开**。
+  右栏布局测试：移动端适配插件不得阻止 DSH 打开 rightbarCol 内的面板。
 
-  背景（真机实测根因）：插件的 MOBILE_CSS 曾对右栏写
+  需防止 MOBILE_CSS 对右栏设置
     [class*="detailsCol"], [class*="rightbarCol"] { display: none !important; }
   而 dsh 的右栏是「零宽网格项」——CSS 为
     .rightbarCol { min-width:0; position:relative; overflow:visible }
   面板贴着列的右缘**悬挂到中栏之上**，列宽为 0 是设计如此。
-  整列 display:none 会把面板一起干掉 → 用户点「打开右侧栏」没有任何反应。
+  整列 display:none 会同时隐藏面板，导致右侧栏无法显示。
 
   本夹具用**真实的 dsh 布局结构/CSS**（摘自 dsh-client-ui-layout 0.1.5-rc.2 的
   AppFrame.module.css），加载**真实的**插件，断言：

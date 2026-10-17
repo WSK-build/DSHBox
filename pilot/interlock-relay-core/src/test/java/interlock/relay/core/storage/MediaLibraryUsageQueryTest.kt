@@ -35,7 +35,7 @@ class MediaLibraryUsageQueryTest {
 
     @Test
     fun gallerySelectionOnlyMatchesTheTwoWriteLocations() {
-        // 完整形状逐字钉住：两个前缀各一个条件、OR 连接、整体加括号。
+        // 断言完整查询形状：两个前缀各一个条件、OR 连接、整体加括号。
         assertEquals(
             "(relative_path LIKE ? OR relative_path LIKE ?)",
             MediaLibraryUsage.selection(gallery),

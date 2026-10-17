@@ -4,6 +4,7 @@ import android.content.Context
 import android.system.Os
 import android.system.OsConstants
 import android.system.StructStat
+import com.dshbox.browser.api.BrowserArtifactFiles
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -12,7 +13,8 @@ import java.io.RandomAccessFile
  *
  * 统计口径：**分配块**（lstat st_blocks × 512），与系统「应用存储」/ du 同口径。
  * 符号链接跳过；硬链接（st_nlink > 1）按 (dev,ino) 只计一次。**scan 与 clean
- * 使用同一口径与同一判定函数**（passesAgeGuard / fileEligible / 同样的硬链接去重），
+ * 使用同一口径与同一判定函数**（Browser 临时产物共用整秒mtime/读取宽限谓词，
+ * 其它项目共用 passesAgeGuard / fileEligible，并执行同样的硬链接去重），
  * 弹窗「可释放」与「已释放」不会互相打架。
  *
  * 清理红线（categorize 只放行下列前缀，其余路径一律不触碰）：
@@ -46,6 +48,7 @@ object SandboxCleanup {
      */
     fun categorize(relPath: String): Category? {
         val rel = relPath.replace('\\', '/').trimStart('/').removePrefix("./")
+        if (BrowserArtifactFiles.isTemporaryPath(rel)) return Category.CACHE
         val rules = listOf(
             "logs" to Category.LOGS,
             "runtime-bundle-staging" to Category.CACHE,
@@ -142,6 +145,8 @@ object SandboxCleanup {
             if (category != null && !entry.isDir &&
                 !(category == Category.APT && aptBusy) &&
                 fileEligible(category, entry.name) &&
+                (!BrowserArtifactFiles.isTemporaryPath(entry.relPath) ||
+                    BrowserArtifactFiles.eligibleForCleanup(entry.lastModifiedMs, now, active = false)) &&
                 passesAgeGuard(category, entry.lastModifiedMs, now, guardActive)
             ) {
                 reclaimable.merge(category, bytes, Long::plus)
@@ -194,7 +199,7 @@ object SandboxCleanup {
                     dev = st.st_dev,
                     ino = st.st_ino,
                     nlink = st.st_nlink,
-                    // st_mtime 是秒级精度；24h 量级的年龄判定足够。
+                    // st_mtime 是秒级精度；BrowserArtifactFiles 的共享谓词会统一取整并留安全边际。
                     lastModifiedMs = st.st_mtime * 1000L,
                 )
                 val counted = ledger.add(entry, isCacheRoot)
@@ -255,6 +260,9 @@ object SandboxCleanup {
             }
             val dshStaging = File(filesDir, "runtime/dsh-staging")
             if (dshStaging.exists()) freed += removeWithSize(dshStaging, seenHardlinks)
+            freed += BrowserArtifactFiles.removeForCleanup(filesDir, System.currentTimeMillis()) { file ->
+                allocatedBytes(file, seenHardlinks)
+            }
         }
         if (Category.GUEST_TMP in categories) {
             for (root in listOf(

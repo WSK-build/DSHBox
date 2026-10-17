@@ -8,6 +8,7 @@
     <string name="pilot_err_surface_api_level">Для фоновой работы нужен Android 13 или новее.</string>
 
     <string name="pilot_page_overview">Помощник телефона</string>
+    <string name="pilot_page_tagline">Соединяет DSH и телефон</string>
     <string name="pilot_page_capabilities">Возможности</string>
     <string name="pilot_page_capability_detail">Возможность</string>
     <string name="pilot_page_surface">Режим выполнения</string>

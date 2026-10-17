@@ -3,6 +3,7 @@ package com.dshbox.app.util
 import com.dshbox.app.util.SandboxCleanup.Category
 import com.dshbox.app.util.SandboxCleanup.EntryStat
 import com.dshbox.app.util.SandboxCleanup.UsageLedger
+import com.dshbox.browser.api.BrowserArtifactFiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -14,6 +15,32 @@ import org.junit.Test
  * 的安全边界——每条「红线路径必须返回 null」的断言都对应一个绝不能被清理删除的目录。
  */
 class SandboxCleanupTest {
+    @Test
+    fun browserReclaimableUsesSameRecentFileGuardAsCleaner() {
+        val now = 10_000_000L
+        val ledger = UsageLedger(now, guardActive = false)
+        ledger.add(entry("browser-tools/out/shot/shot-old.png", lastModifiedMs = 1L))
+        ledger.add(entry("browser-tools/out/selection/selection-new.png", lastModifiedMs = now))
+        ledger.add(entry("browser-tools/run/status.json", lastModifiedMs = 1L))
+        assertEquals(4096L, ledger.reclaimable()[Category.CACHE])
+    }
+
+    @Test
+    fun browserScanAndCleanerShareSecondPrecisionReadGraceBoundary() {
+        val now = 100_000L
+        val threshold = now - BrowserArtifactFiles.READ_GRACE_MILLIS - 1_000L
+        val ledger = UsageLedger(now, guardActive = true)
+        val beforeBoundary = threshold - 1L
+        val atBoundary = threshold
+        ledger.add(entry("browser-tools/out/shot/shot-before.png", lastModifiedMs = beforeBoundary))
+        ledger.add(entry("browser-tools/out/shot/shot-at.png", lastModifiedMs = atBoundary))
+        ledger.add(entry("browser-tools/out/shot/shot-after.png", lastModifiedMs = threshold + 1_000L))
+        // The filesystem scan supplies whole-second mtime, and delete uses the same predicate.
+        assertTrue(BrowserArtifactFiles.eligibleForCleanup(beforeBoundary, now, active = false))
+        assertTrue(BrowserArtifactFiles.eligibleForCleanup(atBoundary, now, active = false))
+        assertFalse(BrowserArtifactFiles.eligibleForCleanup(threshold + 1_000L, now, active = false))
+        assertEquals(2L * 4096L, ledger.reclaimable()[Category.CACHE])
+    }
 
     private fun entry(
         relPath: String,
@@ -40,6 +67,9 @@ class SandboxCleanupTest {
 
     @Test
     fun safeItemsAreCategorized() {
+        assertEquals(Category.CACHE, SandboxCleanup.categorize("browser-tools/out/shot/shot-old.png"))
+        assertEquals(Category.CACHE, SandboxCleanup.categorize("browser-tools/out/selection/selection-old.png"))
+        assertEquals(Category.CACHE, SandboxCleanup.categorize("browser-tools/out/network/capture.har"))
         assertEquals(Category.LOGS, SandboxCleanup.categorize("logs"))
         assertEquals(Category.LOGS, SandboxCleanup.categorize("logs/process-dsh.log"))
         assertEquals(Category.CACHE, SandboxCleanup.categorize("runtime-bundle-staging/base.tar.zst"))
@@ -64,6 +94,9 @@ class SandboxCleanupTest {
 
     @Test
     fun redLinePathsAreNeverCategorized() {
+        assertNull(SandboxCleanup.categorize("browser-tools/run/status.json"))
+        assertNull(SandboxCleanup.categorize("browser-tools/out/downloads/report.pdf"))
+        assertNull(SandboxCleanup.categorize("browser-tools/out/shot/../run/status.json"))
         assertNull(SandboxCleanup.categorize("user-data/notes.md"))
         assertNull(SandboxCleanup.categorize("user-data/.dsh/profiles/web"))
         assertNull(SandboxCleanup.categorize("user-data/.dsh/dshbox/dshbox-plugins/mobile-adapt/install.sh"))

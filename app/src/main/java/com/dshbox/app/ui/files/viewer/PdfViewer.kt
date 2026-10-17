@@ -244,7 +244,7 @@ private fun PdfPageItem(
                             h.toInt().coerceAtLeast(1),
                             Bitmap.Config.ARGB_8888,
                         )
-                        // 返工：PdfRenderer 对未覆盖区域可能保留 alpha——先填白底，否则
+                        // PdfRenderer 对未覆盖区域可能保留 alpha，渲染前先填白底，避免
                         // 页面空白区透出下方深灰底，观感为「暗色透明阴影」
                         bitmap.eraseColor(android.graphics.Color.WHITE)
                         try {

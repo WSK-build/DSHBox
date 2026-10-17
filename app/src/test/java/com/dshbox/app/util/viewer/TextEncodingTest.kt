@@ -49,7 +49,7 @@ class TextEncodingTest {
     @Test
     fun truncatedUtf8Rejected() {
         // 截断的多字节序列：「中文abc」截到 5 字节——尾部不完整序列被裁剪后，
-        // 剩余「中」是合法 UTF-8 前缀 → 判 UTF-8（返工修正 #7 后的正确语义）；
+        // 剩余「中」是合法 UTF-8 前缀，判定为 UTF-8；
         // 若无裁剪，严格校验会误否决并可能误判 GBK
         val truncated = "中文abc".toByteArray(Charsets.UTF_8).copyOfRange(0, 5) // 「中」完整 + 「文」前 2 字节
         val det = TextEncoding.detect(truncated)
@@ -101,7 +101,7 @@ class TextEncodingTest {
 
     @Test
     fun decodeCheckedDetectsLossyDecoding() {
-        // 返工 P1：有损解码检测——REPORT 试解失败 = 存在无法解码的字节
+        // REPORT 试解失败表示存在无法解码的字节，结果须标记为有损。
         // 合法 UTF-8 → 无损
         val ok = TextEncoding.decodeChecked("正常内容".toByteArray(Charsets.UTF_8), TextEncoding.Detection(TextEncoding.TextCharset.UTF_8, 0))
         assertEquals(false, ok.lossy)
@@ -161,7 +161,7 @@ class TextEncodingTest {
         val mixed = TextEncoding.detectNewlines("a\r\nb\nc")
         assertTrue(mixed.mixed)
 
-        // 返工修正 #6：无任何换行（含空文件）固定 LF（原实现三者全 0 时落 CRLF）
+        // 无任何换行（含空文件）时默认使用 LF。
         assertEquals(TextEncoding.NewlineStyle.LF, TextEncoding.detectNewlines("").style)
         assertEquals(TextEncoding.NewlineStyle.LF, TextEncoding.detectNewlines("no newline here").style)
     }

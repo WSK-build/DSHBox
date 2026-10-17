@@ -1,19 +1,31 @@
 package com.dshbox.app.ui.files
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,6 +41,7 @@ import com.dshbox.app.ui.theme.DarkTextSecondary
 import com.dshbox.app.ui.theme.DarkTextTertiary
 import com.dshbox.app.ui.theme.ThemeMode
 import com.dshbox.app.util.Layer
+import com.dshbox.app.common.R as CommonR
 import java.io.File
 
 // --- 共享设计 token（供 FilesScreen / FolderPickerScreen 等文件页组件复用） ---
@@ -60,6 +73,9 @@ internal fun TextSecondary(): Color = if (filesUseDarkTheme()) DarkTextSecondary
 internal fun TextHint(): Color = if (filesUseDarkTheme()) DarkTextTertiary else Color(0xFF9CA3AF)
 @Composable
 internal fun DividerColor(): Color = if (filesUseDarkTheme()) DarkBorder else Color(0xFFF3F4F6)
+/** 根视图控件的描边：比分割线略深，替代原先的灰底卡片。 */
+@Composable
+internal fun PickerBorder(): Color = if (filesUseDarkTheme()) Color(0xFF565656) else Color(0xFFE0E0E0)
 @Composable
 internal fun ControlBg(): Color = if (filesUseDarkTheme()) DarkSurface else Color(0xFFF3F4F6)
 @Composable
@@ -129,21 +145,25 @@ internal fun Breadcrumb(
     currentDir: File,
     onNavigate: (File) -> Unit,
     modifier: Modifier = Modifier,
+    /** 非空时直接作为完整面包屑段（虚拟根等 parentFile 回溯走不通的场景），否则按父目录回溯。 */
+    segmentsOverride: List<Pair<String, File>>? = null,
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        var cursor: File? = currentDir
-        val crumbs = mutableListOf<Pair<String, File>>()
-        while (cursor != null && cursor.absolutePath.startsWith(root.absolutePath)) {
-            if (cursor == root) break
-            crumbs.add(0, cursor.name to cursor)
-            cursor = cursor.parentFile
-        }
-        val segments = buildList {
-            add(rootLabel to root)
-            addAll(crumbs)
+        val segments = segmentsOverride ?: run {
+            var cursor: File? = currentDir
+            val crumbs = mutableListOf<Pair<String, File>>()
+            while (cursor != null && cursor.absolutePath.startsWith(root.absolutePath)) {
+                if (cursor == root) break
+                crumbs.add(0, cursor.name to cursor)
+                cursor = cursor.parentFile
+            }
+            buildList {
+                add(rootLabel to root)
+                addAll(crumbs)
+            }
         }
         segments.forEachIndexed { index, (label, target) ->
             if (index > 0) {
@@ -176,4 +196,75 @@ internal fun Breadcrumb(
 internal fun Modifier.keepAliveHidden(): Modifier = this.layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
     layout(0, 0) { /* intentionally not placed */ }
+}
+
+/** 左上角根视图控件：当前根 + 无尾箭头，点击展开选择面板（文件页与目录选择器共用）。 */
+@Composable
+internal fun RootPicker(
+    label: String,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "rootChevron",
+    )
+    Row(
+        modifier = Modifier
+            .height(34.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .border(1.dp, PickerBorder(), RoundedCornerShape(9.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            color = TextPrimary(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Icon(
+            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_chevron_right),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(15.dp)
+                // 右箭头转 90° 即无尾下箭头，面板展开时再翻 180°
+                .graphicsLayer { rotationZ = 90f + chevronRotation },
+        )
+    }
+}
+
+/** 根视图面板条目：选中项以强调色文字 + 右侧对勾区分。 */
+@Composable
+internal fun RootMenuItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal,
+                color = if (selected) PrimaryGreen else TextPrimary(),
+            )
+        },
+        trailingIcon = {
+            if (selected) {
+                Icon(
+                    imageVector = ImageVector.vectorResource(CommonR.drawable.ic_check),
+                    contentDescription = null,
+                    tint = PrimaryGreen,
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+        },
+        onClick = onClick,
+    )
 }

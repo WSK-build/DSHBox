@@ -8,6 +8,7 @@
     <string name="pilot_err_surface_api_level">التشغيل في الخلفية يتطلب Android 13 أو أحدث.</string>
 
     <string name="pilot_page_overview">مساعد الهاتف</string>
+    <string name="pilot_page_tagline">يربط DSH وهاتفك</string>
     <string name="pilot_page_capabilities">القدرات</string>
     <string name="pilot_page_capability_detail">القدرة</string>
     <string name="pilot_page_surface">نمط التنفيذ</string>

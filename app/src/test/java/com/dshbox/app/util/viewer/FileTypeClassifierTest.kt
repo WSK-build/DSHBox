@@ -37,7 +37,7 @@ class FileTypeClassifierTest {
         fun ftyp(brand: String): IntArray = ("....ftyp$brand").map { it.code }.toIntArray()
         assertEquals("heif", classify("a.heic", *ftyp("heic")).subType)
         assertEquals("avif", classify("a.avif", *ftyp("avif")).subType)
-        // 返工修正 #9：音视频品牌 → AUDIO_VIDEO（否则大视频落 HexViewer）
+        // 音视频品牌归类为 AUDIO_VIDEO。
         assertEquals("mp4", classify("a.mp4", *ftyp("mp42")).subType)
         assertEquals(FileKind.AUDIO_VIDEO, classify("a.mp4", *ftyp("mp42")).kind)
         assertEquals(FileKind.AUDIO_VIDEO, classify("a.m4a", *ftyp("M4A ")).kind)
@@ -50,7 +50,7 @@ class FileTypeClassifierTest {
         val pk = intArrayOf(0x50, 0x4B, 0x03, 0x04)
         assertEquals(FileKind.ARCHIVE, classify("a.zip", *pk).kind)
         // ZIP 族二级区分：OOXML 文档 → OFFICE；
-        // 返工修正 #2：jar/apk/aar/war/epub 应用容器归 ARCHIVE，不归 OFFICE
+        // jar/apk/aar/war/epub 应用容器归 ARCHIVE。
         assertEquals(FileKind.OFFICE, classify("a.docx", *pk).kind)
         assertEquals(FileKind.OFFICE, classify("a.xlsx", *pk).kind)
         assertEquals(FileKind.ARCHIVE, classify("a.apk", *pk).kind)
@@ -77,7 +77,7 @@ class FileTypeClassifierTest {
 
     @Test
     fun magicBinaryKinds() {
-        // ELF 架构识别（返工二批 #11）：LE + e_machine=0xB7 → aarch64
+        // ELF 架构识别：LE + e_machine=0xB7 对应 aarch64。
         val elfArm = intArrayOf(0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xB7, 0x00)
         assertEquals("elf-aarch64", classify("a.so", *elfArm).subType)
         val elfX64 = intArrayOf(0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x3E, 0x00)

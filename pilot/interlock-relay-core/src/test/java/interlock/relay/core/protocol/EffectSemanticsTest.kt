@@ -6,7 +6,7 @@ import org.junit.Test
 /**
  * 重放分类表是「断回包后同参数重发安全吗」的唯一判据。一格填错，要么把一次
  * 已发生的点击放行成可重放（重复执行），要么把一条纯查询拦下来问人（可用性损失）。
- * 这里抽查每一类，并钉住「表外一律 USER_DECIDE」这条兜底。
+ * 抽查各类策略，并验证表外能力统一使用 USER_DECIDE。
  */
 class EffectSemanticsTest {
 
@@ -66,7 +66,7 @@ class EffectSemanticsTest {
     @Test
     fun fallbackIsNeverMorePermissiveThanTheExplicitRows() {
         // 兜底是 USER_DECIDE，而表内显式行里最宽的档是 SAFE_RETRY；
-        // 抽一条显式 SAFE_RETRY 行与兜底行对照，钉住两者的宽严次序。
+        // 对照显式 SAFE_RETRY 行与默认行，验证两者的策略次序。
         assertEquals(RetryPolicy.SAFE_RETRY, retryPolicyOf(CapabilityId.PKG_QUERY))
         assertEquals(RetryPolicy.USER_DECIDE, retryPolicyOf(CapabilityId.SURFACE_VIRTUAL))
     }

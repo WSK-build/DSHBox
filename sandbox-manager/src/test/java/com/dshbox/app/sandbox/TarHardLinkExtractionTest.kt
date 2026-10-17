@@ -15,7 +15,7 @@ import java.io.FileOutputStream
 /**
  * tar 硬链接的 linkname 是归档根相对路径（POSIX），`/usr/bin/x`、`./usr/bin/x`、
  * `usr/bin/x` 三种写法等价；按链接所在目录解析会静默丢条目（dpkg 的 zipinfo /
- * perl5.40.1 / perlthanks 即为此）。这些用例钉住该行为与越界拒绝。
+ * perl5.40.1 / perlthanks 使用此结构）。本测试验证等价解析与归档外路径拒绝。
  */
 class TarHardLinkExtractionTest {
     @get:Rule

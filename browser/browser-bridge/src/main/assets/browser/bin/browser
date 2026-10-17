@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+'use strict';
+
+const { main } = require('../lib/browser-cli.cjs');
+
+main(process.argv.slice(2)).catch((error) => {
+  process.stderr.write(`browser: ${error && error.message ? error.message : 'request failed'}\n`);
+  process.exitCode = 2;
+});

@@ -4,11 +4,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -20,7 +18,9 @@ import androidx.compose.foundation.verticalScroll
 // 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
+// 单卡内两条封存块（安全模式开关 / 失败隔离清单）已整块注释，本导入暂未使用；
+// 恢复那两段时同步取消注释。
+// import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import com.dshbox.pluginmanager.core.AdapterPluginController
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -62,20 +63,38 @@ fun PluginPanelScreen(
     onOpenRepair: () -> Unit,
     onOpenIsolation: () -> Unit,
     onOpenMarket: () -> Unit,
-    onBack: () -> Unit,
 ) {
     val dimmed = state.absoluteMode
     Column(modifier = Modifier.fillMaxSize()) {
-        PanelTopBar(title = stringResource(R.string.pm_panel_title), onBack = onBack)
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                // 与宿主首页壳同一份页面账：顶部 12dp 呼吸、底部 24dp 滚动到底的留白。
+                // 水平出血 16dp 由标题块与各卡片自带（适配/官方插件卡在自己文件里也带
+                // 同值 16dp），容器不再叠加，避免双层出血。内嵌时上方壳层已让出状态栏、
+                // 底部已由 bottomBar 让位，这里不再叠任何系统栏分量。
+                .padding(top = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // 第一块：DSHBox 专属适配插件（小字标题 + 两个开关）
-            AdapterPluginsCard(controller = adapter, dimmed = busy)
+            // 根页文字标题：随内容滚动（固定标题栏移除，PanelTopBar 保留给子页）。
+            // 字级与 Pilot 根页同档（titleMedium）；原说明行已移除，字符串保留在资源里备用。
+            Text(
+                text = stringResource(R.string.pm_root_title),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp),
+            )
+            // 第一块：DSHBox 专属适配插件。标题**移到卡外**，套用 Pilot 分组标签的版式
+            // （labelLarge + 次要色 + 相对卡片左缘再缩进 4dp）；卡内只留开关行。
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.pm_adapt_section_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 20.dp, end = 16.dp),
+                )
+                AdapterPluginsCard(controller = adapter, dimmed = busy)
+            }
 
             // 第二块：绝对安全模式
             Card(
@@ -110,16 +129,18 @@ fun PluginPanelScreen(
                         checked = state.absoluteMode,
                         enabled = !busy,
                         onCheckedChange = onToggleAbsolute,
-                        // 与「装配DSH移动端适配包」开关完全同款：打开=品牌绿、关闭=灰白。
+                        // 与「装配DSH移动端适配包」开关完全同款：打开=品牌绿，
+                        // 关闭/禁用态取主题描边与内容色，深浅主题各自成立。
                         colors = SwitchDefaults.colors(
                             checkedTrackColor = Color(0xFF10A37F),
-                            uncheckedTrackColor = Color(0xFFD5D5D5),
+                            uncheckedTrackColor = MaterialTheme.colorScheme.outline,
                             checkedThumbColor = Color.White,
-                            uncheckedThumbColor = Color(0xFF9E9E9E),
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             checkedBorderColor = Color(0xFF10A37F),
-                            uncheckedBorderColor = Color(0xFFBDBDBD),
+                            uncheckedBorderColor = MaterialTheme.colorScheme.outline,
                             disabledCheckedTrackColor = Color(0x6610A37F),
-                            disabledUncheckedTrackColor = Color(0xFFE3E3E3),
+                            disabledUncheckedTrackColor =
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                         ),
                     )
                 }
@@ -165,12 +186,12 @@ fun PluginPanelScreen(
                     text = stringResource(R.string.pm_absolute_on_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
-            // 最后一块：插件加载记录（安全模式封存期间只渲染这一行）
+            // 最后一块：插件加载记录（旧「安全模式」开关与失败隔离清单入口已整块注释封存，见卡内）
             Card(
-                // 这一块**不再整卡变灰**：里面既有受绝对安全模式影响的开关，也有不该受影响、
+                // 这一块**不再整卡变灰**：里面既有随封存失效的开关，也有不该受影响、
                 // 只读的诊断入口（见下）。灰化交给各行的 enabled 自己表达。
                 modifier = Modifier
                     .fillMaxWidth()
@@ -180,48 +201,53 @@ fun PluginPanelScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             ) {
                 Column {
-                    // 安全模式封存期间不显示开关与隔离清单：见 [PluginSafetySeal]。
-                    if (!com.dshbox.pluginmanager.core.PluginSafetySeal.SEALED) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.pm_safety_mode),
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                Text(
-                                    text = stringResource(R.string.pm_safety_mode_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Switch(
-                                checked = state.safetyMode,
-                                enabled = !dimmed && !busy,
-                                onCheckedChange = onToggleSafety,
-                            )
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                    // 只读诊断入口，**不受绝对安全模式影响**：那正是"插件出问题"时最需要看的东西。
+                    // 旧「安全模式」开关：已整块注释封存（不删代码，恢复时取消注释即可）。
+                    // 封存依据见 PluginSafetySeal——新版 DSH 会把加载失败的条目记为未激活
+                    // 并继续启动，「跳过出错条目后重启」不再有触发场景；该模式的独占层
+                    // 与启动前的写者锁清理已由下面这张卡之外的通路覆盖。
+                    // if (!com.dshbox.pluginmanager.core.PluginSafetySeal.SEALED) {
+                    //     Row(
+                    //         modifier = Modifier
+                    //             .fillMaxWidth()
+                    //             .padding(horizontal = 16.dp, vertical = 14.dp),
+                    //         verticalAlignment = Alignment.CenterVertically,
+                    //     ) {
+                    //         Column(Modifier.weight(1f)) {
+                    //             Text(
+                    //                 text = stringResource(R.string.pm_safety_mode),
+                    //                 style = MaterialTheme.typography.titleMedium,
+                    //             )
+                    //             Text(
+                    //                 text = stringResource(R.string.pm_safety_mode_desc),
+                    //                 style = MaterialTheme.typography.bodySmall,
+                    //                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    //             )
+                    //         }
+                    //         Switch(
+                    //             checked = state.safetyMode,
+                    //             enabled = !dimmed && !busy,
+                    //             onCheckedChange = onToggleSafety,
+                    //         )
+                    //     }
+                    //     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // }
+                    // 只读诊断入口，**不受安全模式影响**：那正是"插件出问题"时最需要看的东西。
                     // （同一屏里「插件市场」被禁是合理的 —— 该模式下装/卸载第三方插件没有意义。）
                     ThinRow(
                         label = stringResource(R.string.pm_load_log_row),
                         enabled = true,
                         onClick = onOpenLoadLog,
                     )
-                    if (!com.dshbox.pluginmanager.core.PluginSafetySeal.SEALED) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        ThinRow(
-                            label = stringResource(R.string.pm_isolation_row),
-                            enabled = !dimmed,
-                            onClick = onOpenIsolation,
-                        )
-                    }
+                    // 失败隔离清单入口与上面同属封存块：整块注释保留，隔离清单子页与
+                    // 控制器都还在源码里，恢复时取消注释即可。
+                    // if (!com.dshbox.pluginmanager.core.PluginSafetySeal.SEALED) {
+                    //     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    //     ThinRow(
+                    //         label = stringResource(R.string.pm_isolation_row),
+                    //         enabled = !dimmed,
+                    //         onClick = onOpenIsolation,
+                    //     )
+                    // }
                 }
             }
 
@@ -261,10 +287,9 @@ fun PluginPanelScreen(
                     text = statusLine,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
-            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -289,6 +314,13 @@ private fun ThinRow(label: String, enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * 宿主是否已把面板区域提升为整屏层（盖过首页品牌栏/页签行/底部导航）。
+ * 由宿主（app 的 Cordis 页签内容）提供；为真时子页顶栏自行让出状态栏、
+ * 面板容器自行让出手势条。未提供（独立使用）时保持内嵌语义。
+ */
+val LocalPluginPanelFullscreen = compositionLocalOf { false }
+
 /** 子页面统一的顶部返回栏。 */
 @Composable
 fun PanelTopBar(title: String, onBack: () -> Unit) {
@@ -296,9 +328,15 @@ fun PanelTopBar(title: String, onBack: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // 本模块是叠在 Tab 之上的整页覆盖（不在 Scaffold 里），而应用开了
-                // edge-to-edge：不给状态栏让位，标题与返回箭头会被系统时间/图标压住。
-                .windowInsetsPadding(WindowInsets.statusBars)
+                // 内嵌于 Cordis 页签时宿主壳层已让出状态栏；子页被提升为整屏层时
+                // （LocalPluginPanelFullscreen）壳层不可见，顶栏自行让位。
+                .then(
+                    if (LocalPluginPanelFullscreen.current) {
+                        Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

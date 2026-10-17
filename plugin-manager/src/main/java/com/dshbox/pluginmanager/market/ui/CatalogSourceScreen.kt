@@ -19,9 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.Icons
-// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.automirrored.filled.ArrowBack
-// 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,25 +50,9 @@ import androidx.compose.ui.res.vectorResource
 import com.dshbox.app.common.R as CommonR
 
 /**
- * 「数据源」选择页。
- *
- * 两个源各自的目录是**两份独立**的列表，切换就是整份换掉：不降级、不混源。
- *
- * ## 字号为什么这样取（真机反馈返工）
- *
- * 上一版整页偏小。现在按应用自己的字号梯度取：
- * - 页标题 = `titleMedium`(18sp/SemiBold) —— 与 Cordis 插件面板那一页的标题一致；
- * - 源名 = `titleMedium`(18sp)，作者/地址/描述/说明 = `bodyMedium`(14sp)；
- * - 按钮 = `labelLarge`(14sp) + 40dp 高（M3 默认高度，不再压到 32dp）。
- *
- * ## 底色与描边（对齐设计稿）
- *
- * 卡片 = `surface`（白）+ 1dp `outline` 描边（选中时换主色描边）；
- * 卡片里的地址框 = `surfaceVariant`（灰底）+ 1dp 描边。
- * 上一版把两者弄反了（灰卡片里套白框），看着和稿子不是一回事。
- *
- * 源名与仓库地址用等宽字体：它们是标识符，等宽让"这是什么"和"现在选的是哪个"
- * 在视觉上分得开。
+ * 插件目录数据源选择页，展示各源信息并通过 onPick 通知选择。
+ * 标题、正文和按钮采用主题字号；卡片与仓库地址分别使用 surface 和 surfaceVariant。
+ * 源标识与仓库地址使用等宽字体，选中状态使用主题主色描边。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,8 +109,7 @@ internal fun CatalogSourceScreen(
                     onPick = { onPick(source) },
                     onOpenRepository = {
                         openRepository(context, source.repoUrl) {
-                            // 设备上没有能处理 http(s) 的应用时说清楚，
-                            // 而不是点了之后什么都不发生。
+                            // 无应用可处理仓库链接时显示打开失败提示。
                             scope.launch { snackbarHostState.showSnackbar(openFailed) }
                         }
                     },
@@ -157,7 +137,7 @@ private fun CatalogSourceCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        // 未选中也要有一圈描边：没有它，白卡片和页面底色糊在一起，卡片边界就没了。
+        // 所有卡片保留边界，选中时使用主题主色描边。
         border = BorderStroke(
             1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
@@ -185,8 +165,7 @@ private fun CatalogSourceCard(
                 }
                 Spacer(Modifier.width(10.dp))
                 if (selected) {
-                    // 「当前」是状态不是动作：用容器色标签表示，而不是一个点下去
-                    // 什么都不发生的空按钮。
+                    // 当前数据源显示状态标签，不提供重复选择按钮。
                     Surface(
                         shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -258,7 +237,7 @@ private fun CatalogSourceCard(
     }
 }
 
-/** 每个源的一段介绍；`when` 穷尽枚举，将来加源时编译器会提醒补文案。 */
+/** 通过穷尽枚举映射取得数据源说明资源。 */
 @StringRes
 private fun sourceDescription(source: CatalogSource): Int = when (source) {
     CatalogSource.MOBILE -> R.string.pm_market_source_mobile_desc
@@ -268,11 +247,8 @@ private fun sourceDescription(source: CatalogSource): Int = when (source) {
 /**
  * 用系统浏览器打开仓库页。
  *
- * 这是市场模块唯一一处"往外跳"的出口。跳转目标只取 [CatalogSource.repoUrl]
- * —— 我们自己代码里的常量，不是目录里的字段：目录是外部输入，不让它决定
- * 用户会被送到哪里去。
- *
- * 没有应用能处理该意图时**不抛异常给用户看**，交给调用方提示一句。
+ * 目标仅取自 [CatalogSource.repoUrl] 常量，不使用外部目录数据提供的跳转地址。
+ * 无法启动处理应用时由调用方显示失败提示。
  */
 private fun openRepository(context: Context, url: String, onFailure: () -> Unit) {
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))

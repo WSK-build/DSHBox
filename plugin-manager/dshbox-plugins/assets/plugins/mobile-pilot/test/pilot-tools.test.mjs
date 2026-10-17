@@ -580,7 +580,7 @@ test('截图产物同样只保留最近若干份：旧帧被清，调用方指�
   const out = await byName.phone_capture.execute({})
   assert.equal(out.ok, true)
   assert.ok(fs.existsSync(out.path), '本次的截图必须在')
-  // 截图是 .png：旧实现只清 pilot-snapshot- 前缀的 .json，这里钉住 .png 那一份策略。
+  // 验证 PNG 截图产物按数量上限清理。
   const frames = () => fs.readdirSync(dir).filter((n) => n.startsWith(SHOT_PREFIX) && n.endsWith(SHOT_SUFFIX))
   assert.equal(frames().length, SNAPSHOT_KEEP)
   assert.ok(!fs.existsSync(path.join(dir, `${SHOT_PREFIX}old-000${SHOT_SUFFIX}`)), '最旧的帧要被清掉')
@@ -1085,10 +1085,10 @@ test('成功回包的解释走 note，失败原因才走 reason：一个键不�
 // ---------------------------------------------------------------------------
 // 宿主入口 CLI（core 资产名 relay-client.cjs，物化后是无扩展名的 bin/pilot）：
 // v2 控制通道的纯函数与严格参数边界。参数/用法错误都在触碰文件系统之前退出。
-// 对账以核模块资产 relay-client.cjs 为准——真机物化的就是它；
+// 入口测试优先使用设备侧所用的核模块资产 relay-client.cjs；
 // source/pilot 的 pilot-client.cjs 是已冻结的回退基线，只作最后兜底。
 // core 资产的通道目录与命令名都从脚本自身位置/基名推导（不再写死 /opt/pilot），
-// 所以 spawn 前一律先把它按真机形状物化到固定路径 /opt/pilot/bin/pilot：
+// spawn 前按设备布局物化到固定路径 /opt/pilot/bin/pilot：
 // 通道落在 <入口>/run、命令名是基名 pilot，与 mock 宿主的固定通道对上；
 // 进程收尾时拆除。物化不成（固定路径不可写）则退回原地直跑。
 // ---------------------------------------------------------------------------
@@ -1106,7 +1106,7 @@ const cli = require(CLI_PATH)
 const CONTROL_PRESENT = fs.existsSync('/opt/pilot/run/control-inbox') && fs.existsSync('/opt/pilot/run/control-outbox')
 const noControl = CONTROL_PRESENT ? { skip: '本机存在 v2 控制目录：环境前提不成立' } : {}
 
-// 真机物化形状的固定挂载点（与 mount.js 的设备端路径一致，测完即拆）。
+// 设备布局的固定入口路径，与 mount.js 一致，用例结束后拆除。
 const CLI_FIXED_PACK = path.join('/opt/pilot', 'bin', 'pilot')
 
 function runCli (args) {
@@ -1259,7 +1259,7 @@ test('CLI --out：相对路径当场拒绝，并把两条正确写法写进错�
   assert.match(r.stderr, /--out must be an absolute path/)
   assert.match(r.stderr, /omit --out/, '要直接告诉调用方"省略即可"')
   // 标准落点由入口自身位置推导（<入口>/out）：设备上是 /opt/pilot/out，
-  // 在宿主上跑物化副本时分隔符随平台（如 D:\opt\pilot\out），只断言落点本身。
+  // 物化副本使用运行平台的目录分隔符，断言仅校验目标路径。
   assert.match(r.stderr, /[\\/]opt[\\/]pilot[\\/]out/, '并给出标准落点')
   // 绝对路径不在参数阶段被拒（能否成功由通道决定）：
   assert.doesNotMatch(runCli(['call', 'screen.capture', '--out', '/tmp/abs.png', '--timeout', '1000']).stderr,
@@ -1950,8 +1950,7 @@ test('端到端现场自检：整批跳过就是没有证据，按失败收场�
   assert.ok(declared > 0, '一条端到端用例都没被调度到：这批用例整体缺席')
   process.stdout.write(`\n端到端现场：实跑 ${e2eRan.length} 条，本次跳过 ${e2eSkipped.length} 条\n`)
   if (CONTROL_PRESENT) {
-    // 真机上这批只能跳过：mock 宿主不能占用真实通道。这句话必须重到让人停下，
-    // 否则一次「全绿」的运行会被读成「端到端验过了」。
+    // mock 不得占用真实控制通道；显式报告无法执行，避免误判为端到端验证通过。
     assert.fail(
       '本机存在真实 v2 控制目录，mock 端到端用例整批跳过：本次运行没有端到端证据。' +
       '要在设备上取证，请用真实通道直接跑一次调用（例如 mobile-pilot call pkg.query --json \'{}\'），' +

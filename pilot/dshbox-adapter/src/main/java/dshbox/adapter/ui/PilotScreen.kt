@@ -22,10 +22,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -36,18 +40,24 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
+// 子页顶栏改用紧凑自绘版式后不再使用：TopAppBar / TopAppBarDefaults /
+// ExperimentalMaterial3Api 三个导入。回退到 TopAppBar 时同步取消注释。
+// import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
+// 同上一组：不再使用 TopAppBarDefaults 与 TopAppBar。
+// import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+// import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import interlock.relay.core.runtime.monotonicNow
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
@@ -56,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.key
 import androidx.compose.ui.viewinterop.AndroidView
@@ -113,7 +124,13 @@ sealed class PilotDestination {
  * 状态与判定一律来自装配根；此处只做呈现与意图转发。
  */
 @Composable
-fun PilotScreen(container: RelayContainer, onBack: () -> Unit) {
+fun PilotScreen(
+    container: RelayContainer,
+    onBack: () -> Unit,
+    embedded: Boolean = false,
+    /** 子页（栈深 > 1）可见性上报：宿主据此把内嵌区域提升为整屏面板。 */
+    onSubPageVisibilityChanged: (Boolean) -> Unit = {},
+) {
     val viewModel: PilotViewModel = viewModel(factory = PilotViewModel.factory(container))
     // 用收集而不是额外的 StateFlow 绑定依赖：本模块不为一个语法糖再拉一个库。
     var state by remember { mutableStateOf(viewModel.uiState.value) }
@@ -123,6 +140,23 @@ fun PilotScreen(container: RelayContainer, onBack: () -> Unit) {
     var runtimePhase by remember { mutableStateOf(viewModel.runtimePhase.value) }
     LaunchedEffect(viewModel) { viewModel.runtimePhase.collect { runtimePhase = it } }
     var stack by remember { mutableStateOf(listOf<PilotDestination>(PilotDestination.Overview)) }
+
+    // 子页可见性上报：宿主收到后把内嵌区域提升为整屏（盖过品牌栏/页签行/底部导航），
+    // insets 语义随 embedded 参数由宿主同步切换。栈变更一律走 navigateTo——上报与入栈
+    // 在同一个事件帧落地，宿主不会先画一帧「壳内版式」的子页再跳到整屏（那一下跳动
+    // 很扎眼）。SideEffect 只兜底首次组合与重建恢复；按边沿触发，值没变不写宿主状态。
+    var reportedSubPage by remember { mutableStateOf<Boolean?>(null) }
+    fun reportSubPage(visible: Boolean) {
+        if (reportedSubPage != visible) {
+            reportedSubPage = visible
+            onSubPageVisibilityChanged(visible)
+        }
+    }
+    fun navigateTo(next: List<PilotDestination>) {
+        stack = next
+        reportSubPage(next.size > 1)
+    }
+    SideEffect { reportSubPage(stack.size > 1) }
 
     // 组合在屏期间才要节拍：系统权限、悬浮窗授权、通道存活与存储占用都能在应用外变化，
     // 且没有任何回调可挂。离开组合即停表，不在后台留一个没人看的轮询。
@@ -135,15 +169,30 @@ fun PilotScreen(container: RelayContainer, onBack: () -> Unit) {
     // 这里再放一个结果收集者，同一张弹框就会有两个发起方。
     // 系统返回键逐级弹栈；栈底才交给 Activity 退出。没有这一条时，
     // 系统返回会直接结束 Activity，从详情页按返回等于整个界面退出。
-    BackHandler(enabled = stack.size > 1) { stack = stack.dropLast(1) }
+    BackHandler(enabled = stack.size > 1) { navigateTo(stack.dropLast(1)) }
 
     PilotTheme {
         Scaffold(
+            // 画布取 background：与宿主首页壳整列同色（Scaffold 默认容器色是 surface，
+            // 深色主题下比 background 亮一档，页签行下缘会显出一圈色缝）。
+            containerColor = MaterialTheme.colorScheme.background,
+            // 内嵌于首页页签：宿主底部导航已让位，再让一次会在内容底部多出一条空带，
+            // 故清空 contentWindowInsets；独立入口（PilotActivity）保持默认 insets。
+            // 子页 TopAppBar 自带 insets，不受影响。
+            contentWindowInsets = if (embedded) {
+                WindowInsets(0, 0, 0, 0)
+            } else {
+                ScaffoldDefaults.contentWindowInsets
+            },
             topBar = {
-                PilotTopBar(
-                    titleRes = destinationTitleRes(stack.last()),
-                    onBack = { if (stack.size > 1) stack = stack.dropLast(1) else onBack() },
-                )
+                // 根页标题融入滚动内容（见下），固定标题栏仅子页保留。
+                if (stack.size > 1) {
+                    PilotTopBar(
+                        titleRes = destinationTitleRes(stack.last()),
+                        onBack = { if (stack.size > 1) navigateTo(stack.dropLast(1)) else onBack() },
+                        embedded = embedded,
+                    )
+                }
             },
         ) { padding ->
             val pageScroll = rememberScrollState()
@@ -161,11 +210,40 @@ fun PilotScreen(container: RelayContainer, onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 24.dp)
+                    // 与宿主首页壳同一份页面账：左右出血 16dp、标题上 12dp 呼吸、
+                    // 底部 24dp 滚动到底的留白。两态共用同一套数值——内嵌时 Scaffold 的
+                    // contentWindowInsets 已清零（状态栏由宿主壳层让位），独立时 padding
+                    // 自带系统栏分量，两者都落在同一根 12dp 呼吸上，不再各让各的。
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 12.dp, bottom = 24.dp)
                     .verticalScroll(pageScroll),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                val open: (PilotDestination) -> Unit = { stack = stack + it }
+                // 根页文字标题：随内容滚动（固定标题栏仅子页保留）。内嵌时上方壳层
+                // （品牌栏/页签行）已让出状态栏，不再重复让位；独立入口保留界面内
+                // 返回入口（固定标题栏移除后的唯一「退出助手页」可点目标），顶部
+                // 让位由 contentWindowInsets 承担。
+                if (stack.size == 1) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (!embedded) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.pilot_action_back),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.pilot_page_overview),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+                val open: (PilotDestination) -> Unit = { navigateTo(stack + it) }
                 when (val page = stack.last()) {
                     PilotDestination.Overview -> OverviewPage(
                         state = state,
@@ -239,26 +317,47 @@ fun PilotScreen(container: RelayContainer, onBack: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 子页顶部返回栏：紧凑版式，与插件面板的子页顶栏同款（同高、同内边距、同字级）。
+ *
+ * 不用 TopAppBar：它的默认 64dp 高与 titleLarge 标题在根页标题降为 titleMedium 之后
+ * 会头重脚轻。insets 两态与原来一致——内嵌在首页页签时宿主壳层已让出状态栏，
+ * 这里不再重复让位；独立入口（PilotActivity）自行让位。
+ */
 @Composable
-private fun PilotTopBar(titleRes: Int, onBack: () -> Unit) {
-    TopAppBar(
-        title = {
-            Text(text = stringResource(titleRes), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        },
-        // 返回箭头在标题文字左边（导航位），每一页都有：站内有栈就逐级弹栈，
-        // 站在栈底就是退出手机助手。少了栈底这一档，从宿主点进来后屏幕上
-        // 没有任何一个可点的「回去」，只能靠系统手势。
-        navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.pilot_action_back),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun PilotTopBar(titleRes: Int, onBack: () -> Unit, embedded: Boolean) {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (embedded) {
+                        Modifier
+                    } else {
+                        Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                    },
                 )
-            }
-        },
-    )
+                .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.pilot_action_back),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clickable { onBack() }
+                    .padding(12.dp)
+                    .size(22.dp),
+            )
+            Text(
+                text = stringResource(titleRes),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
+    }
 }
 
 private fun destinationTitleRes(destination: PilotDestination): Int = when (destination) {
@@ -999,9 +1098,7 @@ private fun PrivilegedGuidePage(container: RelayContainer, state: PilotUiState) 
     // 显示成「未检测到」，而那一档恰恰是界面上唯一能给出下一步动作的场合。
     val running = state.shizuku.running
     val granted = state.shizuku.granted
-    // 第三条事实：执行侧的用户服务有没有连上。真机实测出现过「服务在跑、已授权、
-    // 页面显示一切正常」而所有 shell 调用全断的现场——running/granted 都回答不了它，
-    // 必须单列一行。读的是后端此刻的绑定状态，与执行路径同一口径。
+    // 独立显示执行侧用户服务的实时绑定状态，避免以运行或授权状态代替执行连接状态。
     val bound = container.shizukuBound()
     PilotSection(title = stringResource(R.string.pilot_section_status)) {
         PilotRow(
@@ -1419,8 +1516,10 @@ private fun ApprovalDialog(
     BackHandler { onChoose(InterlockChoice.DENY) }
     // 挂的是悬浮窗那张卡本体而不是再画一遍：样式写两份会各自漂移，
     // 而两条通路问的是同一件事，用户看到的也必须是同一张卡。
-    val context = LocalContext.current
-    val night = (context.resources.configuration.uiMode and
+    // 明暗读 LocalConfiguration 而不是 Activity resources：组合树里宿主可能
+    // 用 CompositionLocalProvider 覆写过它，只有走这里才与主题同一来源。
+    val configuration = LocalConfiguration.current
+    val night = (configuration.uiMode and
         android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
         android.content.res.Configuration.UI_MODE_NIGHT_YES
     key(prompt, night) {

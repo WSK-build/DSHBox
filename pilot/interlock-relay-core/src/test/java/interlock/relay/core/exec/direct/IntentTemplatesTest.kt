@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 模板表的判据在 JVM 侧钉住：这张表决定"助手能让系统做哪几件事"，
+ * 在 JVM 侧验证模板表的判定规则，明确助手允许发起的系统操作，
  * 越界与未知模板必须在落到 Intent 之前就被拒掉。
  */
 class IntentTemplatesTest {

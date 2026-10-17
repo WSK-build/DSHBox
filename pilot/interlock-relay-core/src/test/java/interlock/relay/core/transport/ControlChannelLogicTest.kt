@@ -12,7 +12,7 @@ import org.junit.Test
 /**
  * 控制通道的可测核心：v1 转写、取消判定表、status 映射、health 计数与信箱准入排序/驱逐
  * 的纯函数。消费循环本身依赖 FileObserver，无法在纯 JVM 单测里实例化；这些判定抽成
- * 无副作用函数后在这里钉死，控制通道的安全边界（只读、只转发、不执行能力动作）因此
+ * 无副作用函数后在此验证，控制通道的安全边界（只读、只转发、不执行能力动作）因此
  * 不依赖循环代码的正确性。
  */
 class ControlChannelLogicTest {
@@ -266,8 +266,7 @@ class ControlChannelLogicTest {
     /**
      * 认领冲突判定：「真的有一条在飞」由 processing 文件或已越过受理的记录给出，
      * 任一命中即挡；QUEUED 是控制通道为这份文件自己建的受理记录，**绝不挡**——
-     * 按记录非终态一刀切会把 v2 的每一条正常入队饿死在 QUEUED（真机实测事故，
-     * 本用例即该事故的回归锚）。
+     * QUEUED 记录本身不表示请求已在执行，不得因此阻止正常认领。
      */
     @Test
     fun claimingIsBlockedOnlyWhileARequestWithTheSameIdIsGenuinelyInFlight() {

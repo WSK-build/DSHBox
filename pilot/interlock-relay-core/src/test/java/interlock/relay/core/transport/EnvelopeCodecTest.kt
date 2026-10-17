@@ -146,7 +146,7 @@ class EnvelopeCodecTest {
 
     /**
      * ask 的形状闸：问题/选项非空且有长度上限、选项严格 2..3 个、超时夹进 5s..120s。
-     * 卡面一屏放不下超长文案，与其截成半句话不如当场拒绝；这里逐支钉住。
+     * 验证超长文案的拒绝分支，防止呈现不完整的审批内容。
      */
     @Test
     fun askShapeIsValidatedAndTimeoutClamped() {

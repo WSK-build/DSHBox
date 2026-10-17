@@ -69,9 +69,8 @@ object DebUnpackInstaller {
         return "echo $MARK_CONTROL; " +
             // 字段名必须显式列出（不带字段名时本环境的 dpkg-deb 不输出内容）；
             // 且必须把 TMPDIR 指到 guest 的 /tmp：`-f` 会把控制区解到临时目录，
-            // 而宿主注入的环境里 TMPDIR 在 rootfs 内并不存在，届时它会失败并只往 stderr 抱怨
-            // （真机实测：报告里控制字段区为空，而解包本身成功）。
-            // 这里**不**屏蔽 stderr：失败原因要落进报告，便于下次一眼看清。
+            // 应用侧 TMPDIR 在 rootfs 内可能不存在，需使用 guest 内的临时目录。
+            // 保留 stderr，使字段读取失败原因进入报告。
             "TMPDIR=/tmp dpkg-deb -f $q Package Version Architecture; " +
             "echo $MARK_ENTRIES; " +
             "dpkg-deb -c $q 2>/dev/null | wc -l; " +

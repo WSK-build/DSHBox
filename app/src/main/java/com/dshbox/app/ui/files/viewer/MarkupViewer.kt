@@ -172,7 +172,7 @@ private fun currentPreviewText(
 }
 
 /** Markdown 预览（Markwon core + ext-tables → Spannable → TextView，自带滚动；Spanned 按内容缓存）。
- *  返工 #3：① 表格经 `io.noties.markwon:ext-tables` GFM 扩展渲染（Markwon core 不含表格）；
+ *  ① 表格经 `io.noties.markwon:ext-tables` GFM 扩展渲染（Markwon core 不含表格）；
  *  ② movementMethod 用 LinkMovementMethod——链接可点（URLSpan 默认经系统浏览器打开，
  *  与 HTML 外链口径一致）。数学公式/LaTeX 不在 Markwon core 范围，列 1.2.x 评估。 */
 @Composable
@@ -210,9 +210,9 @@ private fun MarkdownPreview(text: String, modifier: Modifier = Modifier) {
  * 主线程快照（[contentProvider] 只在 factory 调用一次）；实例随预览进入/离开组合
  * 创建/销毁，重新进入即拿到最新内容。
  *
- * 返工 #3：PathHandler 按请求路径解析**同目录真实文件**（`<img src="x.png">` 等相对
+ * PathHandler 按请求路径解析同目录真实文件（`<img src="x.png">` 等相对
  * 资源可渲染，扩展名 → MIME 映射；越界/不存在回退主页快照）；
- * 返工 #4：虚拟域内导航放行；http/https 外链用系统浏览器打开（用户显式点击才触发，
+ * 虚拟域内导航放行；http/https 外链用系统浏览器打开（用户显式点击才触发，
  * 且仅把 URL 交给系统，本视图不加载、仍禁网）；其余 scheme 一律拦截。
  */
 @Composable
@@ -302,7 +302,7 @@ private fun WebPreview(
                 }
                 // ③ 无 addJavascriptInterface
                 webViewRef = this
-                // 返工 D：文件名须路径编码——空格/#/?/中文未编码时 URL 解析异常致预览空白
+                // 对文件名进行路径编码，避免空格、分隔符和中文影响 URL 解析。
                 // （用 Uri.encode 而非 URLEncoder：后者把空格编成 +，属表单语义非路径语义）
                 loadUrl("https://$WEB_VIRTUAL_DOMAIN/dshbox-doc/${android.net.Uri.encode(file.name)}")
             }

@@ -18,7 +18,7 @@ import org.junit.Test
  *    少探这一层就永远读不到宿主版本；
  * 2. **BOM**：随包的桩清单带 UTF-8 BOM，`org.json` 会直接抛异常。
  *
- * 另外钉住"取不到声明"与"声明为空"的区别：前者是 UNAVAILABLE（我们没读到），
+ * 验证无法读取声明与声明为空的区别：前者是 UNAVAILABLE，
  * 后者才是 UNDECLARED（插件没说）。
  */
 class HostCompatCheckerTest {

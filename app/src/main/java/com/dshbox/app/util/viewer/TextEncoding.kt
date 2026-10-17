@@ -61,7 +61,7 @@ object TextEncoding {
         if (head.all { (it.toInt() and 0x80) == 0 }) return Detection(TextCharset.UTF_8, 0)
 
         // 3. UTF-8 严格校验（REPORT：非法序列抛异常即否决）。
-        // 返工修正 #7：采样窗口尾部可能切断多字节序列（8KB 边界）——先裁掉尾部
+        // 采样窗口尾部可能切断多字节序列（8KB 边界），先裁掉尾部
         // 不完整序列再校验，否则合法 UTF-8 会被误否决、进而误判 GBK。
         if (isValidUtf8(trimTruncatedUtf8Tail(head))) return Detection(TextCharset.UTF_8, 0)
 
@@ -164,11 +164,11 @@ object TextEncoding {
 
     /** 解码结果：[text] 为解码文本；[lossy] = true 表示存在无法解码的字节序列
      *  （已以 U+FFFD 呈现，原字节不可还原）。**有损结果禁止直接编辑保存**——
-     *  编辑后的文本再编码回文件会用替换符永久覆盖原字节（返工 P1 护栏）。 */
+     *  编辑后的文本再编码回文件会用替换符永久覆盖原字节。 */
     data class DecodedText(val text: String, val lossy: Boolean)
 
     /**
-     * 带有损标记的解码（返工 P1）：先以 REPORT 严格试解，抛异常（存在非法/不可映射
+     * 带有损标记的解码：先以 REPORT 严格试解，抛异常（存在非法/不可映射
      * 序列）则降级 REPLACE 解码并标记 lossy。典型触发：探测兜底判 UTF-8 的未知编码
      * 文件（Shift_JIS、ISO-8859-1、EUC-KR 等）。UI 收到 lossy 须禁编辑并常驻警告，
      * 仅放行编码切换与另存。
@@ -254,8 +254,7 @@ object TextEncoding {
                 else -> i++
             }
         }
-        // 返工修正 #6：无任何换行（三者全 0，含空文件）固定 LF——
-        // 原「crlf >= lf && crlf >= cr」在三者全 0 时会落到 CRLF，与注释矛盾
+        // 无任何换行（三者全 0，含空文件）时默认使用 LF。
         val style = when {
             crlf == 0 && lf == 0 && cr == 0 -> NewlineStyle.LF
             crlf >= lf && crlf >= cr -> NewlineStyle.CRLF

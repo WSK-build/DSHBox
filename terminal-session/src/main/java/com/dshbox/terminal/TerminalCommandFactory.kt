@@ -46,19 +46,32 @@ object TerminalCommandFactory {
         // workspace (see SandboxService.provisionDshCliShim).
         paths.dshDir?.takeIf { it.isDirectory }?.let { add("--bind=${it.absolutePath}:/opt/dshapp/runtime") }
         paths.dshShimDir?.takeIf { it.isDirectory }?.let { add("--bind=${it.absolutePath}:/opt/dshbox") }
-        // 工具链缓存挂载点：pnpm 的 store 与 corepack 缓存都指到这里，避免它们按默认位置
-        // 落进工作区（可见）或 base 层（不可见且清理扫不到）。宿主目录由 app 侧 mkdirs。
+        // 工具链缓存统一绑定到 /opt/dshbox-cache，应用侧目录在绑定前创建。
         paths.guestCacheDir?.let {
             it.mkdirs()
             add("--bind=${it.absolutePath}:/opt/dshbox-cache")
         }
-        // 手机助手入口：宿主侧目录绑到 guest 的 /opt/pilot。入口脚本 `bin/pilot` 与
-        // 信箱目录由宿主在启动时物化（RelayRuntime.start），绑上之后终端里才敲得到
-        // `pilot`。首次绑定时目标目录还不存在，故随绑定 mkdirs 创建——宿主尚未铺过
-        // 资产时它就是个空目录，不影响会话。
+        // 手机助手目录绑定到 /opt/pilot，入口脚本及信箱由 RelayRuntime.start 生成。
+        // 绑定前创建应用侧目录；资产尚未生成时允许绑定空目录。
         paths.pilotDir?.let {
             it.mkdirs()
             add("--bind=${it.absolutePath}:/opt/pilot")
+        }
+        paths.browserDir?.let {
+            if (it.isDirectory || it.mkdirs()) {
+                add("--bind=${it.absolutePath}:/opt/browser")
+            }
+        }
+        // 共享区：内建 DSHBox 与用户挂载 → guest `/root/share/<别名>`（与网页端 DSH、
+        // guest 命令同一组挂载点）。目录缺失的条目跳过；挂载点先在 base 镜像里预建，
+        // 不依赖 PRoot 补建多级目录。
+        val shareBinds = paths.shareBinds.filter { (name, dir) -> name.isNotBlank() && dir.isDirectory }
+        if (shareBinds.isNotEmpty()) {
+            val guestShareRoot = File(File(paths.debianRootfs, "root"), "share").apply { mkdirs() }
+            shareBinds.forEach { (name, dir) ->
+                File(guestShareRoot, name).mkdirs()
+                add("--bind=${dir.absolutePath}:/root/share/$name")
+            }
         }
         // Shadow kernel-restricted /proc files (Android 16 SELinux denies
         // /proc/stat etc. to untrusted_app) with readable fabricated sources.

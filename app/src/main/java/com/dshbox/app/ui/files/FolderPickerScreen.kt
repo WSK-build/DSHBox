@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 // 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.CreateNewFolder
 // 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
+import com.dshbox.app.common.Constants
 import com.dshbox.app.util.FileEntry
 import com.dshbox.app.util.Layer
 import com.dshbox.app.util.LayerRoots
@@ -61,6 +63,9 @@ import com.dshbox.app.util.PathMapper
 import com.dshbox.app.util.layerOf
 import com.dshbox.app.util.sanitizeFileName
 import com.dshbox.app.util.scanDirectory
+import com.dshbox.app.util.shareCrumbsOf
+import com.dshbox.app.util.shareEntriesOf
+import com.dshbox.app.util.shareNamespaceParentOf
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -70,12 +75,13 @@ import androidx.compose.ui.res.vectorResource
 import com.dshbox.app.common.R as CommonR
 
 /**
- * 移动目标选择器（覆盖式全屏二级页）。
+ * 移动目标选择器（覆盖式全屏二级页）。同一页面兼作外部分享导入的落点选择器，
+ * 两处只有标题与确认文案不同（由 [titleRes] / [confirmPluralRes] 传入）。
  *
- * - 顶栏：沙盒/工作区分段切换（[SegmentedSwitch]）+ 面包屑（[Breadcrumb]）；
+ * - 顶栏：根视图控件（[RootPicker] + 下拉面板，与文件页左上角同一套）+ 面包屑（[Breadcrumb]）；
  * - 主体：仅显示文件夹（文件隐藏），点击进入；
  * - 源自身/源子孙目录：置灰、不可进入（防环可视化）；系统绑定目录同样置灰（禁止作为目标）；
- * - 底部主按钮「移动到当前文件夹（N 项）」+ 次按钮「新建文件夹」（名称消毒 + 风险检查）；
+ * - 底部主按钮「移动到当前文件夹（N 项）」/「导入到当前文件夹（N 项）」+ 次按钮「新建文件夹」（名称消毒 + 风险检查）；
  * - 目标落点经 PathMapper 重定向时，确认按钮下方小字提示真实落点。
  */
 @Composable
@@ -83,7 +89,14 @@ internal fun FolderPickerScreen(
     mapper: PathMapper,
     sandboxRoot: File,
     workspaceRoot: File,
+    /** 共享区命名空间根（虚拟目录；自身不是落点，只有其条目可作目标）。 */
+    shareNamespace: File,
+    /** 共享区条目（内建 DSHBox + 用户挂载；与文件页 / guest 绑定同口径）。 */
+    shareEntries: List<Pair<String, File>>,
+    /** 共享区是否就绪（未授权 / 未创建时不列出该根视图）。 */
+    shareAvailable: Boolean,
     layerRoots: LayerRoots,
+    /** 待处理条目数（移动与外部导入共用，只用于计数的复数文案）。 */
     moveCount: Int,
     /** 源中为目录的物理路径（防环置灰用）。 */
     sourceDirs: List<File>,
@@ -91,19 +104,38 @@ internal fun FolderPickerScreen(
     sandboxRunning: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (targetLogical: File) -> Unit,
+    /** 宿主页签是否活跃：二级页随页签常驻组合，失活时交还返回键给当前活跃页/系统。 */
+    backEnabled: Boolean = true,
     modifier: Modifier = Modifier,
+    /** 标题文案：默认移动语义，外部分享导入传导入语义。 */
+    titleRes: Int = R.string.files_picker_title,
+    /** 确认按钮文案：默认移动语义，外部分享导入传导入语义。 */
+    confirmPluralRes: Int = R.plurals.files_picker_confirm,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var rootMode by remember { mutableIntStateOf(0) }
-    val root = if (rootMode == 0) sandboxRoot else workspaceRoot
-    val rootLabel = if (rootMode == 0) {
-        stringResource(R.string.files_root_sandbox)
-    } else {
-        stringResource(R.string.files_root_workspace) + "  /root/projects"
+    /** 根视图下拉面板显隐（与文件页左上角控件同一套交互）。 */
+    var showRootMenu by remember { mutableStateOf(false) }
+    val root = when (rootMode) {
+        1 -> workspaceRoot
+        2 -> shareNamespace
+        else -> sandboxRoot
+    }
+    val rootLabel = when (rootMode) {
+        1 -> stringResource(R.string.files_root_workspace) + "  /root/projects"
+        2 -> stringResource(R.string.files_root_share) + "  " + Constants.SHARE_AREA_GUEST_DIR
+        else -> stringResource(R.string.files_root_sandbox)
+    }
+    val rootName = when (rootMode) {
+        1 -> stringResource(R.string.files_root_workspace)
+        2 -> stringResource(R.string.files_root_share)
+        else -> stringResource(R.string.files_root_sandbox)
     }
     var currentDir by remember { mutableStateOf(root) }
+    /** 命名空间层不是真实落点：既不能作为目标，也不允许在此新建文件夹。 */
+    val atNamespaceRoot = rootMode == 2 && currentDir.absolutePath == shareNamespace.absolutePath
     var dirs by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
@@ -113,17 +145,33 @@ internal fun FolderPickerScreen(
 
     // 切换视图时目录重置到对应根
     LaunchedEffect(rootMode) {
-        currentDir = if (rootMode == 0) sandboxRoot else workspaceRoot
+        currentDir = when (rootMode) {
+            1 -> workspaceRoot
+            2 -> shareNamespace
+            else -> sandboxRoot
+        }
+    }
+
+    // 共享区在进入后失效（如授权被撤销）：退回沙盒视图，避免停留在空的虚拟根。
+    LaunchedEffect(shareAvailable) {
+        if (!shareAvailable && rootMode == 2) rootMode = 0
     }
 
     fun refresh() {
         val dir = currentDir
         val isTop = rootMode == 0 && dir.absolutePath == sandboxRoot.absolutePath
         scope.launch {
-            val all = withContext(Dispatchers.IO) { scanDirectory(dir, mapper, isTop) }
+            val all = withContext(Dispatchers.IO) {
+                // 命名空间层是虚拟目录：只按路径判定（不依赖 rootMode 的瞬时一致性），列出条目集合。
+                if (dir.absolutePath == shareNamespace.absolutePath) {
+                    shareEntriesOf(shareEntries)
+                } else {
+                    scanDirectory(dir, mapper, isTop).entries
+                }
+            }
             if (dir.absolutePath != currentDir.absolutePath) return@launch
             // 本页只列目录；目录不受条数上限影响（见 scanDirectory），故无需提示截断。
-            dirs = all.entries.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
+            dirs = all.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
         }
     }
 
@@ -131,9 +179,14 @@ internal fun FolderPickerScreen(
     // 叠加 rootMode key 会导致每次切视图先用旧目录多做一次被丢弃的全量扫描
     LaunchedEffect(currentDir) { refresh() }
 
-    BackHandler {
+    BackHandler(enabled = backEnabled) {
         if (currentDir.absolutePath != root.absolutePath) {
-            currentDir = currentDir.parentFile ?: root
+            // 共享区是虚拟命名空间：落点根回到命名空间，不能直接 parentFile 上溯。
+            currentDir = if (rootMode == 2) {
+                shareNamespaceParentOf(currentDir, shareNamespace, shareEntries)
+            } else {
+                currentDir.parentFile ?: root
+            }
         } else {
             onDismiss()
         }
@@ -157,7 +210,7 @@ internal fun FolderPickerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(PageBg())
-            // 返工 #7：覆盖页吞噬点击——空白处不穿透到底层文件列表
+            // 覆盖页消费点击，防止空白处触发底层文件列表。
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
@@ -172,7 +225,7 @@ internal fun FolderPickerScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = stringResource(R.string.files_picker_title),
+                    text = stringResource(titleRes),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     color = TextPrimary(),
@@ -193,15 +246,55 @@ internal fun FolderPickerScreen(
                     .padding(horizontal = 24.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SegmentedSwitch(
-                    selected = rootMode,
-                    options = listOf(
-                        stringResource(R.string.files_root_sandbox),
-                        stringResource(R.string.files_root_workspace),
-                    ),
-                    onSelect = { rootMode = it },
-                    modifier = Modifier.weight(1f),
-                )
+                // 与文件页左上角同一套根视图控件（单控件 + 无尾箭头 + 下拉面板）
+                Box {
+                    RootPicker(
+                        label = rootName,
+                        expanded = showRootMenu,
+                        onClick = { showRootMenu = !showRootMenu },
+                    )
+                    DropdownMenu(
+                        expanded = showRootMenu,
+                        onDismissRequest = { showRootMenu = false },
+                    ) {
+                        RootMenuItem(
+                            label = stringResource(R.string.files_root_sandbox),
+                            selected = rootMode == 0,
+                            onClick = {
+                                showRootMenu = false
+                                rootMode = 0
+                            },
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 6.dp),
+                            thickness = 0.5.dp,
+                            color = DividerColor(),
+                        )
+                        RootMenuItem(
+                            label = stringResource(R.string.files_root_workspace),
+                            selected = rootMode == 1,
+                            onClick = {
+                                showRootMenu = false
+                                rootMode = 1
+                            },
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 6.dp),
+                            thickness = 0.5.dp,
+                            color = DividerColor(),
+                        )
+                        if (shareAvailable) {
+                            RootMenuItem(
+                                label = stringResource(R.string.files_root_share),
+                                selected = rootMode == 2,
+                                onClick = {
+                                    showRootMenu = false
+                                    rootMode = 2
+                                },
+                            )
+                        }
+                    }
+                }
             }
             Row(
                 modifier = Modifier
@@ -215,6 +308,12 @@ internal fun FolderPickerScreen(
                     rootLabel = rootLabel,
                     currentDir = currentDir,
                     onNavigate = { currentDir = it },
+                    // 共享区是虚拟命名空间根：parentFile 回溯走不通，用条目集合自建面包屑。
+                    segmentsOverride = if (rootMode == 2) {
+                        shareCrumbsOf(currentDir, shareNamespace, rootLabel, shareEntries)
+                    } else {
+                        null
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -225,8 +324,7 @@ internal fun FolderPickerScreen(
                 // 「移动到当前文件夹」按钮挤出可视区（无子目录的文件夹正是最该可落地的目标，
                 // 「点进去落地不了、下方没有按钮」即由此而来）
                 Column(
-                    // weight 只控高度；须补 fillMaxWidth，否则宽度仅包内容、在默认左对齐
-                    // 的 Column 里整体偏左（用户反馈「文字图标靠中间偏左」）
+                    // weight 仅控制高度；填满可用宽度以使空状态内容水平居中。
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
@@ -285,6 +383,7 @@ internal fun FolderPickerScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // 次按钮：新建文件夹
                     IconButton(
+                        enabled = !atNamespaceRoot,
                         onClick = {
                             val layer = layerOf(mapper.resolvePhysical(currentDir).absolutePath, layerRoots)
                             if (riskLevelOfLayer(layer) != null) {
@@ -306,11 +405,12 @@ internal fun FolderPickerScreen(
                     // 主按钮：移动到当前文件夹
                     TextButton(
                         shape = MaterialTheme.shapes.medium,
+                        enabled = !atNamespaceRoot,
                         onClick = { onConfirm(currentDir) },
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(
-                            text = pluralStringResource(R.plurals.files_picker_confirm, moveCount, moveCount),
+                            text = pluralStringResource(confirmPluralRes, moveCount, moveCount),
                             color = PrimaryGreen,
                         )
                     }

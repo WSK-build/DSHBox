@@ -3,6 +3,7 @@ package com.dshbox.app.ui.settings
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -27,6 +28,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -46,9 +48,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,6 +79,7 @@ import com.dshbox.app.ui.theme.AppLanguage
 import com.dshbox.app.ui.theme.AppLocaleState
 import com.dshbox.app.ui.theme.AppThemeState
 import com.dshbox.app.ui.theme.ThemeMode
+import com.dshbox.app.common.R as CommonR
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -92,6 +97,8 @@ fun SettingsScreen(
     sandboxRunning: Boolean,
     dshReady: Boolean,
     dshActive: Boolean,
+    // 设置主层级的返回动作：标题栏返回箭头与系统返回键共用，由宿主接线回首页。
+    onBack: () -> Unit = {},
     // 首页「运行环境缺失」卡直达在线获取（MainScreen 置 true 并切到设置页；
     // 本页消费后回调复位）。
     pendingOnlineImport: Boolean = false,
@@ -101,6 +108,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val sandboxManager = (context.applicationContext as DshApp).container.sandboxManager
     var showDiagnostics by remember { mutableStateOf(false) }
+    var showLicenses by remember { mutableStateOf(false) }
     var showBatteryDialog by remember { mutableStateOf(false) }
     // 在线导入运行环境包（base/node 退出 APK 的主链路）：0=隐藏 1=入口页 2=Linux层 3=node层。
     var onlineImportPage by remember { mutableStateOf(0) }
@@ -266,6 +274,8 @@ fun SettingsScreen(
     }
 
     // 在线导入运行环境包：入口页 → 两个独立子页（Linux 层 / node 层），覆盖式挂载。
+    // backEnabled 跟随 isActive：设置页签被切走时子页仍常驻组合（keepAlive），
+    // 但其返回接管必须关闭，否则不可见子页会在其它页签上吞掉一次返回键。
     when (onlineImportPage) {
         1 -> {
             OnlineImportHubScreen(
@@ -273,6 +283,7 @@ fun SettingsScreen(
                 onOpenDebian = { onlineImportPage = 2 },
                 onOpenNode = { onlineImportPage = 3 },
                 modifier = modifier,
+                backEnabled = isActive,
             )
             return
         }
@@ -280,6 +291,7 @@ fun SettingsScreen(
             OnlineDebianImportScreen(
                 onBack = { onlineImportPage = 1 },
                 modifier = modifier,
+                backEnabled = isActive,
             )
             return
         }
@@ -287,6 +299,7 @@ fun SettingsScreen(
             OnlineNodeImportScreen(
                 onBack = { onlineImportPage = 1 },
                 modifier = modifier,
+                backEnabled = isActive,
             )
             return
         }
@@ -297,7 +310,13 @@ fun SettingsScreen(
         DshUpdateScreen(
             onBack = { showDshOnlineUpdate = false },
             modifier = modifier,
+            backEnabled = isActive,
         )
+        return
+    }
+
+    if (showLicenses) {
+        LicensesScreen(onBack = { showLicenses = false }, backEnabled = isActive, modifier = modifier)
         return
     }
 
@@ -306,9 +325,15 @@ fun SettingsScreen(
             sandboxReady = sandboxRunning,
             onBack = { showDiagnostics = false },
             modifier = modifier,
+            backEnabled = isActive,
         )
         return
     }
+
+    // 主层级的系统返回接管：无它时返回键落到 Activity 默认行为（直接结束应用）。
+    // 仅在页签激活时启用——设置页常驻组合，切走后不得吞掉其它页签的返回；
+    // 子页仍按各自 backEnabled 门控，且组合在本行之前提前 return，优先级更高。
+    BackHandler(enabled = isActive) { onBack() }
 
     Column(
         modifier = modifier
@@ -317,6 +342,20 @@ fun SettingsScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        // 标题栏：返回箭头 + 「设置」。画法与子页顶栏一致（IconButton + ic_arrow_left）。
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = ImageVector.vectorResource(CommonR.drawable.ic_arrow_left),
+                    contentDescription = stringResource(R.string.diagnostics_back),
+                )
+            }
+            Text(
+                text = stringResource(R.string.tab_settings),
+                style = MaterialTheme.typography.titleLarge,
+            )
+        }
+
         SettingsSection(title = stringResource(R.string.settings_section_sandbox)) {
             SettingsRow(
                 title = stringResource(R.string.settings_sandbox_runtime_env),
@@ -391,7 +430,13 @@ fun SettingsScreen(
         SettingsSection(title = stringResource(R.string.settings_section_dsh)) {
             SettingsRow(
                 title = stringResource(
-                    if (dshReady) R.string.home_dsh_ready else R.string.home_dsh_stopped,
+                    when {
+                        dshReady -> R.string.home_dsh_ready
+                        // 启动中与首页卡片同一映射：dshActive 覆盖 STARTING/RUNNING，
+                        // 减去 READY 即「启动中」。
+                        dshActive -> R.string.home_dsh_starting
+                        else -> R.string.home_dsh_stopped
+                    },
                 ),
                 value = Constants.DSH_BASE_URL,
             )
@@ -549,9 +594,14 @@ fun SettingsScreen(
         }
 
         SettingsSection(title = stringResource(R.string.settings_section_about)) {
+            SettingsActionRow(
+                title = stringResource(R.string.settings_open_source_licenses),
+                onClick = { showLicenses = true },
+            )
+            SettingsDivider()
             SettingsRow(
                 title = stringResource(R.string.app_name),
-                // 显示 v 前缀，与版本号写法统一（BuildConfig.VERSION_NAME="1.1.0"）。
+                // 从构建配置读取应用版本，统一显示 v 前缀。
                 value = "v${BuildConfig.VERSION_NAME}",
             )
         }

@@ -43,7 +43,7 @@ class ArtifactOutTest {
         assertEquals(ArtifactOut.MAX_AGE_MS, jsNumber(script, "OUT_MAX_AGE_MS"))
         assertEquals(ArtifactOut.RECENT_GRACE_MS, jsNumber(script, "OUT_RECENT_GRACE_MS"))
         // OUT_ROOT 已由脚本从自身位置推导（<entry>/out），不再有可对账的字面量；
-        // 这里钉住它的定义形态，保证推导规则不被改回写死路径。
+        // 验证定义中的路径推导规则，避免退回固定路径。
         assert(script.contains("const OUT_ROOT = path.join(ENTRY_DIR, 'out')")) { "OUT_ROOT must stay derived from the entry directory" }
     }
 

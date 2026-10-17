@@ -13,9 +13,9 @@
 [![Community Discussion](https://img.shields.io/badge/DSH-Community%20Discussion-8250DF?logo=github)](https://github.com/deepseek-ai/deepseek-harness/discussions/5801)
 [![Website](https://img.shields.io/badge/Website-Official%20Site-10A37F?logo=github&logoColor=white)](https://wsk-build.github.io/DSHBox/)
 
-**DSHBox** is an open-source app that runs the full **DeepSeek Harness (DSH)** locally on Android phones and tablets. It integrates and coordinates DSH, PRoot, WebView, Debian and Node.js, together with a terminal, a file manager and other tools, into a personal AI workbench. No root access, and no separate Termux installation.
+**DSHBox** is an open-source app that runs the full **DeepSeek Harness (DSH)** locally on Android phones and tablets. It brings DSH, PRoot, WebView, Debian and Node.js together with a terminal, file manager, AI browser assistant and phone assistant to form a personal AI workbench. No root access or separate Termux installation is required.
 
-**DSHBox** 是一个可在安卓手机和平板上本机运行完整 **DeepSeek Harness（DSH）** 的开源应用。它将 DSH、PRoot、WebView、Debian、Node.js 集成协调在一起，配套终端、文件管理等工具，组成个人 AI 工作台，无需 Root，也无需单独安装 Termux。
+**DSHBox** 是一个可在安卓手机和平板上本机运行完整 **DeepSeek Harness（DSH）** 的开源应用。它将 DSH、PRoot、WebView、Debian、Node.js 集成协调在一起，配套终端、文件管理、AI 浏览器助手与手机助手等工具，组成个人 AI 工作台，无需 Root，也无需单独安装 Termux。
 
 ---
 
@@ -26,22 +26,22 @@
 | 系统要求 | Android 10+ · ARM64 |
 | 权限 | 无需 Root · 无需 Termux |
 | 内置 | DSH 层 · WebView · PRoot（Debian 与 Node.js 改为首次运行时多镜像源检测在线获取或离线导入） |
-| 安装包 | 约 111 MB（Release） |
-| 首次准备 | 新用户遵循安装引导，联网多镜像源检测获取运行环境（精简 Debian 层 + Node.js 层），或离线导入整包 |
+| 安装包 | 以 Release 页面所附 APK 为准 |
+| 首次准备 | 按分步引导安装精简 Debian 与 Node.js，支持多镜像源检测、失败重试或离线导入；引导页提供 WebView 版本探测与兼容性提示 |
+| **特别注意** | 由于 DSH 官方对系统 WebView 内核要求较高，较低版本可能导致白屏、工作区加载异常等问题。遇到此类情况，可通过谷歌商店更新系统 WebView，或咨询 AI，选择适合自己设备的 WebView 版本进行升级或替换。 |
 
 **[下载最新 APK](https://github.com/WSK-build/DSHBox/releases/latest)** → 安装 → 启动应用 → 按引导获取运行环境（在线多镜像源，或沿用离线导入）→ 打开 DSH。
----
-**特别注意：由于DSH官方对系统webview内核要求较高，较低版本会导致白屏、工作区加载异常等一系列问题，此时可在谷歌商店或者咨询AI选择适合自己设备的合适版本进行升级替换**
+
 ---
 
 ## 更新记录
 
-当前版本 **v1.4.0**：**手机助手、插件生态、运行环境在线获取与深度适配 DSH 0.2.0-rc.2**
+当前版本 **v1.5.0**（2026-10-17）：**AI 浏览器助手·系统文件共享区·DSH界面交互升级。**
 
-1. 新增**手机助手（DshPilot）**，在内嵌沙箱与安卓应用层之间建立信箱通道，让沙箱内的 DSH 安全可控地操控手机（39 项操控能力；无障碍 / Shizuku 特权 / 平台直连 三类执行通路，前台 / 后台虚拟屏两种执行模式，统一受「禁止 / 询问审批 / 完全访问」约束，另有悬浮窗提问交互）；
-2. 新增**插件管理面板与插件市场**，把随包 DSHBox 自制插件、DSH 官方插件、用户自制插件与第三方插件集中管理，并提供「绝对安全模式」与终端 Agent opencode（一键安装 / 更新 / 卸载）来帮助解决插件问题；
-3. **运行环境不再随包内嵌**，设置页可分别对 **Node 层 / 精简 Debian 层**（「在线获取运行环境」）与 **DSH 层**（「更新 DSH（在线）」）做多镜像源在线检测、更新与重置（离线导入入口保留），**APK 由约 236 MB 降至约 111 MB**；
-4. **深度适配 DSH 0.2.0-rc.2**，并开启拍照与录像、语音输入、右侧边栏终端与右侧边栏内嵌浏览器等。
+1. 新增 **Browser 与 AI 网页助手**，通过 `browser-use` 插件和沙箱 CLI 开放 24 项工具，支持网页操作、截图、元素/区域反馈、本地网页预览与受控高级调试；与操作手机原生应用的 Pilot 独立分工；
+2. 新增**系统文件共享区**，创建或沿用手机公共存储中的 DSHBox 文件夹，并可挂载其他选定目录；取消挂载不删除源文件，卸载 App 不会自动删除公共共享目录内容；
+3. **DSH 界面交互升级**：全屏显示、悬浮快捷切换、附件图标与底部来源面板，修复多文件上传、返回键断点及键盘异常弹起；首页重新布局，设置入口迁至右上角；
+4. 新增**分步安装引导与 WebView 版本提示**、外部文件接收和文件对外分享，完善首次安装插件实际装配、DSH 启动状态及 Pilot 主题跟随，首页入口由 DshPilot 更名为 Pilot。
 
 各版本完整变更见 **[CHANGES.md](CHANGES.md)**。
 
@@ -52,14 +52,26 @@
 ### DeepSeek Harness 全内嵌
 
 - DSH 随 APK 内置，首启按**版本仲裁**装配到 `runtime-current/dsh`：已装较新则保留，换层时旧层备份到 `previous/dsh`（单份），不触碰用户数据
-- `DSH` 标签页内嵌 WebView 打开 `http://127.0.0.1:3080`：自动解析 launchToken 完成会话认证、移动 UA、键盘自适应、双指缩放、悬浮刷新。同时，首页保留一键用系统浏览器打开 DSH。
+- `DSH` 标签页内嵌 WebView 打开 `http://127.0.0.1:3080`：自动解析 launchToken 完成会话认证、移动 UA、键盘自适应、双指缩放；全屏布局配合可拖动悬浮球，可刷新或快速切换到首页、文件、终端和 Browser。同时，首页保留一键用系统浏览器打开 DSH。
   
   v1.4.0 起，页面刷新一律按**当前 token** 重新加载：DSH 换过 token（重启或健康循环拉起）后，页面不会卡在「手动刷新都刷新不回来」的状态。
 - **运行期硬链接兼容垫片**：安卓应用数据分区（FBE/FUSE）拒绝硬链接，而 DSH 用 `link()` 作为「不可覆盖地发布一个文件」的原语，导致会话持久化、文件工具、附件发布失败。本版改为启动时以 `node --import` 预加载垫片，在运行期替换 `node:fs/promises` 的 `link`——被平台拒绝时退化为语义等价的内容拷贝（保留源文件、保留「不覆盖」语义、补齐权限位）。**DSH 源码一个字节都不改**，因此不受上游重构影响，也不存在补丁锚点漂移
 - **跨 WebView 内核版本适配**：部分 WebView 版本对非标准 scheme（`dsh-resource://`）不解析 authority，`hostname` 取到空串 → DSH 取不到协议名，右栏点文件报「文件资源服务不可用」。插件内做**运行期能力探测 + 范围锁定**：只在探测到异常时介入，正常内核零改动
 - 前台服务通知带「启动 / 重启 / 关闭」快捷操作
 
-### 手机助手（DshPilot，v1.4.0 新增）
+### AI 浏览器助手（Browser，v1.5.0 新增）
+
+独立的内置浏览器工作区，通过随包 `browser-use` 插件与沙箱 CLI 向 DSH 开放 **24 项工具**。新用户默认装配，可在首页 Cordis 页签的「DSH浏览器自动化」开关中独立控制。
+
+- **网页操作**：搜索、导航、多页面管理、读取内容、定位元素、点击、输入、滚动及条件等待；搜索引擎可选必应、谷歌和百度，默认必应。
+- **选区反馈与本地预览**：选取网页元素或区域，附截图和评论提交给已绑定的 DSH 会话；沙箱中的 HTML 等文件可通过 CLI 启动本地静态服务，也可登记已有服务，在 Browser 中预览并反馈修改意见。
+- **截图与调试**：支持前台和后台网页截图；普通后台截图失败时，已开启高级调试才会串行尝试 CDP 后备，否则返回明确提示。高级调试提供 DOM、控制台、脚本求值及网络抓取、HAR 导出等能力，请求拦截、修改与重放按独立授权开放。
+- **文件与记录**：持久历史、收藏、多页面和下载管理；AI 可准备上传文件，经用户批准后交给网页。任务记录可查看、编辑、删除并向 AI 发送续接摘要。
+- **控制权与界面**：用户接管 AI 操作前确认，AI 控制关闭时可申请授权；支持主题与六语跟随、移动/桌面/宽屏模式、可设置的闲置关闭时间，以及点击 AI 标记快速返回 DSH。
+
+Browser 负责**内置网页**，Pilot 负责**手机原生应用**，由 DSH 选择调用。复杂跨页面任务恢复、长时流式响应及部分媒体、站点兼容场景仍待完善，不保证所有任务均可全自动完成。
+
+### 手机助手（Pilot，v1.4.0 新增）
 
 内建 **39 项手机操控能力表**，并在内嵌沙箱与安卓应用层之间建立一条**信箱通道**（文件投递，无网络、无共享内存），让沙箱内的 DSH 安全可控地操控与连接手机。采用「UI 适配 + 内核平台」两层结构嵌入；内核以 **Apache-2.0** 独立发布于 [interlock-relay](https://github.com/WSK-build/interlock-relay) 仓库，本仓库调用并做 UI 层适配。
 
@@ -80,18 +92,20 @@
 
 ### 插件管理与插件市场（v1.4.0 新增）
 
-首页新增入口，插件相关能力集中到一页：
+从首页 Cordis 页签进入，插件相关能力集中管理：
 
 | 能力 | 说明 |
 |---|---|
-| 随包自制插件开关 | 「DSH移动端页面适配」（`dsh-mobile-adapt`）与「DSH连接手机」（`mobile-pilot`）两个随包插件，开关显示**真实装配结果**，重启 DSH 生效。 |
+| 随包自制插件开关 | 「DSH移动端页面适配」（`dsh-mobile-adapt`）、「DSH连接手机」（`mobile-pilot`）与「DSH浏览器自动化」（`browser-use`）；新用户默认装配，升级保留明确关闭的设置，装配与更新按 DSH 就绪状态处理。 |
 | DSH 官方插件 | 把上游默认关闭的官方条目做成开关（如右侧边栏内置浏览器） |
 | 绝对安全模式 | 不加载任何第三方插件启动，用于第三方插件导致 DSH 崩溃时恢复启动 |
 | 插件加载记录 | 按启动分段查看插件加载情况，便于排错 |
 | 崩溃修复辅助 | 内置终端 Agent **opencode**，一键安装 / 更新 / 卸载；终端输入 `opencode` 唤起 TUI，用自然语言交互，完成修复 |
-| 插件市场 | 位于 App 层，不受 DSH 更新过快的兼容性问题干扰；按分类浏览与搜索插件，可安装 / 更新 / 删除第三方插件 |
+| 插件市场 | 位于 App 层，提供分类浏览、搜索及第三方插件安装 / 更新 / 删除入口；插件兼容性仍取决于 DSH 版本，相关遗留问题见下方说明 |
 
 插件市场内置 **awesome-dsh-plugin** 与 **[awesome-dsh-mobile-plugins](https://github.com/WSK-build/awesome-dsh-mobile-plugins)** 两大实时数据源，后者为 DSHBox 专为移动端 DSH 插件生态新建的仓库，用户可以提交 PR，共建生态。
+
+> **版本兼容说明**：本版暂不推送插件市场相关修复。上游 Alpha 变更频繁，涉及较多插件调整，插件适配将在 DSH 下一个正式 RC 发布后同步。本版未随包搭载最新 Alpha；现有测试中，可通过设置里的 DSH 在线更新入口升级体验，但回退稳定 RC 后可能出现对话数据相关故障。后续随包版本将跟进最新稳定 RC。
 
 ### DSH 移动端组件适配（v1.4.0）
 
@@ -100,7 +114,7 @@
 | 组件 | 移动端断点 | 处理方式 |
 |---|---|---|
 | 会话持久化 / 文件写入 / 附件发布 | 安卓应用数据分区拒绝硬链接 → EACCES | 运行期垫片替换 `fs/promises.link`，退化为内容拷贝（语义等价，见上） |
-| 附件上传 | WebView 缺 `onShowFileChooser` → 点上传无任何反应 | 原生实现文件选择回调 + 来源菜单（沙箱文件 / 从安卓导入 / 拍照 / 录像） |
+| 附件上传 | WebView 文件选择回调与多选结果需要原生接线 | 原生附件来源面板提供拍照、录像、相册、手机文件、音频、工作区和共享区；收集并去重系统多选结果 |
 | 右栏文件预览 | 非标准 scheme 的 host 解析差异 → 报「文件资源服务不可用」 | 运行期能力探测 + URL 解析兼容层，仅异常内核生效 |
 | 设置面板「打开配置文件」 | 拦截后上游的建文件步骤不再执行 → 全新设备必然失败 | 原生侧补齐物化逻辑（已存在则原样保留，绝不覆盖用户配置） |
 | 上传来源判定 | 隐藏 file input 的 `accept` 哨兵残留会污染 DSH 原生上传 | 结果回填时主动清理 + 插件侧捕获守卫，双保险 |
@@ -110,6 +124,8 @@
 | 右侧边栏终端 | guest 的 `passwd` 缺运行期 uid → Node 的 `os.userInfo()` 报 `ENOENT`，Shell 提示符退化成 `I have no name!` | 运行期把当前 uid 补齐进 guest `passwd`（`GuestUserProvisioner`） |
 | 右侧边栏内嵌浏览器 | 上游默认关闭该官方插件 | 在插件管理面板提供开关，打开即生效（重启 DSH） |
 | 拍照 / 录像 | 上游没有相机入口 | 拦截 `onShowFileChooser` 的 accept 哨兵，改走系统相机 / 录像 |
+
+v1.5.0 进一步补齐设备返回键与 DSH 内部面板的层级衔接，抑制非用户手势引发的自动聚焦，减少键盘异常弹起和页面位移；附件工具行提供直达入口，原生来源面板不依赖移动适配插件即可使用。
 
 ### PRoot 分层运行环境（无需 Root）
 
@@ -126,14 +142,21 @@
 - 每层带 SHA-256 哨兵，启动时逐层校验完整性，损坏可识别、可重装
 - v1.4.0 起，**`base` 与 `node` 两层不再随包内嵌**（APK 内只留 `dsh` 与 `android-side`）：它们由「在线获取运行环境」（精简 Debian 层 / Node.js 层，多镜像源可选、可重置）或「离线导入整包」安装。在线组装出来的层会裁掉非必要语言包与文档等无关组件（即「精简 Debian」），占用更小
 
+### 系统文件共享区（v1.5.0 新增）
+
+- 授权后在手机公共存储创建或沿用 **DSHBox** 文件夹，文件管理、DSH、沙箱与终端可访问同一份本地文件，也便于通过其他应用或电脑传入、取出。
+- 可选定其他系统公共目录，以独立名称挂载到沙箱共享区；文件管理和附件来源面板均提供入口。新挂载按提示重启相关运行会话后生效。
+- **取消挂载只解除关系，不删除源目录或文件**。公共共享目录内容不会随 App 卸载或重装而自动删除；重装后需重新授权，额外挂载关系需重新配置。用户主动删除文件仍会生效。
+
 ### 文件管理（v1.2.0 重点增强）
 
-- **双视图**：工作区 `/root/projects` + 沙盒根（叠加 node、DSH 层），面包屑导航、列表 / 网格、按名称 / 时间 / 大小排序、新建文件夹、多选批量操作
+- **目录与视图**：工作区 `/root/projects`、沙盒根（叠加 node、DSH 层）与共享区入口，面包屑导航、列表 / 网格、按名称 / 时间 / 大小排序、新建文件夹、多选批量操作
 - **新建文件**（v1.4.0 新增）：可在当前目录直接创建空文件
 - **安装到沙箱**（v1.4.0 新增）：选中 `.deb` 可直接解包安装进沙箱
 - **移动到指定文件夹**：全屏目标选择器（沙盒 / 工作区切换、可新建文件夹、源自身及子孙目录置灰防环、跨挂载点落点提示）；冲突三策略（覆盖 / 跳过 / 自动改名 + 应用到其余全部）；同卷 `renameTo` 优先、失败复制兜底（保留权限位 / 时间戳）；「重命名」走同一引擎
 - **导入**：文件多选批量导入、压缩包解压导入，逐件冲突决策、可取消、完成汇总；ZIP 中文名编码修复，加密 zip 明确拒绝
 - **导出**：多选导出到目录（SAF），或打包为 ZIP
+- **外部接收与分享**（v1.5.0 新增）：接收其他应用「分享到」或「用其他应用打开」的文件并选择保存目录，支持多文件与纯文字；文件菜单可直接调起系统分享面板，与导出功能分开
 - **全局搜索**：跨沙盒 + 工作区，同时搜文件名与内容，结果带匹配片段
 - **风险保护**：系统目录 / node / DSH 层 / `.dsh` 分级标注，写操作前强确认
 
@@ -158,7 +181,7 @@
 | 更新 DSH（离线导入） | 单文件层包 `.tar.zst / .tar.gz / .tar / .tgz`（或 zip 内含层包），暂存解压 → 形态校验 → 原子换层，失败不留半成品 |
 | 在线获取运行环境 | 按 **Node 层 / 精简 Debian 层** 分别探测对应镜像源（可达性与延迟）、下载、GPG 验签、裁剪与组装成层；分步进度、可取消，失败按原因分类提示（镜像缺包 / 验签失败 / 空间不足等）；可随时重置任意层 |
 | 离线导入运行环境包 | 整包替换 base / node / android-side，逐层 SHA-256 校验，`previous/` 单份可回滚（详见下文）；v1.4.0 起不随 APK 分发，但仍会在 Release 页面单独提供，与在线获取等效。 |
-| 插件管理 / 插件市场 | 由首页入口进入的独立页面：市场浏览与安装、已安装管理、官方插件开关、绝对安全模式、插件加载记录、崩溃修复辅助（详见上文「插件管理与插件市场」） |
+| 插件管理 / 插件市场 | 由首页 Cordis 页签进入：市场浏览与安装、已安装管理、官方插件开关、绝对安全模式、插件加载记录、崩溃修复辅助（详见上文「插件管理与插件市场」及兼容说明） |
 | 诊断与日志 | DSH / 沙箱 / 访客命令日志各 150 行，可滚动、可导出合并；含 **WebView 真实内核指纹**（提供者 / 版本 / Chromium 主版本 + CSS 能力实机探测） |
 | 用户反馈 | GitHub Star 与问题反馈两条入口，均先弹窗说明再跳转 |
 
@@ -188,11 +211,13 @@
 
 | 标签 | 功能 |
 |---|---|
-| 首页 | 沙箱 / DSH 状态卡片、启动 / 重启/关闭、运行时长、系统浏览器打开 DSH；**DshPilot（手机助手）** 与 **Cordis（插件管理 · 市场）** 入口卡片；新用户缺少运行环境层时的引导 |
-| 文件 | 双视图浏览、移动 / 重命名 / 删除、多选批量、导入 / 导出文件、解压导入的压缩包、导出所选内容为压缩包、查看器 / 编辑器、搜索 / 排序、新建文件 / 文件夹、`.deb` 安装到沙箱 |
-| DSH | 内嵌 WebView 加载 `http://127.0.0.1:3080`（自动认证、键盘自适应、悬浮球刷新） |
+| 首页 | 控制 / Pilot / Cordis 三页签：沙箱与 DSH 状态、启动 / 重启 / 关闭、系统状态、手机助手与插件管理；设置入口位于右上角 |
+| 文件 | 工作区 / 沙盒 / 共享区浏览、移动 / 重命名 / 删除、多选批量、导入 / 导出 / 分享、外部文件接收、查看器 / 编辑器、搜索 / 排序、新建文件 / 文件夹、`.deb` 安装到沙箱 |
+| DSH | 全屏内嵌 WebView 加载 `http://127.0.0.1:3080`，自动认证、键盘自适应，悬浮球提供刷新与模块快捷切换 |
 | 终端 | 多窗口终端、辅助按键栏、控制面板、可直接运行 `dsh` CLI |
-| 设置 | 外观（主题 / 语言）、存储与清理、检查更新 App、DSH 更新（在线 / 离线）、导入运行环境（在线 / 离线）、诊断与日志、用户反馈、关于 |
+| Browser | 内置浏览器与 AI 网页助手、元素 / 区域反馈、本地网页预览、历史 / 收藏 / 下载及调试设置 |
+
+设置已迁至首页右上角，保留外观（主题 / 语言）、存储与清理、App 更新、DSH 与运行环境更新 / 导入、诊断日志、反馈与关于。
 
 ## 从源码构建
 
@@ -205,7 +230,7 @@
 > 运行环境大层**不在本仓库**（见下节），构建前请先获取 `../runtime/`。
 
 ```bash
-./gradlew testDebugUnitTest     # 全量 JVM 单测（v1.4.0 共 1203 例）
+./gradlew testDebugUnitTest     # 全量 JVM 单测
 ./gradlew :app:assembleRelease  # 产物：app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -219,6 +244,7 @@
 | `terminal-view` / `terminal-emulator` | Termux 终端库（v0.118.0，未修改） |
 | `plugin-manager` | 插件管理：装配控制、插件市场（目录取数 / 兼容判定 / 安装守卫）、官方插件开关、绝对安全模式、插件加载记录、崩溃修复辅助（opencode） |
 | `pilot`（`interlock-relay-core` + `dshbox-adapter`） | 手机助手：内核平台层（独立发布仓库，Apache-2.0）+ 本应用的 UI 适配层 |
+| `browser`（`browser-api` / `browser-runtime` / `browser-bridge` / `browser-devtools`） | 浏览器契约、WebView 会话运行时、沙箱工具桥接与受控高级调试；界面由 app 接入 |
 
 运行环境层构建脚本见 `runtime-bundle/`（各层 `tar.zst` 由 `build_base.sh` / `build_node.sh` / `build_android_side.sh` 在 Linux/WSL2 构建）；构建手册见 `docs/BUILD_RUNBOOK.md`，预检脚本 `tools/pipeline_dryrun.sh`。
 
@@ -253,7 +279,9 @@
 - PRoot（GPL-2+）· talloc（LGPL-3+）· Debian rootfs（按各包 Debian 版权文件）
 - DeepSeek Harness / Cordis（MIT）· Node.js（MIT）
 - Termux terminal-emulator / terminal-view（Apache-2.0，v0.118.0 未修改）
-- sora-editor（LGPL-2.1-or-later，aar 未修改）· Markwon（Apache-2.0）· commons-compress（Apache-2.0）· zstd-jni（BSD-3-Clause）
+- sora-editor（LGPL-2.1-or-later，aar 未修改）· Markwon（Apache-2.0）· commons-compress（Apache-2.0）· zstd-jni（JNI 包装层 BSD-2-Clause，Zstandard 内核 BSD-3-Clause）
 - interlock-relay-core（Apache-2.0，手机助手平台层，独立发布，源码随本仓库分发）· Shizuku（MIT，手机助手的 shell 身份执行通路）
+
+三个自有插件 `dsh-mobile-adapt`、`mobile-pilot` 与 `browser-use` 各附完整 LICENSE、NOTICE，并声明为 **GPL-3.0-only**；第三方依赖保留各自原许可。可在「设置 → 关于 → 开源许可」离线查看随包许可，来源与源码重建说明见 [`licenses/README.md`](licenses/README.md)。
 
 **品牌标识不在上述授权范围内。** App 名称、应用图标与应用内自有品牌图形（清单见 [`TRADEMARK.md`](TRADEMARK.md)）由项目权利人独占持有，全部权利保留；未经许可不得用于修改版 / 衍生版，或用于可能造成混淆的标识。

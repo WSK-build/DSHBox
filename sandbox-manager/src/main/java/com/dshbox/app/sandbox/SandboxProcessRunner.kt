@@ -79,8 +79,14 @@ class SandboxProcessRunner(
         workspaceBind: String,
         nodeDir: String? = null,
         dshDir: String? = null,
+        /** 共享区宿主目录（guest `/root/share/<别名>` 的一组绑定）；见 [layeredProotPrefix]。 */
+        shareBinds: List<Pair<String, File>> = emptyList(),
     ): List<String> = buildList {
-        addAll(layeredProotPrefix(prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir))
+        addAll(
+            layeredProotPrefix(
+                prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shareBinds = shareBinds,
+            ),
+        )
         add("--cwd=/root")
         add("--kill-on-exit")
         add("/system/bin/sh"); add("-c")
@@ -114,10 +120,15 @@ class SandboxProcessRunner(
         dshPatchGuestPaths: List<String> = emptyList(),
         /** 手机助手暴露给 guest 的宿主子树，见 [SandboxConfig.pilotEntryDir]。空则不绑。 */
         pilotHostDir: String? = null,
+        /** Browser CLI/broker rendezvous tree, guest path `/opt/browser`. */
+        browserHostDir: String? = null,
+        /** 共享区绑定清单（guest 别名 → 宿主目录）；见 [layeredProotPrefix]。 */
+        shareBinds: List<Pair<String, File>> = emptyList(),
     ): List<String> = buildList {
         addAll(
             layeredProotPrefix(
                 prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shimHostDir, pilotHostDir,
+                browserHostDir, shareBinds,
             ),
         )
         add("--cwd=/root/projects")
@@ -163,6 +174,10 @@ class SandboxProcessRunner(
      * [shimHostDir]（可选）绑定到 guest `/opt/dshbox`，供 `--import` 预加载
      * 硬链接兼容垫片。挂载点在 base rootfs 里无需预先存在——PRoot 会自行创建
      * （与 /opt/dshapp/runtime、/root/projects 同理）。
+     *
+     * [shareBinds]（可选）共享区绑定清单（guest 别名 → 宿主目录），逐个绑到
+     * `/root/share/<别名>`（见 [Constants.SHARE_AREA_GUEST_DIR]）；目录缺失/别名为空的
+     * 条目跳过。调用方负责预建挂载点，并把命名空间壳（`/root/share` 自身）设为只读。
      */
     private fun layeredProotPrefix(
         prootBinary: String,
@@ -172,6 +187,8 @@ class SandboxProcessRunner(
         dshDir: String?,
         shimHostDir: String? = null,
         pilotHostDir: String? = null,
+        browserHostDir: String? = null,
+        shareBinds: List<Pair<String, File>> = emptyList(),
     ): List<String> = buildList {
         add(prootBinary)
         add("--rootfs=$rootfsDir")
@@ -183,6 +200,12 @@ class SandboxProcessRunner(
         if (!dshDir.isNullOrBlank()) add("--bind=$dshDir:/opt/dshapp/runtime")
         if (!shimHostDir.isNullOrBlank()) add("--bind=$shimHostDir:${Constants.DSH_LINK_SHIM_GUEST_DIR}")
         if (!pilotHostDir.isNullOrBlank()) add("--bind=$pilotHostDir:/opt/pilot")
+        if (!browserHostDir.isNullOrBlank()) add("--bind=$browserHostDir:/opt/browser")
+        shareBinds.forEach { (name, dir) ->
+            if (name.isNotBlank() && dir.isDirectory) {
+                add("--bind=${dir.absolutePath}:${Constants.SHARE_AREA_GUEST_DIR}/$name")
+            }
+        }
         add("--bind=$workspaceBind:/root/projects")
     }
 
@@ -361,29 +384,66 @@ class SandboxProcessRunner(
         }
     }
 
+    /**
+     * 与沙箱相关的进程树在当前时刻的累计 CPU 时间（毫秒）。
+     *
+     * [markers] 里的每个 cmdline 标记定位一棵树（沙箱 keepalive / DSH 启动脚本），各树
+     * 取并集去重后求和——DSH 的树若挂在沙箱树下面，两次求和会把它算两遍。整趟只做
+     * **一次** /proc 表遍历，树形与 cmdline 匹配都基于这一份快照。
+     *
+     * 只读 /proc/<pid>/stat，不改变任何进程状态，也不做常驻动作：由调用方按需调用
+     * （监控类界面每若干秒一次）。树找不到或一条 stat 都读不到时返回 null。
+     */
+    fun cpuMillisForMarkers(markers: List<String>): Long? {
+        val myPid = android.os.Process.myPid()
+        val table = readProcTable() ?: return null
+        val pids = linkedSetOf<Int>()
+        for (marker in markers) {
+            val root = findDescendantByCmdline(table, myPid, marker) ?: continue
+            pids += root
+            pids += descendantPids(table, root)
+        }
+        if (pids.isEmpty()) return null
+        var totalTicks = 0L
+        var read = 0
+        for (pid in pids) {
+            val stat = readTextOrNull(File("/proc/$pid/stat")) ?: continue
+            val ticks = cpuTicksFromStatLine(stat) ?: continue
+            totalTicks += ticks
+            read++
+        }
+        if (read == 0) return null
+        return totalTicks * 1000L / resolveProcTicksPerSecond()
+    }
+
     /** Returns pids of all processes whose cmdline contains [needle] and whose ancestor is [rootPid]. */
-    private fun findDescendantByCmdline(rootPid: Int, needle: String): Int? {
-        val all = readProcTable() ?: return null
-        val children = childrenOf(all, rootPid)
-        val queue = ArrayDeque(children)
+    private fun findDescendantByCmdline(rootPid: Int, needle: String): Int? =
+        readProcTable()?.let { findDescendantByCmdline(it, rootPid, needle) }
+
+    /** 基于已读到的进程表做同样的查找：给需要复用同一份快照的调用方。 */
+    private fun findDescendantByCmdline(table: Map<Int, Int>, rootPid: Int, needle: String): Int? {
+        val queue = ArrayDeque(childrenOf(table, rootPid))
         while (queue.isNotEmpty()) {
             val pid = queue.removeFirst()
             val cmdline = readCmdline(pid)
             if (cmdline != null && cmdline.contains(needle)) return pid
-            queue.addAll(childrenOf(all, pid))
+            queue.addAll(childrenOf(table, pid))
         }
         return null
     }
 
     /** All descendant pids of [rootPid], BFS order (parents before children). */
-    private fun descendantPids(rootPid: Int): List<Int> {
-        val all = readProcTable() ?: return emptyList()
+    private fun descendantPids(rootPid: Int): List<Int> =
+        readProcTable()?.let { descendantPids(it, rootPid) } ?: emptyList()
+
+    /** 基于已读到的进程表做同样的遍历：给需要复用同一份快照的调用方。 */
+    private fun descendantPids(table: Map<Int, Int>, rootPid: Int): List<Int> {
         val result = mutableListOf<Int>()
-        val queue = ArrayDeque(childrenOf(all, rootPid))
+        val queue = ArrayDeque(childrenOf(table, rootPid))
         while (queue.isNotEmpty()) {
             val pid = queue.removeFirst()
             result.add(pid)
-            queue.addAll(childrenOf(all, pid))
+            queue.addAll(childrenOf(table, pid))
         }
         return result
     }
@@ -456,4 +516,28 @@ class SandboxProcessRunner(
         order.asReversed().forEach { killPid(it) }
         Log.i(TAG, "killAll('$prefix'): killed ${order.size} pid(s)")
     }
+}
+
+/** /proc 计数单位 USER_HZ 的兜底值；实际值用 sysconf(_SC_CLK_TCK) 现取（同 AOSP ProcessCpuTracker）。 */
+internal const val PROC_TICKS_PER_SECOND = 100L
+
+/** 现取 USER_HZ；取不到（或非法）回退 [PROC_TICKS_PER_SECOND]。 */
+internal fun resolveProcTicksPerSecond(): Long =
+    runCatching { Os.sysconf(OsConstants._SC_CLK_TCK) }
+        .getOrDefault(PROC_TICKS_PER_SECOND)
+        .takeIf { it > 0L } ?: PROC_TICKS_PER_SECOND
+
+/**
+ * /proc/<pid>/stat 一行 → 该进程累计 CPU 时间（jiffies = utime + stime）；解析失败返回 null。
+ *
+ * 字段位置依 proc(5)：去掉行首 "pid (comm) " 之后重新编号，state 为 0，utime 在第 11、
+ * stime 在第 12 位。纯函数，便于单测覆盖字段错位这类静默错误。
+ */
+internal fun cpuTicksFromStatLine(statLine: String): Long? {
+    val rest = statLine.substringAfter(") ", missingDelimiterValue = "").trim()
+    if (rest.isEmpty()) return null
+    val fields = rest.split(' ')
+    val utime = fields.getOrNull(11)?.toLongOrNull() ?: return null
+    val stime = fields.getOrNull(12)?.toLongOrNull() ?: return null
+    return utime + stime
 }

@@ -71,10 +71,7 @@ class RelayConsentActivity : Activity() {
         private const val REQUEST_CONSENT = 1
 
         /**
-         * 销毁这一刻要不要替用户回一个「取消」。
-         *
-         * 判据只有「这一页真的在结束」：`isFinishing` 为真且不是配置重建。纯函数是为了
-         * 在无设备环境下把「转屏被记成拒绝」这类回归钉住。
+         * 仅在 Activity 正在结束且不是配置重建时，将销毁报告为用户取消。
          */
         internal fun shouldReportCancelOnDestroy(isFinishing: Boolean, changingConfigurations: Boolean): Boolean =
             isFinishing && !changingConfigurations

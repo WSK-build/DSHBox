@@ -21,7 +21,7 @@ import org.junit.Test
  * `APPROVAL_PRESENTER`、`REQUEST_DISPATCH_ARMED` 的调用点归呈现那一路，
  * 它们的字段此刻还没有具名常量可比，等那边接完再一并收进这张表。
  *
- * 为什么能在纯 JVM 上钉住：MailboxServer 依赖 FileObserver、RunLog 依赖
+ * JVM 测试范围：MailboxServer 依赖 FileObserver、RunLog 依赖
  * android.util.Log，两者在桌面 JVM 上都实例化不了；模板与字段常量都是纯数据，
  * 不引框架，因此字典这一侧仍然钉得死。
  */
@@ -73,8 +73,7 @@ class StageEventDictionaryTest {
     /**
      * 远端放弃那条的占位符写作 `%{ago}`，而模板正文的字段名是 `submittedAgoMs`。
      * 这不是漂移，是冻结模板本来的样子：调用点必须按占位符填 `ago`，
-     * 写成 `submittedAgoMs` 只会得到一段 unresolved。此处把它钉住，防止有人
-     * 「按字段名纠正」回去。
+     * 使用 `submittedAgoMs` 会产生 unresolved；本用例验证占位符名为 `ago`。
      */
     @Test
     fun theGiveUpEventIsKeyedByAgoNotByTheFieldNameInItsBody() {

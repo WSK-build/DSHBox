@@ -9,7 +9,8 @@
 dshbox-plugins/
 ├── assets/                     运行期载荷 —— 随 APK 交付，运行期按 asset 路径读取
 │   ├── plugins/dsh-mobile-adapt/   移动端适配包（install.sh / uninstall.sh / plugin/）
-│   ├── plugins/mobile-pilot/       DSH连接手机包（同形；插件本体当前是空壳）
+│   ├── plugins/mobile-pilot/       DSH连接手机包（注册手机操作工具）
+│   ├── plugins/browser-use/        DSH浏览器自动化包（注册内置浏览器工具）
 │   └── dshbox/                     连接垫片交付物（link-shim.mjs / libdshbox-link.so）
 └── tools/                      构建期源码 —— 不进 APK，仅开发 / 构建 / 测试时使用
     ├── link-shim/                  连接垫片的 C 源码与构建脚本（产出 libdshbox-link.so）
@@ -38,6 +39,7 @@ Gradle 默认只把 `src/main/assets` 当资产目录。本模块在 `build.grad
 | `bin/` | `dsh` / `pnpm` / `apt` / `apt-get` / `dpkg` 包装脚本 | app 启动时生成 | 生成（非本目录资产） |
 | `dshbox-plugins/mobile-adapt/` | 移动端适配包的装配暂存 | app 启动时从 APK 资产重铺 | 本目录 `assets/plugins/dsh-mobile-adapt/` |
 | `dshbox-plugins/mobile-pilot/` | DSH连接手机包的装配暂存 | 同上 | 本目录 `assets/plugins/mobile-pilot/` |
+| `dshbox-plugins/browser-use/` | DSH浏览器自动化包的装配暂存 | 同上 | 本目录 `assets/plugins/browser-use/` |
 | `dsh-official-plugin/dsh-official-plugin-overlay.yml` | 「DSH官方插件」的覆盖层 | 面板开关 + 启动时重写 | 运行期生成 |
 | `plugin-market/market-and-safe-mode-overlay.yml` | 停用行（**插件市场与安全模式共写**） | 市场 + 安全模式 | 运行期生成 |
 | `safe-mode/absolute-safe-mode.yml` | 绝对安全模式独占层（关闭 = 删文件） | 绝对安全模式 | 运行期生成 |
@@ -53,7 +55,7 @@ Gradle 默认只把 `src/main/assets` 当资产目录。本模块在 `build.grad
 - 停用行那一份**故意由市场与安全模式共用**（同一个集合、互为可见），**不要拆成两份** ——
   拆开会让一方"恢复启用"另一方看不见，历史上真机出过"隔离的坏插件被放回、DSH 起不来"的事故。
 
-## 三块内容各自是什么
+## 四块内容各自是什么
 
 ### 1. 移动端适配包（`dsh-mobile-adapt`）
 
@@ -74,12 +76,27 @@ DSH 网页端在手机窄屏下的适配层，以插件形式装配进 DSH 的 `
 同一个 `install.sh` / `uninstall.sh` 结构、同样装配进 `node_modules` 并登记 `dsh.profile.bundles`、
 同样的开关语义（含启动期对齐），包名为 `@local/mobile-pilot`。
 
-插件本体目前是**空壳**（`lib/index.js` 的 `apply()` 不做任何事），能力待实现；
-但装配 / 卸载这条链路是完整的 —— 有内容时直接填进 `plugin/` 即可，不必再动接线。
+插件入口通过 Cordis 的 `tools` 服务注册 `phone_*` 工具，经挂载到沙箱的
+`/opt/pilot` 入口转发操作；插件不重复实现应用侧的权限和审批机制。
 
 它**不涉及任何 `--patch` 覆盖层**：自有插件的注入方式统一走 profile 装配这一条路。
 
-### 3. 连接垫片（link-shim）
+### 3. DSH浏览器自动化（`browser-use`）
+
+包名为 `@local/browser-use`，通过 `install.sh` / `uninstall.sh` 装配或卸载，
+安装到 `<profile>/node_modules/@local/browser-use/` 并登记 `dsh.profile.bundles`。
+
+- **开关**：对应 Cordis 面板「DSH浏览器自动化」，新用户默认开启；启动时按开关和载荷状态对齐装配。
+- **工具注册**：`lib/index.js` 等待 Cordis 的 `tools` 服务，使用 DSH SDK 注册 `browser_*` 原生工具；
+  `lib/tools.js` 定义工具参数和结果，`lib/client.js` 提供客户端入口。
+- **执行通路**：通过沙箱内 `/opt/browser` 的 CLI 与应用 Browser 模块通信，支持页面导航、观察和交互，
+  以及截图、页面管理、下载、选区反馈、任务记录和控制权申请；插件本身不绕过 Browser 的控制权校验。
+- **调试能力**：DOM、网络等工具受对应能力和调试权限约束，以实际返回的 capabilities 与错误信息为准。
+- **选区反馈**：反馈由独立集成逻辑处理，是否送入对话取决于有效会话绑定与投递结果，不能将进入队列等同于已发送聊天消息。
+- **模块边界**：仅操作内置 Browser；手机应用操作由 `mobile-pilot` 提供，两者分别注册工具，由 DSH 执行 AI 选择调用。
+- **许可**：包内 `LICENSE` / `NOTICE` 随载荷交付，采用 `GPL-3.0-only`。
+
+### 4. 连接垫片（link-shim）
 
 Android 应用数据分区**不支持硬链接**，而 DSH 与 dpkg 都会用 `link(2)`：
 

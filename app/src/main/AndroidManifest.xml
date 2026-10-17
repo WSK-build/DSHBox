@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <permission android:name="${applicationId}.permission.BROWSER_INTERNAL"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.permission.BROWSER_INTERNAL" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -18,6 +22,14 @@
          日志表现为 `Requires MODIFY_AUDIO_SETTINGS and RECORD_AUDIO. No audio
          device will be available for recording`，页面侧则表现为语音输入启动失败。 -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- 共享区（公共存储 DSHBox 目录，与 guest /root/share/DSHBox 同一份数据）。
+         Android 11+ 读写公共存储需要「所有文件访问」特殊权限（在设置页授予）；
+         Android 10 走旧式存储（requestLegacyExternalStorage + WRITE_EXTERNAL_STORAGE）。 -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
     <!-- 无摄像头/麦克风的设备仍可安装：声明为非必需，避免被装机过滤 -->
     <uses-feature
@@ -49,6 +61,7 @@
     <application
         android:name=".DshApp"
         android:extractNativeLibs="true"
+        android:requestLegacyExternalStorage="true"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:icon="@mipmap/brand_icon"
@@ -69,6 +82,35 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- 外部应用「分享到」入口：任意类型，收下后由用户在文件页选定落点目录。
+                 通配类型同时覆盖 text/plain（分享文字/链接会落盘为 .txt）。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- 外部应用「用其他应用打开」入口：内容提供器的文件 URI。
+                 两种形态都要覆盖，故声明两个过滤器——带类型（绝大多数应用）与不带类型
+                 （部分自建提供器不给 getType）：平台规则是"只声明 URI 的过滤器只匹配
+                 不带类型的意图"，反之亦然，缺一个都会漏掉一整类来源。
+                 有意不声明 http/https——否则点任何网页链接都会弹出本应用。
+                 本应用自身会被解析到，故对外打开/分享的选择器统一排除自身组件。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
             </intent-filter>
         </activity>
 

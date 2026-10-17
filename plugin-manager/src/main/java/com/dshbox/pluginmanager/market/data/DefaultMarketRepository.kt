@@ -84,8 +84,7 @@ class NpmLatestVersionLookup(
  *
  * 本文件里所有面向用户的失败说明都是"中文 / English"双语串，由 UI 侧的
  * `localizeBilingual` 按界面语言择半。**同一时刻只支持 zh / en 两种**：
- * ar / es / fr / ru 会回退到英文那一半。这不是"已完整本地化"——完整做法是
- * 把这些串搬进 `strings.xml`，本轮没做（改动面太大）。
+ * ar / es / fr / ru 回退到英文。
  */
 class DefaultMarketRepository(
     private val paths: PluginPaths,

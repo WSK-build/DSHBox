@@ -1,0 +1,32 @@
+<resources>
+    <style name="BrowserRuntimeTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#56565B</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#FFFFFF</item>
+        <item name="android:windowAnimationStyle">@style/BrowserRuntimeWindowAnimation</item>
+    </style>
+    <style name="BrowserRuntimeThemeDark" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#7BA9FF</item>
+        <item name="android:statusBarColor">#1B1C1F</item>
+        <item name="android:navigationBarColor">#1B1C1F</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#1B1C1F</item>
+        <item name="android:windowAnimationStyle">@style/BrowserRuntimeWindowAnimation</item>
+    </style>
+    <style name="BrowserRuntimeWindowAnimation">
+        <item name="android:activityOpenEnterAnimation">@null</item>
+        <item name="android:activityOpenExitAnimation">@null</item>
+        <item name="android:activityCloseEnterAnimation">@null</item>
+        <item name="android:activityCloseExitAnimation">@null</item>
+        <item name="android:taskOpenEnterAnimation">@null</item>
+        <item name="android:taskOpenExitAnimation">@null</item>
+        <item name="android:taskCloseEnterAnimation">@null</item>
+        <item name="android:taskCloseExitAnimation">@null</item>
+    </style>
+</resources>

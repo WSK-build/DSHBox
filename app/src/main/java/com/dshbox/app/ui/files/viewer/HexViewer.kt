@@ -52,7 +52,7 @@ internal fun HexViewer(
     val rowsPerBlock = HexDumper.BLOCK_SIZE / HexDumper.ROW_BYTES
     val blocks = remember(file) { mutableStateMapOf<Int, List<HexRow>>() }
     val entropy = remember(file) { mutableStateOf<Double?>(null) }
-    // 返工修正 #9：偏移列宽按文件大小自适应（>4GB 文件 %08X 溢出 8 位导致列漂移）
+    // 偏移列宽按文件大小扩展，避免大文件的十六进制偏移超出八位。
     val offsetWidth = maxOf(8, file.length().toString(16).length)
 
     // 头部信息：熵粗估（IO 异步，辅助判断压缩/加密）

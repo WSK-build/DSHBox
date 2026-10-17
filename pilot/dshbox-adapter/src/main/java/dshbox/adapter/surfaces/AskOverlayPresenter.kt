@@ -369,7 +369,7 @@ class AskOverlayPresenter(
         /**
          * 上屏判定的总预算复用 core 的 [RelayAskSurface.ON_SCREEN_BUDGET_MS]：契约常量只在
          * core 一处定义，宿主实现与入口 CLI 的等待余量（pilot-client.cjs 的
-         * ASK_BUDGET_MARGIN_MS）之间那笔对账由 core 的 AskContractTest 钉住。
+         * ASK_BUDGET_MARGIN_MS）之间的预算关系由 core 的 AskContractTest 验证。
          *
          * 上限必须小于入口 CLI 的本地等待余量（pilot-client.cjs 的 ASK_BUDGET_MARGIN_MS）：
          * 客户端预算 = timeoutMs + 余量，宿主侧最坏耗时 = 本段 + timeoutMs + 认领延迟。

@@ -169,9 +169,8 @@ object FileTypeClassifier {
     }
 
     /**
-     * ISO-BMFF「ftyp」box 品牌分流（返工修正）：图片品牌 → IMAGE（heif/avif）；
-     * 音视频容器品牌（mp4/mov/m4a 等）→ AUDIO_VIDEO——否则大视频文件会落
-     * 嗅探（含 NUL）→ HEX，几 GB 的视频点开进 HexViewer（返工清单 #9）。
+     * ISO-BMFF「ftyp」box 品牌分流：图片品牌 → IMAGE（heif/avif）；
+     * 音视频容器品牌（mp4/mov/m4a 等）→ AUDIO_VIDEO，避免二进制嗅探将其归为 HEX。
      * 未识别品牌返回 null 落后续嗅探。
      */
     private fun isoBmffBrand(head: ByteArray): Pair<FileKind, String>? {

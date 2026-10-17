@@ -19,8 +19,8 @@ window.__ModuleLoader__.load({
 
     // =====================================================================
     // 加载诊断面包屑。
-    // apply() 是 13 段线性执行、无隔离：任何一段抛异常，其后所有段
-    // （含汉堡、上传菜单）都会不执行，表现为"整插件消失、刷新恢复"。
+    // apply() 是多段线性执行、无隔离：任何一段抛异常，其后所有段
+    // （含汉堡、键盘抑制、设置面板）都会不执行，表现为"整插件消失、刷新恢复"。
     // 面包屑记录最近 5 条启动事件/异常，无需 devtools 即可事后定位。
     // =====================================================================
     function bootLog(msg) {
@@ -109,18 +109,406 @@ window.__ModuleLoader__.load({
       } catch (e) { /* noop */ }
     })(); } catch (e) { bootLog('url-shim:' + (e && e.message || e)); }
 
+    // =====================================================================
+    // 0b) 键盘抑制：只在用户点输入区时才弹软键盘（多路分层 + 观测自适应）
+    // =====================================================================
+    // 现象：新建对话、从侧栏切会话、点「+」、点模型选择，都会误弹软键盘。
+    // 根因：dsh 客户端是桌面优先（只有 data-platform="darwin" 一个平台特例，没有
+    //   touch/mobile 分支），「焦点永远留在 composer」这套交互在 WebView 上被原样
+    //   执行，而这里可编辑元素获得焦点就等于弹起 IME。四个场景分别来自：会话挂载/
+    //   切换时 shell 主动聚焦 composer、点「+」时按钮回焦 composer、命令候选列表与
+    //   模型菜单自动聚焦各自的搜索框/行。
+    //
+    // 处置：不改 dsh 源码，运行期按「多路分层 + 观测自适应」处理；层号按设备缓存在
+    //   localStorage，只升不降（升降会抖动，降级会让已修好的场景复发）：
+    //     L0 拦聚焦 —— 拦掉非用户手势发起的 focus()。全版本可用、无副作用，默认层。
+    //     L1 加闸门 —— 焦点仍落到目标上时给它打 inputmode="none"，覆盖不经 focus() 的
+    //        路径（如选区重建的隐式聚焦）。开闸必须走「用户按下时先摘；若已在焦点上
+    //        则 blur→focus 让内核重评估」，否则用户点不出键盘（真机实测过）。
+    //     L2 收焦点 —— 闸门也拦不住时直接收掉焦点（全版本可用）。
+    //   升级依据是**观测到的结果**而非猜内核能力：本 App 是 edge-to-edge，键盘由原生
+    //   层量出来并显式改 WebView 高度，页面必然收到 resize；视口被压小且焦点仍在
+    //   目标上，即判定「不该弹却弹了」，升一级并就地补救。
+    //
+    // 两条硬约束：
+    //   ① 用户点输入区永远放行 —— 原生聚焦不经过这里，闸门也在按下时先摘。
+    //   ② 正在输入时不要把它按下去 —— dsh 的「+」带 onMouseDown keepFocus（preventDefault
+    //      后回焦 composer）；若把这次回焦也拦掉，编辑器会真的失焦、键盘收起、原生层
+    //      随之改 WebView 高度 → 页面跳动 → 手指抬起时按钮已移位 → click 丢失。
+    //      故「手势落在 composer 卡片内、且手势前 composer 已在焦点上」一律放行。
+    //      另外 dsh 的模型菜单在 drill/选中时会主动把焦点移到菜单行或触发按钮（都在卡片
+    //      之外），编辑器因此失焦、键盘落下；对此在卡片内非可编辑控件上按下后，把焦点
+    //      要回编辑器（用 Lexical 自己的 focus，光标不跳）。
+    try { (function installKeyboardSuppression() {
+      var nativeFocus = HTMLElement.prototype.focus;
+      if (typeof nativeFocus !== 'function' || nativeFocus.__dshboxKbGuard === true) return;
+
+      var TARGET_SEL = '[data-composer-input], input[role="searchbox"], [role="searchbox"], [data-menu-material] input';
+      var GESTURE_GRACE_MS = 1000;
+      var OBSERVE_WINDOW_MS = 500;
+      var KB_MIN_SHRINK_PX = 120;
+      var LEVEL_KEY = 'dsh-mobile-kb-level';
+      var MAX_LEVEL = 2;
+
+      var level = 0;
+      try {
+        var stored = parseInt(localStorage.getItem(LEVEL_KEY), 10);
+        if (stored > 0) level = stored > MAX_LEVEL ? MAX_LEVEL : stored;
+      } catch (e) { /* 读不到按 0 走，仅失去跨刷新记忆 */ }
+
+      function adaptOn() {
+        try {
+          if (localStorage.getItem('dsh-mobile-enabled') === '0') return false;
+          return localStorage.getItem('dsh-mobile-kb-off') !== '1';
+        } catch (e) { return true; }
+      }
+      function isTarget(el) {
+        if (!el || typeof el.getAttribute !== 'function') return false;
+        if (el.getAttribute('data-composer-input') !== null) return true;
+        if (typeof el.closest !== 'function') return false;
+        try { return el.closest(TARGET_SEL) !== null; } catch (e) { return false; }
+      }
+      /** 该元素本身是不是「用户要输入的地方」——是则绝不抢它的焦点。 */
+      function isEditableLike(el) {
+        if (!el || typeof el.tagName !== 'string') return false;
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+        if (typeof el.getAttribute !== 'function') return false;
+        if (el.getAttribute('contenteditable') === 'true') return true;
+        var role = el.getAttribute('role');
+        return role === 'textbox' || role === 'searchbox';
+      }
+
+      // 手势记录：Pointer Events 是 Chrome 55+，老内核只认 touchstart/mousedown，三个都挂。
+      var gestureEl = null;
+      var gestureAt = 0;
+      var composerFocusedAtGesture = false;
+      // 手势是否落在弹出面板（data-menu-material）内 —— 用来区分「在菜单里点选/下钻」
+      // 与「点菜单外收起」：只有前者才在面板关闭后把焦点交回编辑器。
+      var gestureInMenu = false;
+      function markGesture(e) {
+        var target = e.target;
+        // 空白区（body/html）不算「点在控件上」：它的 contains 会命中一切元素，
+        // 等于给程序化聚焦全开绿灯。
+        if (!target || target === document.body || target === document.documentElement) {
+          gestureEl = null;
+          gestureAt = 0;
+          composerFocusedAtGesture = false;
+          gestureInMenu = false;
+          return;
+        }
+        gestureEl = target;
+        gestureAt = Date.now();
+        composerFocusedAtGesture = isTarget(document.activeElement);
+        gestureInMenu = insideMenuSurface(target);
+      }
+      document.addEventListener('pointerdown', markGesture, true);
+      document.addEventListener('touchstart', markGesture, true);
+      document.addEventListener('mousedown', markGesture, true);
+
+      function insideComposerCard(el) {
+        return typeof el.closest === 'function' && el.closest('[data-composer-card]') !== null;
+      }
+      /** 是否落在某个弹出面板（primitives MenuSurface）内 —— 菜单行挂在 portal 里，不在卡片内。 */
+      function insideMenuSurface(el) {
+        return typeof el.closest === 'function' && el.closest('[data-menu-material]') !== null;
+      }
+      function fromUserGesture(el) {
+        if (gestureEl === null || Date.now() - gestureAt > GESTURE_GRACE_MS) return false;
+        if (el === gestureEl) return true;
+        if (typeof el.contains === 'function' && el.contains(gestureEl)) return true;
+        if (typeof el.closest === 'function' && typeof gestureEl.closest === 'function') {
+          var panel = el.closest('[data-menu-material]');
+          if (panel !== null && panel === gestureEl.closest('[data-menu-material]')) return true;
+        }
+        // 手势落在 composer 卡片内、且手势前 composer 已在焦点上：保住已有焦点，
+        // 键盘不会因失焦而收起，页面也不会因 WebView 高度变化而跳动。
+        if (composerFocusedAtGesture && insideComposerCard(el) && insideComposerCard(gestureEl)) return true;
+        return false;
+      }
+
+      // ── L1 闸门 ──
+      function setGate(el) {
+        try { el.setAttribute('inputmode', 'none'); } catch (e) { /* noop */ }
+      }
+      function clearGate(el) {
+        try {
+          if (typeof el.hasAttribute !== 'function' || !el.hasAttribute('inputmode')) return;
+          el.removeAttribute('inputmode');
+          if (document.activeElement === el) {
+            el.blur();
+            nativeFocus.call(el, { preventScroll: true });
+          }
+        } catch (e) { /* noop */ }
+      }
+
+      // ── 观测：聚焦没被拦住时，看键盘有没有真的弹出来 ──
+      var observeEl = null;
+      var observeAt = 0;
+      var observeHeight = 0;
+      function viewportHeight() {
+        var root = document.documentElement;
+        return (root && root.clientHeight) || window.innerHeight || 0;
+      }
+      function armObserve(el) {
+        observeEl = el;
+        observeAt = Date.now();
+        observeHeight = viewportHeight();
+      }
+      function escalate() {
+        if (level >= MAX_LEVEL) return;
+        level += 1;
+        try { localStorage.setItem(LEVEL_KEY, String(level)); } catch (e) { /* noop */ }
+        bootLog('kb-escalate:' + level);
+      }
+      function onViewportChange() {
+        if (observeEl === null) return;
+        if (Date.now() - observeAt > OBSERVE_WINDOW_MS || document.activeElement !== observeEl) {
+          observeEl = null;
+          return;
+        }
+        if (observeHeight - viewportHeight() < KB_MIN_SHRINK_PX) return;
+        escalate();
+        try { observeEl.blur(); } catch (e) { /* 就地补救已弹出的键盘 */ }
+        observeEl = null;
+      }
+      window.addEventListener('resize', onViewportChange);
+
+      // 我们自己发起的回焦要放行（见下面 restoreEditorFocus）：给一个短窗口，
+      // 覆盖 Lexical focus() 内部延迟到微任务的那次 root.focus()。
+      var allowFocusUntil = 0;
+
+      function guardedFocus(opts) {
+        try {
+          if (Date.now() > allowFocusUntil && adaptOn() && document.activeElement !== this) {
+            // ① 拦掉非用户手势发起的程序化聚焦（会话挂载/切换、菜单搜索框等）。
+            if (isTarget(this) && !fromUserGesture(this)) return;
+            // ② 手势之后（含点菜单行）不许把焦点从编辑器上抢走。dsh 的模型菜单在 show()
+            //    里就 triggerRef.focus()，drill 与选中时还会聚焦菜单行/触发按钮；焦点一旦
+            //    离开编辑器：键盘落下 → 原生层改 WebView 高度 → 页面跳动；模型菜单自己的
+            //    onBlur 也会判定焦点离开而 close()。
+            //    闸口与目标都要放宽：菜单行挂在 portal 里、位于 composer 卡片之外，只认
+            //    「卡片内」会漏掉 drill / 点菜单行 / 选中这三条。故两侧都取「卡片内 或
+            //    同一弹出面板（data-menu-material）内」；非可编辑元素才拦，搜索框不受影响。
+            //    菜单仍能正常关闭：另有 document mousedown 的外部关闭路径（model-selection
+            //    的 closeOutside）与选中、再点 trigger 三条，均不依赖菜单内焦点。
+            //    手势加时效上限：过期后不再拦，避免把菜单的悬停/聚焦高亮一并冻住。
+            if (composerFocusedAtGesture && Date.now() - gestureAt <= GESTURE_GRACE_MS &&
+                !isEditableLike(this) &&
+                (insideComposerCard(this) || insideMenuSurface(this)) &&
+                (insideComposerCard(gestureEl) || insideMenuSurface(gestureEl))) return;
+          }
+        } catch (e) { bootLog('kb-focus-guard:' + (e && e.message || e)); }
+        return nativeFocus.call(this, opts);
+      }
+      guardedFocus.__dshboxKbGuard = true;
+      HTMLElement.prototype.focus = guardedFocus;
+
+      // ── 面板关闭后把焦点交回编辑器 ──
+      // dsh 的模型菜单在选中/关闭时会把焦点交给触发按钮（close(true) 的 queueMicrotask），
+      // 或在有搜索框时因搜索框随面板卸载而让焦点落到 body —— 两种都使编辑器失焦、键盘
+      // 落下、WebView 高度变化。这里在**弹出面板从「有」变「无」的那一刻**（面板已消失，
+      // 不可能再触发模型菜单的 onBlur→close）把焦点交回编辑器。
+      // 必须晚于 dsh 自己的收尾（微任务聚焦触发按钮），故排进宏任务。
+      var RESTORE_WINDOW_MS = 5000; // 从手势到面板关闭之间允许的时长（覆盖慢 RPC 的选中）
+      var menuSurfaceCount = 0;
+      function countMenuSurfaces() {
+        try { return document.querySelectorAll('[data-menu-material]').length; } catch (e) { return 0; }
+      }
+      function restoreEditorFocus() {
+        try {
+          var host = document.querySelector('[data-composer-input]');
+          if (!host || document.activeElement === host) return;
+          // 落点本身是可编辑的（用户要在那里输入）→ 不抢。
+          if (isEditableLike(document.activeElement)) return;
+          allowFocusUntil = Date.now() + 600;
+          var editor = host.__lexicalEditor;
+          if (editor && typeof editor.focus === 'function') editor.focus();
+          else nativeFocus.call(host, { preventScroll: true });
+        } catch (err) { /* noop */ }
+      }
+      function onMenusMaybeClosed(records) {
+        // 早退：本批没有任何节点增删与弹出面板相关时，不做全文档查询。
+        // （面板本体或其 portal 容器都带 [data-menu-material]，故只需看本批增删的节点。）
+        try {
+          var relevant = false;
+          for (var i = 0; i < records.length && !relevant; i++) {
+            var added = records[i].addedNodes;
+            var removed = records[i].removedNodes;
+            var j;
+            for (j = 0; j < added.length; j++) {
+              if (added[j].nodeType === 1 &&
+                  (added[j].matches && added[j].matches('[data-menu-material]') ||
+                   (added[j].querySelector && added[j].querySelector('[data-menu-material]') !== null))) {
+                relevant = true;
+                break;
+              }
+            }
+            for (j = 0; j < removed.length && !relevant; j++) {
+              if (removed[j].nodeType === 1 && removed[j].matches &&
+                  (removed[j].matches('[data-menu-material]') ||
+                   (removed[j].querySelector && removed[j].querySelector('[data-menu-material]') !== null))) {
+                relevant = true;
+              }
+            }
+          }
+          if (!relevant) return;
+        } catch (e) { /* 判断失败就继续按计数处理 */ }
+        var now = countMenuSurfaces();
+        if (menuSurfaceCount > 0 && now === 0 &&
+            adaptOn() && composerFocusedAtGesture && gestureInMenu &&
+            Date.now() - gestureAt <= RESTORE_WINDOW_MS) {
+          // 只在「在菜单里点选/下钻之后面板关闭」时回焦；点菜单外收起不回焦
+          // （否则用户想收起键盘却被重新叫起）。
+          setTimeout(restoreEditorFocus, 0);
+        }
+        menuSurfaceCount = now;
+      }
+      try {
+        new MutationObserver(onMenusMaybeClosed).observe(document.documentElement, {
+          childList: true, subtree: true,
+        });
+      } catch (e) { /* 观察器装不上时退化为不回焦（键盘可能落，但不影响其它行为） */ }
+      menuSurfaceCount = countMenuSurfaces();
+
+      document.addEventListener('focusin', function (e) {
+        try {
+          // 我们自己发起的回焦（restoreEditorFocus）要放行 —— 否则会被这里当场打闸/收焦点，
+          // 修复在升层设备（L1/L2）上直接失效。放行只针对 composer 宿主本身、且只在
+          // 放行窗口内，不放松其它元素的闸门。
+          if (Date.now() <= allowFocusUntil &&
+              e.target === document.querySelector('[data-composer-input]')) return;
+          var el = e.target;
+          if (!adaptOn() || !isTarget(el) || fromUserGesture(el)) return;
+          if (level >= 1) setGate(el);
+          armObserve(el);
+          if (level >= 2) el.blur();
+        } catch (err) { bootLog('kb-focusin-fail:' + (err && err.message || err)); }
+      }, true);
+
+      document.addEventListener('pointerdown', function (e) {
+        try {
+          if (!e.target || typeof e.target.closest !== 'function') return;
+          var el = e.target.closest(TARGET_SEL);
+          if (el !== null) clearGate(el);
+        } catch (err) { /* noop */ }
+      }, true);
+
+      // 注：这里**不做事后「抢回焦点」**。dsh 的模型菜单 root 挂有 onBlur —— 一旦判定焦点
+      // 离开菜单就 close()；事后回焦会把刚展开的面板关掉。正确做法是在 guardedFocus 里
+      // 拦住那次夺焦（见上面 ②），让焦点压根不离开编辑器。
+
+      bootLog('kb-suppress:level' + level);
+    })(); } catch (e) { bootLog('kb-suppress-fail:' + (e && e.message || e)); }
+
+    // =====================================================================
+    // 0c) 「+」改成真正的开合（读面板 DOM 锚 + 走 dsh 自己的关闭路径）
+    // =====================================================================
+    // 现象：点「+」弹出命令候选列表后，再点「+」收不回去；点过模型选择之后尤其容易失灵，
+    //   而页面刚打开、第一次就点「+」则正常。
+    // 根因（dsh 客户端源码，两条叠加）：
+    //   ① 「+」开出的是 input-trigger 的候选列表 MenuView（根节点带 data-trigger-menu，
+    //      关闭即卸载），**不是** commands 的参数面板；而 MenuView 的「点外部即关」守卫
+    //      明确豁免 [data-composer-card]（input-trigger 的守卫里就有这一句）。「+」在卡片
+    //      内，所以点「+」时没有任何东西会把它关掉。
+    //   ② 关闭只能靠 toggle：toggleSource 的关闭分支要求 launcher==="command"，而 track()
+    //      在每次光标/草稿更新时第一步就 clearLauncher()。点模型选择会回焦编辑器 → 触发
+    //      光标更新 → launcher 被清 → 此后 toggle 只会「再开一次」。这就是「点过模型选择
+    //      后必失灵、第一次却正常」的原因。
+    // 处置：判据用**关闭即卸载**的面板 DOM 锚（不碰 launcher / aria-expanded），关闭改走
+    //   dsh 自己的「点外部即关」——向卡片之外派发一次真实的 pointerdown 事件，
+    //   与用户点空白处完全同路，不直接调用 dsh 内部服务、也不重写它的 onClick。
+    //   面板本来就没开时一律不介入，退回上游行为。
+    try { (function installCommandToggleFix() {
+      // 幂等闸：工厂万一被求值两次也不重复挂监听（与 0b 的 __dshboxKbGuard 同式）。
+      if (document.__dshboxCmdToggleFix === true) return;
+      document.__dshboxCmdToggleFix = true;
+      var COMMAND_TRIGGER_SEL = '[data-composer-card] button[aria-haspopup="listbox"]';
+      // 候选列表（「+」直接开的那层）：input-trigger 的 MenuView，关闭即卸载。
+      var MENU_VIEW_SEL = '[data-trigger-menu]';
+      var pressedButton = null;
+
+      function adaptOn() {
+        try { return localStorage.getItem('dsh-mobile-enabled') !== '0'; } catch (e) { return true; }
+      }
+      function commandTrigger(target) {
+        if (!target || typeof target.closest !== 'function') return null;
+        try { return target.closest(COMMAND_TRIGGER_SEL); } catch (e) { return null; }
+      }
+      /**
+       * 参数面板（选中带选项的命令后才开）是否开着：commands 的 PopupSelectView 是**唯一**
+       * 一个「MenuSurface 内既有 [role="listbox"] 又有无 role 文本输入框」的弹层 ——
+       * 候选列表 MenuView 有 listbox 但没有输入框；模型菜单的输入框带 role="searchbox"。
+       * 两者都在关闭时整棵卸载，故「DOM 里在不在」是可靠的开启判据。
+       */
+      function paletteViewOpen() {
+        try {
+          var surfaces = document.querySelectorAll('[data-menu-material]');
+          for (var i = 0; i < surfaces.length; i++) {
+            if (surfaces[i].querySelector('[role="listbox"]') !== null &&
+                surfaces[i].querySelector('input:not([role])') !== null) return true;
+          }
+        } catch (e) { /* noop */ }
+        return false;
+      }
+      function panelOpen() {
+        try { if (document.querySelector(MENU_VIEW_SEL) !== null) return true; } catch (e) { /* noop */ }
+        return paletteViewOpen();
+      }
+      /**
+       * 触发 dsh 自己的「点外部即关」：向 composer 卡片之外派发一次 pointerdown。
+       * 与用户点空白处同路 —— MenuView 的守卫只豁免卡片内部，落在卡片外即 dismiss。
+       */
+      function dismissByOutsidePointer() {
+        try {
+          document.body.dispatchEvent(new MouseEvent('pointerdown', {
+            bubbles: true, cancelable: true, view: window,
+          }));
+        } catch (e) { /* noop */ }
+      }
+
+      // 本监听注册于插件加载时，早于面板打开时才挂上的那些关闭监听（同为目标 document、
+      // 同为捕获阶段，按注册顺序执行）。
+      document.addEventListener('pointerdown', function (e) {
+        try {
+          pressedButton = null;
+          if (!adaptOn()) return;
+          var button = commandTrigger(e.target);
+          if (button === null) return;
+          if (!panelOpen()) return; // 面板没开：交给 dsh 打开
+          // 只记住「这一次按下的是哪个按钮」；click 时校验是同一个按钮才动手，
+          // 多指、按下后取消等场景不会误吞到别的点击。
+          pressedButton = button;
+        } catch (err) { bootLog('cmd-toggle-down:' + (err && err.message || err)); }
+      }, true);
+
+      document.addEventListener('click', function (e) {
+        try {
+          var expected = pressedButton;
+          pressedButton = null;
+          if (expected === null) return;
+          if (commandTrigger(e.target) !== expected) return;
+          // 拦掉 dsh 的 toggle（launcher 被 track() 清掉后它只会「再开一次」），
+          // 改为走 dsh 自己的关闭路径。
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+          dismissByOutsidePointer();
+        } catch (err) { bootLog('cmd-toggle-click:' + (err && err.message || err)); }
+      }, true);
+    })(); } catch (e) { bootLog('cmd-toggle-fix:' + (e && e.message || e)); }
+
     var SAFE_TOP = 'calc(env(safe-area-inset-top, 0px) + 12px)';
 
 
     var MOBILE_CSS = [
       '/* === dsh-mobile-adapt: 移动端浮层抽屉 + 设置两步式 === */',
       '@media (max-width: 1024px) {',
-      '  /* 全宽内容：把侧栏轨道压成 0（我们把它改成了脱离文档流的抽屉，见下），',
-      '     中栏吃满剩余宽度。第三条轨道交给 dsh 自己按内容定宽——**不再钉死 0**：',
-      '     右栏的面板是绝对定位悬挂出来的，轨道宽度本就是 0，钉死只会妨碍',
-      '     「占用方显式申请轨道宽度」的情形。',
-      '     注意 centerCol 必须留在文档流(不能 absolute)，否则键盘弹出时浏览器',
-      '     无法自动滚动输入框上移 → 键盘唤出/上移异常。 */',
+      '  /* 全宽内容：侧栏使用脱离文档流的抽屉，侧栏轨道宽度为 0。',
+      '     中栏填满剩余宽度，第三条轨道由 DSH 按内容确定宽度。',
+      '     右栏面板使用绝对定位，auto 轨道同时允许其他内容申请宽度。',
+      '     centerCol 保留在文档流中，',
+      '     以便浏览器在键盘弹出时',
+      '     自动将输入框滚动到可见区域。 */',
       '  [class*="frame"] { grid-template-columns: 0px minmax(0, 1fr) auto !important; }',
       '  [class*="frame"][data-sidebar-collapsed] [class*="sidebarCol"] {',
       '    display: none !important;',
@@ -351,7 +739,7 @@ window.__ModuleLoader__.load({
 
       // body-ready 守卫：本插件脚本注入在 <head>，若模块系统抢在 <body> 解析
       // 完成前调用 apply()，段 2/3/7/8 的 document.body 操作会抛 TypeError 并
-      // 连累其后所有段（表现为汉堡+上传菜单一起消失、刷新又好）。
+      // 连累其后所有段（表现为汉堡+设置面板一起消失、刷新又好）。
       // 未就绪则挂 DOMContentLoaded 重入一次；重入安全（所有创建均幂等：
       // getElementById 判存 + __dsh_mobile_nav_bound 标志）。
       if (!document.body) {
@@ -540,6 +928,9 @@ window.__ModuleLoader__.load({
         }, 0);
         // 悬浮提示"请刷新页面"（5 秒淡出）。开/关两个方向都提示，
         // 因为布局热切换在该内核上不可靠，刷新才是确定性生效路径。
+        // 关模式要确定性把已压的返回哨兵吃净（见段 7b）：不能只靠 toast 挂载产生的
+        // 突变把对账"顺带"带起来——toast 整段在 try/catch 里，失败就漏吃。
+        reconcileBackSentinels();
         showAdaptToast();
       }
       var settingsOpen = false;
@@ -659,10 +1050,14 @@ window.__ModuleLoader__.load({
       function goToContent() {
         document.body.classList.add('dsh-settings-content-open');
         showBack();
+        // 内容列是独立一层（见段 7b）：类名变化不产生 childList 突变，dialogObs 收不到，
+        // 这里显式对账哨兵，不依赖内嵌返回键换父节点那次副产物。
+        reconcileBackSentinels();
       }
       function goToNav() {
         document.body.classList.remove('dsh-settings-content-open');
         showBack();
+        reconcileBackSentinels();
       }
 
       // 6) Two-step settings navigation + sidebar session-row handling.
@@ -707,7 +1102,7 @@ window.__ModuleLoader__.load({
             if (e.target.closest('[class*="rowActions"], input, [role="menu"], [role="menuitem"]')) return;
             setTimeout(function () {
               // 二次核查只判"抽屉此刻是否仍开着"，不查 [role="menu"]：
-              //   面板行没有行内菜单，而 dsh 的下拉/命令面板/本插件上传菜单都可能
+              //   面板行没有行内菜单，而 dsh 的下拉/命令面板都可能
               //   短暂挂着 role="menu" 节点，查它会让收起被无关菜单永久抑制。
               var f = document.querySelector('[class*="frame"]');
               if (f && !f.hasAttribute('data-sidebar-collapsed')) {
@@ -772,25 +1167,239 @@ window.__ModuleLoader__.load({
         if (!dlg) {
           document.body.classList.remove('dsh-settings-content-open');
           hideBack();
+          reconcileBackSentinels();
           return;
         }
         if (!enabled) {
           // 官方原版：设置面板保持 dsh 原生（不做两步式）
           hideBack();
+          reconcileBackSentinels();
           return;
         }
         tagCloseButton(dlg);
         showBack();
+        reconcileBackSentinels();
       });
       try { dialogObs.observe(document.body, { childList: true, subtree: true }); }
       catch (e) { bootLog('dialogObs-fail:' + (e && e.message || e)); }
 
+      // 7b) 返回键层级：哨兵历史条目 + popstate 分发。
+      //     DSH 前端不使用浏览历史（无 pushState、无路由），页面内各级浮层也不是历史
+      //     条目，于是原生返回键的 goBack() 在 DSH 内部无处可退。这里在"打开一层"时
+      //     向历史栈压一条哨兵条目：原生返回键弹出它时本页收到 popstate，按层级关掉
+      //     对应浮层——"逐级返回"就借原生既有链路完成，原生侧无需任何改动。
+      //     层级（自上而下）：设置内容列 → 设置面板整体 → 侧栏抽屉 → 右栏 → 全局中央面板；
+      //     一层都没有时不压哨兵（DSH 根 / 会话页的返回交原生宿主处理）。
+      //     自己关层（内嵌返回键、汉堡、遮罩、DSH 自己的关闭按钮）时必须把对应哨兵
+      //     一并吃掉，否则留下幽灵条目，下一次按返回会空转一次。
+      //     右栏（停靠呈现的浏览器 / 终端 / 工作区文件等）用官方服务面判定与收起，且
+      //     必须**软读取**：`ctx.get('sidebarRight')`。不能把服务名写进本 bundle 的
+      //     `exports.inject`——cordis 的 inject 没有可选形态，写进去会让整插件在缺该
+      //     服务的 DSH 版本上永远 PENDING（汉堡/设置一起失效）；而反射层明确提供
+      //     "无需 inject 的读取"，未提供时返回 undefined 而不抛（官方 chat / conversation
+      //     两个插件就是用 ctx.get 读可选服务的）。
+      //     判据：`isExpanded()`（类型声明原文 "true while expanded; false while collapsed
+      //     to its rail"）；服务读不到时退回 DOM 语义属性 `[data-sidebar-right-open]`
+      //     （展开时才渲染该属性，官方自己也这么判）。动作：`toggleExpanded()`
+      //     （"Collapse the column…"，非破坏性——折叠成 rail，tab 与内容都保留）；服务
+      //     不可用时退回点它自己的收起按钮 `[data-sidebar-right-toggle]`（同一动作）。
+      //     仍未覆盖（有意）：右栏各面板**内部**的层级（内置浏览器/预览在 iframe 里，
+      //     其导航属 iframe 自己的历史，主框架历史没有条目）；以及只有调用方显式
+      //     `float()` 才会出现的浮动面板（它在列收起时仍渲染、且不属内置入口路径）。
+      //     状态挂在 window 上并只绑一次 popstate：本插件支持同页面热切换（重复
+      //     apply），实例换了但历史条目还在，共享状态才不会算错条数。
+      var backState = window.__dshboxBackState ||
+        (window.__dshboxBackState = { pushed: 0, swallow: 0, lastSelfPopAt: 0, mark: 0 });
+      function panelActive() {
+        try {
+          var obs = ctx.layout.panelInfo;
+          var snap = obs && typeof obs.getSnapshot === 'function' ? obs.getSnapshot() : null;
+          return !!(snap && snap.activePanelId);
+        } catch (e) { return false; }
+      }
+      // 展开中的右栏面板元素；仅服务面读不到时用作判据与动作锚点。`data-sidebar-right-open`
+      // 展开时才渲染，且排除藏在 [hidden]/[aria-hidden] 下的残留面板（官方同一写法）。
+      function rightbarPanelEl() {
+        try {
+          var panel = document.querySelector('[data-sidebar-right-open]');
+          return panel && !panel.closest('[hidden], [aria-hidden="true"]') ? panel : null;
+        } catch (e) { return null; }
+      }
+      // 判据以官方服务面为准：它读 store，与官方动作同源同步；DOM 属性是渲染结果，
+      // 只在服务读不到（旧内核 / 未就绪）时兜底。两者不混用——否则刚收起时若 DOM
+      // 落后半拍，写后校验会把"已关成功"误判成失败。
+      // 注意浮动形态（官方 `float()`）**有意不计入**：服务 `isExpanded()` 只反映列的
+      // expanded，浮动面板在列收起时仍渲染（见段首"未覆盖"说明），这里从"偶然撞上"
+      // 改为"确定不算"，行为可预测。
+      function rightbarOpen() {
+        try {
+          var sr = typeof ctx.get === 'function' ? ctx.get('sidebarRight') : null;
+          if (sr && typeof sr.isExpanded === 'function') return !!sr.isExpanded();
+        } catch (e) { /* 落到 DOM 兜底 */ }
+        return !!rightbarPanelEl();
+      }
+      function drawerOpen() {
+        return document.body.classList.contains('dsh-mobile-drawer-open');
+      }
+      function openLayerDepth() {
+        if (!enabled) return 0;
+        var dlg = settingsDialog();
+        var depth = 0;
+        if (dlg && document.body.classList.contains('dsh-settings-content-open')) depth += 1;
+        if (dlg) depth += 1;
+        if (drawerOpen()) depth += 1;
+        if (rightbarOpen()) depth += 1;
+        if (panelActive()) depth += 1;
+        return depth;
+      }
+      function closeTopLayer() {
+        if (settingsDialog() && document.body.classList.contains('dsh-settings-content-open')) {
+          goToNav();
+          return true;
+        }
+        if (settingsDialog()) { closeSettings(); return true; }
+        if (drawerOpen()) {
+          try { ctx.layout.toggleSidebar(); } catch (e) { /* noop */ }
+          return true;
+        }
+        if (rightbarOpen()) {
+          // 官方服务面优先；服务不可用（旧内核 / 未就绪）时退回点它自己的收起按钮——
+          // 按钮的 onClick 就是官方的 actions.toggleExpanded(sessionId)，同一动作。
+          // 兜底按面板元素定位按钮：页面上可能同时挂多个会话的 surface，文档序第一个
+          // 按钮未必属于当前展开的这个（会关错对象），找不到就明确失败不吃这层。
+          var closed = false;
+          try {
+            var sr = typeof ctx.get === 'function' ? ctx.get('sidebarRight') : null;
+            if (sr && typeof sr.toggleExpanded === 'function') {
+              sr.toggleExpanded();
+              closed = !rightbarOpen();
+            } else {
+              var rbPanel = rightbarPanelEl();
+              var rbToggle = rbPanel ? rbPanel.querySelector('button[data-sidebar-right-toggle]') : null;
+              if (!rbToggle) {
+                // 面板子树内没有则退回全文档，但只认唯一匹配（多 surface 时宁可不吃，
+                // 也不误关别的会话）。随包版本里 chrome 由 DockLayout 渲染在面板内，
+                // 这里只是防未来版本把按钮移出面板后兜底路径恒失败。
+                var rbToggles = document.querySelectorAll('button[data-sidebar-right-toggle]');
+                if (rbToggles.length === 1) rbToggle = rbToggles[0];
+              }
+              if (rbToggle) {
+                rbToggle.click();
+                closed = !rightbarOpen();
+              } else {
+                bootLog('rightbar-close-no-anchor');
+              }
+            }
+          } catch (e) {
+            // 无在屏会话时官方 require() 会抛；维持 false，让对账保留这层的哨兵——
+            // 右栏仍开着时不动下一层，宁可不吃也不错层。
+            bootLog('rightbar-close-fail:' + (e && e.message || e));
+          }
+          return closed;
+        }
+        if (panelActive()) {
+          try { ctx.layout.selectPanel(null); } catch (e) { /* noop */ }
+          return true;
+        }
+        return false;
+      }
+      function reconcileBackSentinels() {
+        try {
+          // 热切换（重复 apply）后旧实例的观察者仍在跑：只让最新实例动账，否则两个
+          // 实例各自按自己的 enabled 压/吃哨兵，条数会与真实历史栈脱节。
+          if (window.__dshboxCloseTopLayer && window.__dshboxCloseTopLayer !== closeTopLayer) return;
+          window.__dshboxCloseTopLayer = closeTopLayer;
+          if (!history || typeof history.pushState !== 'function') return;
+          var depth = openLayerDepth();
+          if (depth > backState.pushed) {
+            // 合法层级最深 5（设置内容列 + 设置面板 + 抽屉 + 右栏 + 中央面板）；到 6 说明
+            // 记账已经跑飞（例如某层关不掉又被反复补压）。此时停止补压，让返回键能继续
+            // 弹真实条目直到退出 DSH——原生侧 goBack() 之外没有兜底，锁死不可接受。
+            if (backState.pushed >= 6) { bootLog('back-repush-cap'); return; }
+            for (var i = backState.pushed; i < depth; i++) {
+              history.pushState({ dshboxBack: i + 1 }, '');
+            }
+            backState.pushed = depth;
+            backState.mark = depth;
+          } else if (depth < backState.pushed) {
+            var extra = backState.pushed - depth;
+            backState.pushed = depth;
+            backState.mark = depth;
+            backState.swallow += extra;
+            backState.lastSelfPopAt = Date.now();
+            for (var j = 0; j < extra; j++) history.back();
+          }
+        } catch (e) { bootLog('back-reconcile-fail:' + (e && e.message || e)); }
+      }
+      window.__dshboxCloseTopLayer = closeTopLayer;
+      window.__dshboxReconcileBack = reconcileBackSentinels;
+      if (!window.__dshboxBackBound) {
+        window.__dshboxBackBound = true;
+        window.addEventListener('popstate', function (event) {
+          try {
+            // 落点标记：是我们压的哨兵条目则 >0，原始文档为 0。
+            var dest = (event && event.state && event.state.dshboxBack) || 0;
+            // 自己发起的回退（关层时吃哨兵）：只销账、不再关层。窗口收紧到 500ms
+            // 且要求落点仍在我们标记范围内——否则当作真实回退，不吃（否则会吞掉
+            // 紧随其后的一次合法返回，表现为"按了没反应"）。
+            if (backState.swallow > 0 &&
+                Date.now() - backState.lastSelfPopAt < 500 &&
+                dest <= backState.mark) {
+              backState.swallow -= 1;
+              backState.mark = dest;
+              return;
+            }
+            backState.swallow = 0;
+            if (dest < backState.mark) {
+              // 真实回退：声明层数减一，再关掉最上面那层。
+              backState.mark = dest;
+              if (backState.pushed > 0) backState.pushed -= 1;
+              if (typeof window.__dshboxCloseTopLayer === 'function') window.__dshboxCloseTopLayer();
+            } else {
+              // 前进，或落点在哨兵范围之外（旧文档条目等）：不动层。
+              backState.mark = dest;
+            }
+          } catch (e) { bootLog('back-pop-fail:' + (e && e.message || e)); }
+          // 关层会改 DOM/状态，但 dialogObs 与 syncUI 的触发不保证覆盖所有路径；
+          // 这里无条件补一次对账，避免 pushed 与真实层数漂移后"按返回空转一次"。
+          if (typeof window.__dshboxReconcileBack === 'function') window.__dshboxReconcileBack();
+        });
+      }
+      // 右栏开合的唯一对账触发源：面板常驻挂载，开/收只是给它加/摘
+      // `data-sidebar-right-open` 并靠 CSS 滑出滑入，不产生 childList 变更，
+      // dialogObs 与 syncUI（只订 data-sidebar-collapsed）都收不到——不订这一条，
+      // 打开右栏时哨兵不会压，返回键便直接穿透到原生宿主。
+      // 订 body 的这条属性而不是订面板元素：面板随会话 surface 增删，body 才不丢生命周期。
+      // 整棵面板子树被卸载时本观察器收不到（脱离观察子树），那个方向由 dialogObs 的
+      // childList 通道兜住——两端各管一向，不要改成订面板元素或加 childList。
+      // 本观察器有意不做 teardown：它必须活过热切换，回调经 window 转发到最新实例的
+      // 对账函数（仍受"最新实例动账"守卫），按实例 teardown 会让右栏通道在热切换后失效。
+      if (!window.__dshboxRightObsBound) {
+        window.__dshboxRightObsBound = true;
+        try {
+          new MutationObserver(function () {
+            if (typeof window.__dshboxReconcileBack === 'function') window.__dshboxReconcileBack();
+          }).observe(document.body, {
+            attributes: true,
+            subtree: true,
+            attributeFilter: ['data-sidebar-right-open']
+          });
+        } catch (e) { bootLog('rightbar-obs-fail:' + (e && e.message || e)); }
+      }
+
       // 8) Sync drawer-open state onto <body> so CSS shows the backdrop.
       //    Use a hash-tolerant selector for the frame container.
       function syncUI(frame) {
-        if (!enabled) { document.body.classList.remove('dsh-mobile-drawer-open'); return; }
+        if (!enabled) {
+          document.body.classList.remove('dsh-mobile-drawer-open');
+          reconcileBackSentinels();
+          return;
+        }
         var collapsed = frame.hasAttribute('data-sidebar-collapsed');
         document.body.classList.toggle('dsh-mobile-drawer-open', !collapsed);
+        // 抽屉开合是纯 body 类名变化（不产生 childList 变更），dialogObs 收不到，
+        // 所以哨兵条数在这里对账：抽屉开 → 压一条；关 → 吃掉一条。
+        reconcileBackSentinels();
       }
       function whenFrameReady(cb) {
         var frame = document.querySelector('[class*="frame"]');
@@ -950,457 +1559,6 @@ window.__ModuleLoader__.load({
       }, 1000);
 
       // =====================================================================
-      // 12) 「上传来源」菜单（附件 / 相机）
-      // =====================================================================
-      // 需求：附件除了「手机文件」，还要能选**沙箱文件**（guest /root/projects），
-      // 以及**直接拍照 / 录像**后作为附件上传。而 dsh 的 <input type="file"> 走系统
-      // ACTION_GET_CONTENT，只列手机侧来源；PRoot 沙箱不是 Android 的
-      // DocumentsProvider，永远不出现在系统选择器里；相机更是上游完全没有的能力
-      // （上游全树无 capture / accept / image/*，需宿主自建通道）。
-      //
-      // ⚠️ 挂载点（重要）：
-      //   **不得**挂到 tools 行的回形针/「+」上：上游 0.1.7 起把附件入口收进了
-      //   「+」唤起的**命令面板**（其中一项叫「文件」），tools 行里已无独立回形针
-      //   按钮 —— 按「隐藏 input 的前一个兄弟」识别会得到「+」本身，把菜单挂到
-      //   「+」上并在捕获阶段吞掉事件，命令面板会被整个顶掉（"点加号误触发
-      //   上传"）。
-      //   做法：**拦隐藏 input 的 click**：无论用户从哪个入口（命令面板的「文件」、
-      //   拖放、粘贴，或将来新增的入口）触发 input，我们都在默认动作（系统选择器）
-      //   之前接管，弹出自己的来源菜单。这样既不依赖命令面板的 DOM 结构，也彻底
-      //   不碰「+」——「+」完全归还 dsh。
-      //
-      // 来源偏好如何传给原生：本 WebView **没有 addJavascriptInterface 桥**，
-      // 因此用隐藏 <input type="file"> 的 accept 属性作为唯一可用通道 ——
-      // 打上哨兵 MIME 即代表对应来源，原生 WebChromeClient.onShowFileChooser
-      // 读 fileChooserParams.acceptTypes 分流（沙箱 / 手机 / 拍照 / 录像）。
-      //
-      // ⚠️ accept 是**共享状态**：dsh 自有的上传路径若绕过我们的菜单直接
-      // input.click()，哨兵值就会把它误判为我们的来源。所以哨兵值必须在每条
-      // 结束路径上复位（见 resetUploadAccept 与捕获阶段 click 守卫）——
-      // 不能假设「每次点击前都会重写，所以不存在残留」。
-      //
-      // 本段**不受「移动端适配」开关控制**：上传来源是功能能力而非布局适配，
-      // 关掉适配（官方原版外观）时仍必须可用。
-      var UPLOAD_SENTINEL = 'application/x-dshbox-sandbox-upload';
-      var CAMERA_PHOTO_SENTINEL = 'application/x-dshbox-camera-photo';
-      var CAMERA_VIDEO_SENTINEL = 'application/x-dshbox-camera-video';
-
-      var UPLOAD_TEXT = {
-        zh: {
-          title: '添加附件',
-          phone: '上传手机文件',
-          phoneSub: '从系统「文件 / 相册」中选择',
-          sandbox: '上传沙箱文件',
-          sandboxSub: '从 DSHBox 工作区（/root/projects）选择',
-          photo: '拍照上传',
-          photoSub: '拍摄照片后作为附件上传',
-          video: '录像上传',
-          videoSub: '录制视频后作为附件上传',
-          blocked: '暂不可上传：请先发送一条消息创建会话，或等待当前任务结束',
-          noInput: '上传入口未就绪，请稍后重试',
-        },
-        en: {
-          title: 'Add attachment',
-          phone: 'Upload from phone',
-          phoneSub: 'Pick from system Files / Photos',
-          sandbox: 'Upload from sandbox',
-          sandboxSub: 'Pick from the DSHBox workspace (/root/projects)',
-          photo: 'Take a photo',
-          photoSub: 'Capture a photo and attach it',
-          video: 'Record a video',
-          videoSub: 'Record a video and attach it',
-          blocked: 'Cannot attach now: send a message to create a session, or wait for the current task to finish',
-          noInput: 'Upload entry not ready, please retry',
-        },
-        ar: {
-          title: 'إضافة مرفق',
-          phone: 'رفع من الهاتف',
-          phoneSub: 'اختر من «الملفات / الصور» في النظام',
-          sandbox: 'رفع من البيئة المعزولة',
-          sandboxSub: 'اختر من مساحة عمل DSHBox ‏(/root/projects)',
-          photo: 'التقاط صورة',
-          photoSub: 'التقط صورة وأرفقها',
-          video: 'تسجيل فيديو',
-          videoSub: 'سجّل مقطع فيديو وأرفقه',
-          blocked: 'لا يمكن الإرفاق الآن: أرسل رسالة لإنشاء جلسة أو انتظر انتهاء المهمة الحالية',
-          noInput: 'مدخل الرفع غير جاهز، حاول مرة أخرى',
-        },
-        es: {
-          title: 'Añadir adjunto',
-          phone: 'Subir desde el teléfono',
-          phoneSub: 'Elegir de Archivos / Fotos del sistema',
-          sandbox: 'Subir desde el sandbox',
-          sandboxSub: 'Elegir del espacio de trabajo de DSHBox (/root/projects)',
-          photo: 'Hacer una foto',
-          photoSub: 'Captura una foto y adjúntala',
-          video: 'Grabar un vídeo',
-          videoSub: 'Graba un vídeo y adjúntalo',
-          blocked: 'No se puede adjuntar ahora: envía un mensaje para crear una sesión o espera a que termine la tarea actual',
-          noInput: 'La entrada de subida no está lista, inténtalo de nuevo',
-        },
-        fr: {
-          title: 'Ajouter une pièce jointe',
-          phone: 'Importer depuis le téléphone',
-          phoneSub: 'Choisir dans Fichiers / Photos du système',
-          sandbox: 'Importer depuis le bac à sable',
-          sandboxSub: 'Choisir dans l\'espace de travail DSHBox (/root/projects)',
-          photo: 'Prendre une photo',
-          photoSub: 'Capturez une photo et joignez-la',
-          video: 'Enregistrer une vidéo',
-          videoSub: 'Enregistrez une vidéo et joignez-la',
-          blocked: 'Impossible de joindre maintenant : envoyez un message pour créer une session ou attendez la fin de la tâche en cours',
-          noInput: 'L\'entrée d\'import n\'est pas prête, réessayez',
-        },
-        ru: {
-          title: 'Добавить вложение',
-          phone: 'Загрузить с телефона',
-          phoneSub: 'Выбрать из «Файлы / Фото» системы',
-          sandbox: 'Загрузить из песочницы',
-          sandboxSub: 'Выбрать из рабочей области DSHBox (/root/projects)',
-          photo: 'Сделать фото',
-          photoSub: 'Снимите фото и прикрепите его',
-          video: 'Записать видео',
-          videoSub: 'Запишите видео и прикрепите его',
-          blocked: 'Сейчас прикрепить нельзя: отправьте сообщение, чтобы создать сеанс, или дождитесь завершения текущей задачи',
-          noInput: 'Точка загрузки не готова, повторите попытку',
-        },
-      };
-
-      function uploadText() {
-        var l = (document.documentElement.getAttribute('lang') || navigator.language || 'en').toLowerCase();
-        if (l.indexOf('zh') === 0) return UPLOAD_TEXT.zh;
-        if (l.indexOf('ar') === 0) return UPLOAD_TEXT.ar;
-        if (l.indexOf('es') === 0) return UPLOAD_TEXT.es;
-        if (l.indexOf('fr') === 0) return UPLOAD_TEXT.fr;
-        if (l.indexOf('ru') === 0) return UPLOAD_TEXT.ru;
-        return UPLOAD_TEXT.en;
-      }
-
-      function dshComposerCard() {
-        return document.querySelector('[data-composer-card]');
-      }
-
-      /**
-       * composer 的隐藏 `<input type="file">` —— 上传来源哨兵的**唯一载体**，
-       * 也是本段唯一的挂载依据（不再依赖任何按钮：见段首关于挂载点变更的说明）。
-       *
-       * 先在 composer 卡片内找；找不到再退回全文档 —— 上游在 composer 内只渲染
-       * 这一个 file input，退回全文档是为了兼容它被移到卡片之外的结构调整。
-       * 两条都落空时返回 null，调用方据此提示「上传入口未就绪」而不是静默失败。
-       */
-      function dshFileInput() {
-        var card = dshComposerCard();
-        var input = card ? card.querySelector('input[type="file"]') : null;
-        return input || document.querySelector('input[type="file"]') || null;
-      }
-
-      /** 一次性 toast（复用 dsh 没有公开 toast API，故自绘，样式跟主题变量走）。 */
-      var toastEl = document.getElementById('dsh-upload-toast');
-      function uploadToast(msg) {
-        if (toastEl === null) {
-          toastEl = document.createElement('div');
-          toastEl.id = 'dsh-upload-toast';
-          toastEl.style.cssText = [
-            'position:fixed',
-            'left:50%',
-            'transform:translateX(-50%)',
-            'bottom:calc(env(safe-area-inset-bottom,0px) + 96px)',
-            'z-index:2147483000',
-            'max-width:86vw',
-            'padding:10px 16px',
-            'border-radius:12px',
-            'font-size:14px',
-            'line-height:1.45',
-            'text-align:center',
-            'background:var(--dsw-alias-bg-float,#1f1f1f)',
-            'color:var(--dsw-alias-text-primary,#fff)',
-            'border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.35))',
-            'box-shadow:0 6px 24px rgba(0,0,0,.28)',
-            'pointer-events:none',
-            'opacity:0',
-            'transition:opacity .18s ease',
-          ].join(';');
-          document.body.appendChild(toastEl);
-        }
-        toastEl.textContent = msg;
-        toastEl.style.opacity = '1';
-        clearTimeout(toastEl.__dshTimer);
-        toastEl.__dshTimer = setTimeout(function () { toastEl.style.opacity = '0'; }, 2600);
-      }
-
-      var uploadMenu = null;
-      var uploadMenuOpen = false;
-      var uploadOpenedAt = 0;
-
-      /**
-       * 来源图标（内联 SVG，跟随主题 `currentColor`）。
-       * 四个来源各一枚：沙箱 = 文件夹、手机 = 文档、拍照 = 相机、录像 = 摄像机。
-       */
-      var UPLOAD_ICONS = {
-        sandbox: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.2l1.7 1.8H19.5A1.5 1.5 0 0 1 21 8.3v9.2A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/>',
-        phone: '<path d="M7 3.5h6.2L17 7.3V19.5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z M13 3.7V7.6H16.9"/>',
-        'camera-photo': '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.1l1.2-1.7a1 1 0 0 1 .8-.3h4.8a1 1 0 0 1 .8.4L16.4 7h2.1A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.2"/>',
-        'camera-video': '<path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h8a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 13 18H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M14.5 11.2l5-2.7v7l-5-2.7z"/>',
-      };
-
-      function iconSvg(kind) {
-        var inner = UPLOAD_ICONS[kind] || UPLOAD_ICONS.phone;
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" '
-          + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
-          + 'stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
-      }
-
-      function closeUploadMenu() {
-        if (!uploadMenu || !uploadMenuOpen) return;
-        uploadMenuOpen = false;
-        uploadMenu.style.opacity = '0';
-        uploadMenu.style.transform = 'translateY(6px) scale(.98)';
-        uploadMenu.style.pointerEvents = 'none';
-        document.removeEventListener('pointerdown', onDocPointerDown, true);
-        document.removeEventListener('keydown', onMenuKeyDown, true);
-        window.removeEventListener('resize', closeUploadMenu);
-        window.removeEventListener('scroll', closeUploadMenu, true);
-      }
-
-      function onDocPointerDown(ev) {
-        if (!uploadMenuOpen) return;
-        if (uploadMenu && ev.target instanceof Node && uploadMenu.contains(ev.target)) return;
-        closeUploadMenu();
-      }
-
-      function onMenuKeyDown(ev) {
-        if (ev.key === 'Escape') closeUploadMenu();
-      }
-
-      // 本次点击是否由 pickSource 发起（accept 已由我们写好）。
-      // 只在这一跳内有效：input.click() 的事件派发是同步的，原生 onShowFileChooser
-      // 也就在这一跳里读走 acceptTypes，因此标志用完即清，不留任何跨点击状态。
-      var pickSourceActive = false;
-
-      /** 复位 accept：清掉可能的哨兵残留，让 <input> 回到「无 accept」的干净状态。 */
-      function resetUploadAccept(input) {
-        pickSourceActive = false;
-        if (input) input.removeAttribute('accept');
-      }
-
-      /** 来源 → 传给原生的 accept 哨兵；空串表示「任意类型」（手机文件走系统选择器）。 */
-      function sentinelFor(source) {
-        if (source === 'sandbox') return UPLOAD_SENTINEL;
-        if (source === 'camera-photo') return CAMERA_PHOTO_SENTINEL;
-        if (source === 'camera-video') return CAMERA_VIDEO_SENTINEL;
-        return '';
-      }
-
-      function pickSource(source) {
-        var T = uploadText();
-        var input = dshFileInput();
-        // input.disabled ⟺ (subagent || locked || machineBusy || addFiles 未注入)——
-        // 每次现读而不缓存，天然不会过期。
-        if (!input || input.disabled) {
-          uploadToast(input ? T.blocked : T.noInput);
-          closeUploadMenu();
-          return;
-        }
-        // 本次点击显式重写 accept：哨兵 MIME 即来源，手机文件用「无 accept」。
-        var sentinel = sentinelFor(source);
-        if (sentinel) input.setAttribute('accept', sentinel);
-        else input.removeAttribute('accept');
-        closeUploadMenu();
-        pickSourceActive = true;
-        try {
-          input.click();
-        } catch (e) {
-          uploadToast(T.noInput);
-        } finally {
-          pickSourceActive = false;
-        }
-      }
-
-      // 哨兵值复位（两条结束路径，缺一都会污染 dsh 自有的上传入口）：
-      //   ① change —— 用户选完文件；
-      //   ② cancel —— 用户取消选择（Chromium 对 <input type=file> 派发 cancel）。
-      document.addEventListener('change', function (ev) {
-        var input = dshFileInput();
-        if (input && ev.target === input) resetUploadAccept(input);
-      }, true);
-      document.addEventListener('cancel', function (ev) {
-        var input = dshFileInput();
-        if (ev.target === input) resetUploadAccept(input);
-      }, true);
-
-      // ③ 捕获阶段 click 守卫 —— 既是**本段的挂载点**，也兼哨兵复位。
-      //
-      //   dsh 自己的入口（命令面板的「文件」项、拖放、粘贴）触发 input.click() 时
-      //   不经过 pickSource，因此在这里：
-      //    · 先复位 accept —— 否则上一次留下的哨兵会让原生把这次点击误判成我们的来源；
-      //    · 再拦住这次点击的默认动作（系统选择器），改弹我们自己的来源菜单。
-      //   仅对「非 pickSource 发起」的点击生效，pickSource 的正常传递不受影响。
-      document.addEventListener('click', function (ev) {
-        var input = dshFileInput();
-        if (!input || ev.target !== input) return;
-        if (pickSourceActive) return;   // 本次点击由 pickSource 发起，accept 由它负责
-        resetUploadAccept(input);
-        ev.preventDefault();
-        ev.stopPropagation();
-        openUploadMenu();
-      }, true);
-
-      function buildUploadMenu() {
-        if (uploadMenu) return uploadMenu;
-        var T = uploadText();
-        var el = document.createElement('div');
-        el.id = 'dsh-upload-menu';
-        el.setAttribute('role', 'menu');
-        el.setAttribute('aria-label', T.title);
-        el.style.cssText = [
-          'position:fixed',
-          'z-index:2147483000',
-          'min-width:236px',
-          'max-width:min(340px,calc(100vw - 24px))',
-          'padding:6px',
-          'border-radius:16px',
-          'background:var(--dsw-alias-bg-float,#fff)',
-          'color:var(--dsw-alias-text-primary,#111)',
-          'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12))',
-          'box-shadow:0 10px 34px rgba(0,0,0,.22)',
-          'opacity:0',
-          'transform:translateY(6px) scale(.98)',
-          'transition:opacity .16s ease,transform .16s ease',
-          'pointer-events:none',
-          'box-sizing:border-box',
-        ].join(';');
-
-        function row(source, icon, title, sub) {
-          var b = document.createElement('button');
-          b.type = 'button';
-          b.setAttribute('role', 'menuitem');
-          b.setAttribute('data-source', source);
-          b.style.cssText = [
-            'display:flex',
-            'align-items:center',
-            'gap:12px',
-            'width:100%',
-            'padding:10px 12px',
-            'border:0',
-            'border-radius:12px',
-            'background:transparent',
-            'color:inherit',
-            'text-align:left',
-            'font:inherit',
-            'cursor:pointer',
-            'box-sizing:border-box',
-          ].join(';');
-          var ico = document.createElement('span');
-          ico.style.cssText = 'flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;'
-            + 'background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-text-primary,#111)';
-          ico.innerHTML = iconSvg(icon);
-          var txt = document.createElement('span');
-          txt.style.cssText = 'min-width:0;display:flex;flex-direction:column;gap:2px';
-          var t1 = document.createElement('span');
-          t1.textContent = title;
-          t1.style.cssText = 'font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-          var t2 = document.createElement('span');
-          t2.textContent = sub;
-          t2.style.cssText = 'font-size:12px;line-height:1.35;color:var(--dsw-alias-label-secondary,#6b7280);'
-            + 'white-space:normal;word-break:break-word';
-          txt.appendChild(t1);
-          txt.appendChild(t2);
-          b.appendChild(ico);
-          b.appendChild(txt);
-          b.addEventListener('pointerenter', function () {
-            b.style.background = 'var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))';
-          });
-          b.addEventListener('pointerleave', function () { b.style.background = 'transparent'; });
-          // pointerdown 而非 click：触屏下 click 可能被 dsh 的 composer 抢焦点逻辑吞掉
-          b.addEventListener('pointerdown', function (ev) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            pickSource(source);
-          }, true);
-          b.addEventListener('click', function (ev) {
-            ev.preventDefault();
-            ev.stopPropagation();
-          }, true);
-          return b;
-        }
-
-        el.appendChild(row('phone', 'phone', T.phone, T.phoneSub));
-        el.appendChild(row('sandbox', 'sandbox', T.sandbox, T.sandboxSub));
-        el.appendChild(row('camera-photo', 'camera-photo', T.photo, T.photoSub));
-        el.appendChild(row('camera-video', 'camera-video', T.video, T.videoSub));
-        document.body.appendChild(el);
-        uploadMenu = el;
-        return el;
-      }
-
-      /** 来源 → 文案键（会话内切换语言后重写菜单文案用）。 */
-      var SOURCE_TEXT_KEYS = {
-        phone: ['phone', 'phoneSub'],
-        sandbox: ['sandbox', 'sandboxSub'],
-        'camera-photo': ['photo', 'photoSub'],
-        'camera-video': ['video', 'videoSub'],
-      };
-
-      function refreshUploadMenuText(el) {
-        var T = uploadText();
-        el.setAttribute('aria-label', T.title);
-        var rows = el.querySelectorAll('button[data-source]');
-        for (var i = 0; i < rows.length; i++) {
-          var keys = SOURCE_TEXT_KEYS[rows[i].getAttribute('data-source')];
-          if (!keys) continue;
-          var spans = rows[i].querySelectorAll('span > span');
-          if (spans.length === 2) {
-            spans[0].textContent = T[keys[0]];
-            spans[1].textContent = T[keys[1]];
-          }
-        }
-      }
-
-      function openUploadMenu() {
-        var el = buildUploadMenu();
-        refreshUploadMenuText(el);
-        // 锚点：composer 卡片本身（挂载点已不再是某个按钮，见段首说明）。
-        // 定位在卡片正上方、与卡片左对齐，超出视口自动纠偏；卡片不可得时贴底居中。
-        el.style.opacity = '0';
-        el.style.transform = 'translateY(6px) scale(.98)';
-        el.style.pointerEvents = 'none';
-        el.style.left = '-9999px';
-        el.style.top = '0px';
-        var mw = el.offsetWidth;
-        var mh = el.offsetHeight;
-        var card = dshComposerCard();
-        var r = card ? card.getBoundingClientRect() : null;
-        var anchorLeft = r ? r.left : (window.innerWidth - mw) / 2;
-        var anchorTop = r ? r.top : window.innerHeight - mh - 12;
-        var anchorBottom = r ? r.bottom : anchorTop + mh;
-        var left = Math.min(Math.max(8, anchorLeft), Math.max(8, window.innerWidth - mw - 8));
-        var top = anchorTop - mh - 8;
-        if (top < 8) top = Math.min(window.innerHeight - mh - 8, anchorBottom + 8);
-        el.style.left = left + 'px';
-        el.style.top = Math.max(8, top) + 'px';
-        // 强制一帧后再展开，保证 transition 生效
-        void el.offsetHeight;
-        el.style.opacity = '1';
-        el.style.transform = 'translateY(0) scale(1)';
-        el.style.pointerEvents = 'auto';
-        uploadMenuOpen = true;
-        uploadOpenedAt = Date.now();
-        document.addEventListener('pointerdown', onDocPointerDown, true);
-        document.addEventListener('keydown', onMenuKeyDown, true);
-        window.addEventListener('resize', closeUploadMenu);
-        window.addEventListener('scroll', closeUploadMenu, true);
-      }
-
-      // 挂载点：本段不再需要"拦某个按钮"的安装步骤。
-      // 拦截发生在上面那条**捕获阶段 click 守卫**里（针对隐藏 input），
-      // 因此「+」与命令面板都完全归 dsh —— 我们只在用户真正要选文件的那一刻介入。
-      //
-      // 这样做的另一个好处：不依赖命令面板的 DOM 结构（菜单项 id 是索引型的
-      // `dsh-slash-option-command-<i>`，上游增删命令即漂移），也不依赖任何按钮文案。
-      // 无论上游把附件入口放在哪、叫什么名字，只要它最终点的是那个 file input，
-      // 本段就仍然有效。
-
-      // =====================================================================
       // 13) 「打开配置文件」接管
       // =====================================================================
       // 背景：设置面板顶部的「打开配置文件」按钮
@@ -1454,6 +1612,235 @@ window.__ModuleLoader__.load({
           ev.stopImmediatePropagation();
         }, true);
       })(); } catch (e) { bootLog('open-doc-fail:' + (e && e.message || e)); }
+
+      // =====================================================================
+      // 14) 附件直达按钮（工具行「+」右侧）
+      // =====================================================================
+      // 背景：附件的唯一入口藏在「+」唤起的命令面板里（其中一项叫「文件」），要点两步。
+      // 本段在工具行「+」右侧补一个**直达**按钮：外观取 dsh 工具行按钮的同一套规格
+      // （回形针 Medium 图标 stroke 1.3 / 14px；28×28 圆角按钮，配色沿用 dsh 的主题
+      // 变量，深浅主题自动跟随），点击行为与命令面板里的「文件」**完全一致** —— 上游
+      // filePicker.open() 的实现就是 `fileInputRef.current.click()`，故本段也只做同一
+      // 件事：点那个隐藏的 <input type="file">。其后链路（原生接管 → 来源面板 → 回填）
+      // 与既有入口同一条，不新增分支。
+      //
+      // 键盘纪律：与 dsh 工具行按钮一致 —— mousedown 时 preventDefault，并在**手势前
+      // composer 已聚焦**时把焦点交回编辑器（只「保持」不「建立」：若此刻本就没聚焦，
+      // 主动聚焦会凭空唤起输入法）。**不**在页面侧收放键盘：打开来源面板时的收键盘由
+      // 原生负责，页面侧重复处理会与它打架。
+      //
+      // 归属：这是**功能入口**而非布局适配件，但按钮本身是我们加的外观，故与汉堡、返回键
+      // 同口径 —— 关掉「移动端适配」时一并撤掉（能力本身仍在 dsh 自己的命令面板里）。
+      //
+      // 挂载点：紧贴「+」之后（隐藏的 file input 无宽度，视觉上即「+」右边第一个图标）。
+      // 这一簇 DOM 归 React 管理，重渲染会移除或挪动我们的节点，故用「判存 + 位置校验 +
+      // 重挂」幂等范式（与段 2 汉堡同一做法）。
+      try { (function installAttachButton() {
+        var BTN_ID = 'dsh-mobile-attach';
+        var STYLE_ID = 'dsh-mobile-attach-style';
+        // 回形针路径逐字取自 dsh 的 IconPaperclipOutlineArtwork（viewBox 0 0 16 16），
+        // 不做坐标换算；svg 上只带 fill/stroke-width，path 上只带 d/stroke —— 与上游
+        // 的写法逐项对齐（上游未设 linecap/linejoin，此处也不设）。
+        var PAPERCLIP_D = 'M12.75 4.5V9.5C12.75 10.7598 12.2496 11.968 11.3588 12.8588' +
+          'C10.468 13.7496 9.25978 14.25 8 14.25C6.74022 14.25 5.53204 13.7496 4.64124 12.8588' +
+          'C3.75045 11.968 3.25 10.7598 3.25 9.5V5C3.25 4.13805 3.59241 3.3114 4.2019 2.7019' +
+          'C4.8114 2.09241 5.63805 1.75 6.5 1.75C7.36195 1.75 8.1886 2.09241 8.7981 2.7019' +
+          'C9.40759 3.3114 9.75 4.13805 9.75 5V9.5C9.75 9.96413 9.56563 10.4092 9.23744 10.7374' +
+          'C8.90925 11.0656 8.46413 11.25 8 11.25C7.53587 11.25 7.09075 11.0656 6.76256 10.7374' +
+          'C6.43437 10.4092 6.25 9.96413 6.25 9.5V5.5';
+
+        // 重入保护：本段可能被求值两次（同页面从旧 bundle 热切换）。上一次实例的定时器与
+        // 观察器不随节点一起消失，两个实例会互相踩位 —— 各自发现「按钮不在锚点上」→ 反复
+        // 重建，表现为 1Hz 乒乓与两个同 id 按钮。故上一次实例的收尾挂在 document 上，本段
+        // 开头先执行一次（与段 0c 的幂等闸同式）。
+        try {
+          if (typeof document.__dshboxAttachTeardown === 'function') document.__dshboxAttachTeardown();
+        } catch (e) { /* 上一次收尾失败也要继续装本次 */ }
+
+        // 再清一次残留节点与样式：上一次实例可能没跑完收尾，或来自更早的 bundle。
+        // 保证本次的监听与样式都是新的（与段 1 清遗留开关胶囊、段 4 清遗留返回键同一做法）。
+        try {
+          var staleBtn = document.getElementById(BTN_ID);
+          if (staleBtn && staleBtn.parentNode) staleBtn.parentNode.removeChild(staleBtn);
+          var staleStyle = document.getElementById(STYLE_ID);
+          if (staleStyle && staleStyle.parentNode) staleStyle.parentNode.removeChild(staleStyle);
+        } catch (e) { /* 清不掉也不影响后续重建 */ }
+
+        function attachCopy() {
+          var l = (document.documentElement.getAttribute('lang') || navigator.language || 'en').toLowerCase();
+          if (l.indexOf('zh') === 0) return { aria: '添加附件' };
+          return { aria: 'Add attachment' };
+        }
+
+        function ensureAttachStyle() {
+          if (document.getElementById(STYLE_ID) !== null) return;
+          var s = document.createElement('style');
+          s.id = STYLE_ID;
+          s.textContent =
+            '#' + BTN_ID + '{corner-shape:round;background:var(--dsw-specific-selector);' +
+            'width:28px;height:28px;color:var(--dsw-alias-label-primary);cursor:pointer;' +
+            'border:none;border-radius:999px;flex:none;place-items:center;display:grid;padding:0;' +
+            '-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
+            '#' + BTN_ID + ':hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}' +
+            '#' + BTN_ID + ':disabled{opacity:.5;cursor:default}';
+          document.head.appendChild(s);
+        }
+
+        /**
+         * composer 的隐藏 file input：**必须**位于 composer 卡片内，且**必须**紧跟在
+         * 一个按钮之后（那个按钮就是「+」）。不做全文档回退 —— 页面别处若也有 file input，
+         * 回退会把按钮插到无关按钮旁边、点了还会唤起无关选择器。
+         */
+        function composerFileInput() {
+          var card = document.querySelector('[data-composer-card]');
+          if (!card) return null;
+          var list = card.querySelectorAll('input[type="file"]');
+          for (var i = 0; i < list.length; i++) {
+            var prev = list[i].previousElementSibling;
+            if (prev !== null && prev.tagName === 'BUTTON') return list[i];
+          }
+          return null;
+        }
+
+        /** 「+」按钮 = 隐藏 file input 的前一个兄弟：结构锚点，不依赖 dsh 的哈希类名。 */
+        function plusButton() {
+          var input = composerFileInput();
+          var prev = input ? input.previousElementSibling : null;
+          return prev !== null && prev.tagName === 'BUTTON' ? prev : null;
+        }
+
+        function keepDraftFocus(ev) {
+          try {
+            ev.preventDefault();
+            var host = document.querySelector('[data-composer-input]');
+            if (!host) return;
+            // 只「保持」不「建立」：手势前 composer 未聚焦时直接放行，否则本按钮会凭空
+            // 唤起输入法（随后还要被原生收一次，表现为键盘闪一下）。
+            var act = document.activeElement;
+            if (!(act === host || (act !== null && host.contains && host.contains(act)))) return;
+            var editor = host.__lexicalEditor;
+            if (editor && typeof editor.focus === 'function') editor.focus();
+            else if (typeof host.focus === 'function') host.focus({ preventScroll: true });
+          } catch (e) { /* 焦点收不回也不影响本次点击 */ }
+        }
+
+        function buildAttachButton() {
+          var b = document.createElement('button');
+          b.id = BTN_ID;
+          b.type = 'button';
+          b.setAttribute('aria-label', attachCopy().aria);
+          b.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" ' +
+            'xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" ' +
+            'stroke-width="1.3"><path d="' + PAPERCLIP_D + '" stroke="currentColor"/></svg>';
+          b.addEventListener('mousedown', keepDraftFocus);
+          // 点按与悬停前刷新一次可用态：1Hz 复查最坏有 1s 滞后，而这段时间里点下去会打开
+          // 选择器、dsh 却可能静默丢弃结果（表现为「选了没反应」）。
+          // 注意这里只刷新状态、**不做**完整同步 —— 完整同步在位置校验失败时会重建节点，
+          // 那会在手势中途换掉元素、令本次 click 不再触发。
+          b.addEventListener('pointerenter', function () { refreshAttachState(); });
+          b.addEventListener('pointerdown', function () { refreshAttachState(); });
+          b.addEventListener('click', function (ev) {
+            try {
+              ev.preventDefault();
+              // 必须阻止冒泡：未选工作区时整个 composer 卡片是「选工作区」的点击区，
+              // 事件冒上去会被它当成一次卡片点击而弹出工作区选择器。
+              ev.stopPropagation();
+              var input = composerFileInput();
+              if (input && !input.disabled) input.click();
+            } catch (e) { /* noop */ }
+          });
+          return b;
+        }
+
+        var attachBtn = null;
+        var lastMissReason = '';
+        /** 缺锚诊断：同一个原因只记一次面包屑，避免刷屏又能事后定位。 */
+        function logMissOnce(reason) {
+          if (lastMissReason === reason) return;
+          lastMissReason = reason;
+          bootLog('attach-btn-anchor:' + reason);
+        }
+
+        function dropAttachButton() {
+          try {
+            if (attachBtn && attachBtn.parentNode) attachBtn.parentNode.removeChild(attachBtn);
+          } catch (e) { /* noop */ }
+          attachBtn = null;
+        }
+
+        /** 可用性跟随「+」与隐藏 input：dsh 在锁定 / 命令面板未绑定 / 子代理等状态下会
+         *  禁用它们，此时它自己也不接受上传（选中的文件会被静默丢弃），故一并置灰。 */
+        function applyAttachState(plus, input) {
+          if (attachBtn === null) return;
+          attachBtn.disabled = plus.disabled === true || input.disabled === true;
+          var aria = attachCopy().aria;
+          if (attachBtn.getAttribute('aria-label') !== aria) attachBtn.setAttribute('aria-label', aria);
+        }
+
+        /** 只刷新可用态、不动 DOM：供交互前调用（重建节点会打断进行中的点击手势）。 */
+        function refreshAttachState() {
+          try {
+            if (attachBtn === null || !attachBtn.isConnected) return;
+            var plus = plusButton();
+            var input = composerFileInput();
+            if (!plus || !input) return;
+            applyAttachState(plus, input);
+          } catch (e) { /* noop */ }
+        }
+
+        function syncAttachButton() {
+          try {
+            // 关掉「移动端适配」= 回到官方原版外观：本按钮是我们加的外观，一并撤掉。
+            if (enabled !== true) { dropAttachButton(); return; }
+            ensureAttachStyle();
+            var plus = plusButton();
+            var input = composerFileInput();
+            if (!plus || !input || !plus.parentNode) {
+              // 锚点缺失（结构变更 / composer 未挂载）：不插、不报错，只记一次面包屑。
+              // 记「缺锚」而不是细分原因：两个判据同源（plus 由 input 派生），细分只会误标。
+              dropAttachButton();
+              logMissOnce('anchor-missing');
+              return;
+            }
+            // 判存 + 位置校验：React 重渲染既可能移除我们的节点，也可能把它挪到别处。
+            if (attachBtn === null || !attachBtn.isConnected ||
+              attachBtn.previousElementSibling !== plus || attachBtn.nextElementSibling !== input) {
+              dropAttachButton();
+              attachBtn = buildAttachButton();
+              plus.parentNode.insertBefore(attachBtn, input);
+            }
+            applyAttachState(plus, input);
+          } catch (e) { bootLog('attach-btn-fail:' + (e && e.message || e)); }
+        }
+
+        syncAttachButton();
+        var attachTimer = setInterval(syncAttachButton, 1000);
+        // 工具栏归 React 管理，重渲染会移除或挪动我们的节点：观察文档子树，发现异常立刻补回。
+        // 回调先做廉价判存（连接性 + 前一个兄弟仍是按钮），再做 250ms 节流 —— 否则每次敲键
+        // 都会走一次完整同步（含全文档查询）。
+        var lastObserveSync = 0;
+        var attachObserver = null;
+        try {
+          attachObserver = new MutationObserver(function () {
+            if (attachBtn !== null && attachBtn.isConnected) {
+              var prev = attachBtn.previousElementSibling;
+              if (prev !== null && prev.tagName === 'BUTTON') return;
+            }
+            var now = Date.now();
+            if (now - lastObserveSync < 250) return;
+            lastObserveSync = now;
+            syncAttachButton();
+          });
+          attachObserver.observe(document.documentElement, { childList: true, subtree: true });
+        } catch (e) { /* 观察器装不上时退化为每秒复查 */ }
+
+        // 供下一次求值（同页面热切换）先停掉本实例，见段首「重入保护」。
+        document.__dshboxAttachTeardown = function () {
+          try { clearInterval(attachTimer); } catch (e) { /* noop */ }
+          try { if (attachObserver !== null) attachObserver.disconnect(); } catch (e) { /* noop */ }
+          dropAttachButton();
+        };
+      })(); } catch (e) { bootLog('attach-btn-install-fail:' + (e && e.message || e)); }
 
     };
 

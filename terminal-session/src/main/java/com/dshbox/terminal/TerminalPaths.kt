@@ -46,8 +46,7 @@ data class TerminalPaths(
      * 「手机助手」宿主目录，绑定到 guest 的 `/opt/pilot`。
      *
      * 与 app 启动网页端 DSH、执行 guest 命令时**同一个挂载点**：入口脚本
-     * `bin/pilot`、能力清单与信箱目录都由宿主在启动时物化，绑上之后终端里才有
-     * `pilot` 命令。缺目录时只是终端里没有这条命令，不该让整个终端退化。
+     * `bin/pilot`、能力清单与信箱目录由应用启动时生成；绑定后可从终端调用 pilot。
      */
     val pilotDir: File? = null,
     /** Host directory bound to /root/projects inside the guest. */
@@ -58,4 +57,14 @@ data class TerminalPaths(
     val failsafeHome: File,
     /** Writable TMPDIR for the failsafe Android shell. */
     val failsafeTmpDir: File,
+    /** Browser CLI assets and channel metadata bound at /opt/browser. */
+    val browserDir: File? = null,
+    /**
+     * 共享区绑定清单（guest 别名 → 宿主目录）：内建 `DSHBox` + 用户挂载目录。
+     *
+     * 与 app 启动网页端 DSH、执行 guest 命令时**同一组挂载点**（guest `/root/share/<别名>`），
+     * 终端里因此也能直接读写共享区。目录缺失/别名为空的条目由命令工厂跳过；路径由 app 层
+     * 从公共存储与挂载清单注入（本模块不感知 Android 存储权限）。
+     */
+    val shareBinds: List<Pair<String, File>> = emptyList(),
 )

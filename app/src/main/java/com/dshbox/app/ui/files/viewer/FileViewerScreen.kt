@@ -95,6 +95,8 @@ internal fun FileViewerScreen(
     sandboxRunning: Boolean,
     onDismiss: () -> Unit,
     onRequestRefresh: () -> Unit,
+    /** 宿主页签是否活跃：二级页随页签常驻组合，失活时交还返回键给当前活跃页/系统。 */
+    backEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -149,7 +151,7 @@ internal fun FileViewerScreen(
 
     // ---------------- 返回与未保存拦截 ----------------
 
-    BackHandler {
+    BackHandler(enabled = backEnabled) {
         when {
             textCtrl.dirty -> showUnsaved = true
             else -> onDismiss()
@@ -164,7 +166,7 @@ internal fun FileViewerScreen(
         }
     }
 
-    // 返工 P1：有损解码（存在无法解码的字节）时回落编辑态——编辑保存会以 U+FFFD
+    // 有损解码时退出编辑态，避免保存时以 U+FFFD
     // 覆盖原字节造成不可逆损坏；用户切换正确编码后 lossy 归 false 可再编辑
     LaunchedEffect(textCtrl.lossy) {
         if (textCtrl.lossy) editing = false
@@ -209,7 +211,7 @@ internal fun FileViewerScreen(
 
     fun externalOpen() {
         val r = ready ?: return
-        // 返工修正 #5：脏状态下外部打开会看到磁盘旧内容（与编辑态不一致）——同样拦截
+        // 外部应用读取磁盘内容，存在未保存修改时先确认处理方式。
         if (textCtrl.dirty) {
             toastRes(R.string.files_exit_dirty_block)
             return
@@ -286,7 +288,7 @@ internal fun FileViewerScreen(
 
     fun share() {
         val r = ready ?: return
-        // 返工修正 #5：脏状态下分享外发的是磁盘旧内容——与外部打开同口径拦截
+        // 分享读取磁盘内容，存在未保存修改时先确认处理方式。
         if (textCtrl.dirty) {
             toastRes(R.string.files_exit_dirty_block)
             return
@@ -297,8 +299,13 @@ internal fun FileViewerScreen(
             toastRes(R.string.files_exit_no_app)
             return
         }
+        // 自身被排除后可能一个目标都不剩：与"无应用可处理"同口径提示，不弹空选择器
+        if (!ExternalOpener.hasExternalTarget(context, intent)) {
+            toastRes(R.string.files_exit_no_app)
+            return
+        }
         runCatching {
-            context.startActivity(Intent.createChooser(intent, r.file.name))
+            context.startActivity(ExternalOpener.chooserExcludingSelf(context, intent, r.file.name))
         }.onFailure { toastRes(R.string.files_exit_no_app) }
     }
 
@@ -307,7 +314,7 @@ internal fun FileViewerScreen(
     fun requestEdit() {
         val r = ready ?: return
         if (!isTextKind) return
-        // 返工 P1：有损解码禁编辑（防 U+FFFD 覆盖原字节）；先切换正确编码再编辑
+        // 有损解码禁用编辑；先切换正确编码，避免替换符覆盖原字节。
         if (textCtrl.lossy) {
             toastRes(R.string.files_edit_lossy_block)
             return
@@ -537,11 +544,7 @@ internal fun FileViewerScreen(
     }
 
     // ---------------- 页面 ----------------
-    // 覆盖式二级页必须有衬底：根 Column 无背景会透明透出底层
-    // （文件列表/首页 DSH 背景），视觉表现为「PDF 显示在首页背景里」（缺陷 2）。
-    // 返工 #7：根级 clickable 空动作**吞噬点击**——覆盖页空白区若无 pointer 消费，
-    // Compose 命中测试会继续下探到 FilesScreen 列表项 → 点文件内空白处跳转到别的文件。
-    // （indication=null 无涟漪；子级滚动/点按不受影响——tap 由上层消费后子级不再触发）
+    // 根布局提供不透明背景并消费空白处点击，防止事件穿透到底层文件列表。
     val rootInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Column(
         modifier = modifier

@@ -122,9 +122,14 @@
       tag: release.tag_name,
       size: formatBytes(apk.size)
     };
-    lastRelease = release;
-    applyReleaseNotes(release);
-    applyFacts(release);
+    // 下载指向实际已发布版本；较旧 Release 不覆盖新版页面的内容与构建数据。
+    var currentPageVersion = pageVersion();
+    var matchesPage = !currentPageVersion || compareVersions(release.tag_name, currentPageVersion) >= 0;
+    lastRelease = matchesPage ? release : null;
+    if (matchesPage) {
+      applyReleaseNotes(release);
+      applyFacts(release);
+    }
     renderDynamic();
   }
 
@@ -315,9 +320,9 @@
           : RELEASE_FALLBACK;
       }
 
-      /* 解析不出要点 → 隐藏板块（保留 HTML 的静态兜底内容不被清空） */
+      /* 无可用要点时继续显示页面内的双语静态说明。 */
       if (!notes.length || !list) {
-        section.setAttribute("data-state", "empty");
+        section.removeAttribute("data-state");
         return;
       }
       var limits = sectionLimits(section);

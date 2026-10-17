@@ -130,7 +130,7 @@ class StorageReaperOutTest {
         sweepIgnoringLog()
 
         // 总量 4×(上限/4+1) > 上限，但每类只有一件且它就是最新 → 受"每类至少留一份"保护，
-        // 一件都不删（宁可超限，也不删用户最后的那份）。这条断言把这个取舍钉住。
+        // 即使总量超限，也保留每类最新的一份产物。
         var survivors = 0
         for (kind in kinds) {
             val files = File(paths.outDir, kind).listFiles() ?: emptyArray()

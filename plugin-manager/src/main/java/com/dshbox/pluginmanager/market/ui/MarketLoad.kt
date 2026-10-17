@@ -70,12 +70,8 @@ internal suspend fun loadMarket(
 }
 
 /**
- * 「已安装」列表**正文**要显示成什么。
- *
- * 抽成纯函数是因为这里有一条**必须钉住**的规则：profile 读不出来时显示
- * "读不出来 + 重试"，**不是**"尚未安装社区插件"。后者会让用户以为插件没了。
- * （失败横幅由 `loadFailure != null` 单独驱动，与正文分支互不干扰：手里还有
- * 上一份列表时，横幅 + 旧列表一起显示。）
+ * 已安装列表正文的显示状态。读取失败与空列表分别呈现；
+ * 失败横幅独立于正文，因此存在缓存列表时可同时显示旧列表和错误提示。
  */
 internal enum class InstalledListState { LOADING, FAILED, EMPTY, CONTENT }
 

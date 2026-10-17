@@ -20,4 +20,14 @@
     <cache-path
         name="camera_capture"
         path="camera-capture/" />
+    <!-- 共享区：Android 公共存储的 DSHBox 目录（与 guest /root/share/DSHBox 同一份数据），
+         供共享区内的「拍照 / 录像」落点与「分享 / 外部打开」出口使用。 -->
+    <external-path
+        name="share_area"
+        path="DSHBox/" />
+    <!-- 用户挂载目录位于公共存储任意位置，无法逐个声明：补一条公共存储根。
+         Provider 不导出，仅经用户显式操作（拍摄落点 / 分享）逐 URI 授权。 -->
+    <external-path
+        name="share_mounts"
+        path="." />
 </paths>

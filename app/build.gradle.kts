@@ -20,9 +20,7 @@ android {
 
     signingConfigs {
         create("release") {
-            // 显式开启 v3：minSdk 29 下 v2 就够装，但 v3 才能支持**密钥轮换**，
-            // 且上架校验工具链（apksigner / 商店）普遍期望 v2+v3 同时存在。
-            // 只签 v2 时 apksigner 会报 v1=false v3=false，故此处补齐。
+            // 启用 v2 和 v3 签名；v3 支持签名密钥轮换。
             enableV2Signing = true
             enableV3Signing = true
             if (hasReleaseKeystore) {
@@ -39,8 +37,8 @@ android {
         minSdk = 29
         targetSdk = 36
         // 多语言版本：联合国六语 + 语言选择器 + 硬编码清零 + 布局恒 LTR + i18n 门禁。
-        versionCode = 8
-        versionName = "1.4.0"
+        versionCode = 9
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -91,6 +89,9 @@ android {
 
 dependencies {
     implementation(project(":common"))
+    implementation(project(":browser:browser-api"))
+    implementation(project(":browser:browser-runtime"))
+    implementation(project(":browser:browser-bridge"))
     implementation(project(":bridge"))
     implementation(project(":sandbox-manager"))
     implementation(project(":terminal-session"))
@@ -138,6 +139,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
+apply(from = "license-assets.gradle")
+
 // 注：`:pilot` 摘除后，ABI 过滤脚本（原 pilot/gradle/pilot-abi.gradle，动机来自 OpenCV/ML Kit 的
 // 冗余 ABI）一并移除，恢复 AGP 默认全 ABI 打包。若将来重新引入多 ABI 依赖，按需再挂。
-

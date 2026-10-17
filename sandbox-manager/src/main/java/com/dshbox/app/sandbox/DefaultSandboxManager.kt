@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.io.FileOutputStream
 import android.util.Log
 import java.util.zip.ZipFile
 
@@ -114,6 +115,7 @@ class DefaultSandboxManager(
                 workspaceBind = config.userDataDir.absolutePath,
                 nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
                 dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
+                shareBinds = shareAreaBinds(),
             )
             val prootEnv = buildProotEnv(runtimeDir, "sandbox")
             Log.i(TAG, "starting sandbox proot")
@@ -167,6 +169,15 @@ class DefaultSandboxManager(
     override suspend fun healthCheck(): AppResult<SandboxHealth> {
         val health = healthChecker.check()
         return health.toAppResult()
+    }
+
+    override suspend fun sandboxCpuMillis(): Long? = withContext(Dispatchers.IO) {
+        // 两个句柄都没了就没什么可统计的：返回 null，让调用方明确知道「当前无沙箱占用」。
+        if (sandboxProcess == null && dshProcess == null) return@withContext null
+        // 一次 /proc 表遍历，两种标记的进程树取并集（DSH 若挂在沙箱树下不会被算两遍）。
+        processRunner.cpuMillisForMarkers(
+            listOf(Constants.SANDBOX_KEEPALIVE_MARKER, Constants.DSH_START_SCRIPT),
+        )
     }
 
     override suspend fun startDsh(): AppResult<DshRuntimeStatus> {
@@ -229,6 +240,8 @@ class DefaultSandboxManager(
                         shimHostDir = linkShimHostDir(),
                         dshPatchGuestPaths = dshOverlayGuestPaths(),
                         pilotHostDir = pilotHostDir(),
+                        browserHostDir = browserHostDir(),
+                        shareBinds = shareAreaBinds(),
                     )
                     val prootEnv = buildProotEnv(runtimeDir, "dsh")
                     Log.i(TAG, "starting dsh proot")
@@ -331,20 +344,35 @@ class DefaultSandboxManager(
 
     override fun isNodeLayerInstalled(): Boolean = File(nodeLayerDir(), "bin/node").isFile
 
+    /**
+     * 运行环境是否可用：PRoot 与 base 目录在位**且** runtime-profile.json 存在、可解析、
+     * assembly 非空**且**逐层完整性校验通过。
+     *
+     * profile 是层完整性的唯一依据：body 替换时层目录先就位、profile 后落盘，进程若在
+     * 两者之间终止会留下「base 目录存在但 profile 缺失」的半成品；此时无法证明环境可用，
+     * 一律判未安装——调用方据此走重新安装（半成品会被 body 替换覆盖），而非把半成品
+     * 当作已安装放行。
+     */
     override fun isRuntimeInstalled(): Boolean {
         val proot = prootBinary()
         val base = baseRootfs()
-        var installed = proot.isFile && base.isDirectory
+        val installed = proot.isFile && base.isDirectory
         val profile = runtimeProfile()
-        if (installed && profile != null && profile.assembly.isNotEmpty()) {
-            val broken = verifyLayersBroken(profile)
-            if (broken.isNotEmpty()) {
-                Log.w(TAG, "isRuntimeInstalled=false: layer integrity broken: $broken")
-                installed = false
-            }
+        if (!installed) {
+            Log.i(TAG, "isRuntimeInstalled=false (proot/base missing) proot=${proot.absolutePath} base=${base.absolutePath}")
+            return false
         }
-        Log.i(TAG, "isRuntimeInstalled=$installed proot=${proot.absolutePath} base=${base.absolutePath}")
-        return installed
+        if (profile == null || profile.assembly.isEmpty()) {
+            Log.w(TAG, "isRuntimeInstalled=false (profile missing/empty: cannot prove layer integrity)")
+            return false
+        }
+        val broken = verifyLayersBroken(profile)
+        if (broken.isNotEmpty()) {
+            Log.w(TAG, "isRuntimeInstalled=false: layer integrity broken: $broken")
+            return false
+        }
+        Log.i(TAG, "isRuntimeInstalled=true proot=${proot.absolutePath} base=${base.absolutePath}")
+        return true
     }
 
     /**
@@ -711,7 +739,7 @@ class DefaultSandboxManager(
             asideSha256 = asideSha, asideSizeBytes = com.dshbox.app.sandbox.online.DirHash.sizeBytes(aside),
             builtAtIsoUtc = builtAt,
         )
-        File(dir, "runtime-profile.json").writeText(profile)
+        writeFileAtomically(content = profile, target = File(dir, "runtime-profile.json"))
         // 哨兵与重建后的声明保持一致（自愈式写回，缺则补）。
         runCatching {
             File(File(base, ".dshbox"), "layer-base.sha256").parentFile?.mkdirs()
@@ -755,7 +783,34 @@ class DefaultSandboxManager(
             }
         }
         val stagedProfile = File(staging, "runtime-profile.json")
-        if (stagedProfile.isFile) stagedProfile.copyTo(File(runtimeDir, "runtime-profile.json"), overwrite = true)
+        val targetProfile = File(runtimeDir, "runtime-profile.json")
+        if (stagedProfile.isFile) writeFileAtomically(stagedProfile.readText(), targetProfile)
+    }
+
+    /**
+     * 原子写入 [target]：内容先落同目录临时文件并 fsync，再 rename 覆盖目标。
+     *
+     * profile 是「环境是否装好」的唯一凭据，直接覆写半途被杀会留下截断的 JSON（解析
+     * 失败即半成品）。同目录 rename 在同一文件系统内是原子的，因此目标要么是旧内容、
+     * 要么是完整新内容；[File.renameTo] 覆盖已存在的目标在部分文件系统上可能失败，
+     * 此时回退为直接复制（保持与既有行为等价的可用性）。临时文件在失败路径清理。
+     */
+    private fun writeFileAtomically(content: String, target: File) {
+        val tmp = File(target.parentFile, "${target.name}.tmp")
+        val wrote = runCatching {
+            FileOutputStream(tmp).use { out ->
+                out.write(content.toByteArray(Charsets.UTF_8))
+                out.flush()
+                out.fd.sync()
+            }
+        }.onFailure {
+            Log.w(TAG, "atomic write failed for ${target.name}: ${it.message}")
+        }.isSuccess
+        // 写入失败时不 rename：临时文件可能已被截断，宁可用旧的直接覆写路径。
+        if (wrote && tmp.renameTo(target)) return
+        tmp.delete()
+        runCatching { target.writeText(content) }
+            .onFailure { Log.w(TAG, "fallback profile write failed for ${target.name}: ${it.message}") }
     }
 
     /** True when [path] (canonical) equals or lives under [dir] (canonical). */
@@ -872,6 +927,11 @@ class DefaultSandboxManager(
             add("--bind=${config.npmCacheDir.absolutePath}:/root/.npm")
             // 手机助手通道：guest 里跑的 `dsh plugin` 之类命令也要能调宿主能力。
             add("--bind=${pilotHostDir()}:/opt/pilot")
+            browserHostDir()?.let { add("--bind=$it:/opt/browser") }
+            // 共享区：内建 DSHBox + 用户挂载 → guest /root/share/<别名>；目录缺失的跳过。
+            shareAreaBinds().forEach { (name, dir) ->
+                add("--bind=${dir.absolutePath}:${Constants.SHARE_AREA_GUEST_DIR}/$name")
+            }
             add("--cwd=/root")
             add("--kill-on-exit")
             add("/system/bin/sh"); add("-c")
@@ -1112,6 +1172,35 @@ class DefaultSandboxManager(
     /** 手机助手暴露给 guest 的宿主目录（`/opt/pilot`）；目录为空只表示 guest 还没拿到入口脚本。 */
     private fun pilotHostDir(): String = config.pilotEntryDir.apply { mkdirs() }.absolutePath
 
+    /** Optional Browser CLI tree; the app bridge owns its contents and lifecycle. */
+    private fun browserHostDir(): String? = config.browserEntryDir
+        .takeIf { it.isDirectory }
+        ?.absolutePath
+
+    /**
+     * 共享区绑定清单（guest 别名 → 宿主目录）：内建 DSHBox + 用户挂载，目录缺失的跳过；
+     * 三处 PRoot 启动与 guest 命令共用同一取值口径。
+     *
+     * 同时预建 base 镜像挂载点 `<base>/root/share/<别名>`：PRoot 对多级新挂载点的
+     * 建目录行为不作依赖（内建与挂载目录的父级 `/root/share` 同理）。
+     */
+    private fun shareAreaBinds(): List<Pair<String, File>> {
+        val binds = config.shareBindsProvider()
+            .filter { (name, dir) -> name.isNotBlank() && dir.isDirectory }
+        if (binds.isNotEmpty()) {
+            val guestShareRoot = File(File(baseRootfs(), "root"), "share").apply { mkdirs() }
+            // 清理不在当前清单内的空别名目录（取消挂载后的残留，避免 guest 里留下空壳）。
+            val keep = binds.mapTo(HashSet()) { it.first }
+            guestShareRoot.listFiles()?.forEach { child ->
+                if (child.isDirectory && child.name !in keep && child.listFiles()?.isEmpty() == true) {
+                    child.delete()
+                }
+            }
+            binds.forEach { (name, _) -> File(guestShareRoot, name).mkdirs() }
+        }
+        return binds
+    }
+
     /**
      * Assembles the host-process env for a proot role by sourcing the layered
      * `.dshbox/env.d/<layer>.sh` fragments in profile assembly order (L0 base ->
@@ -1327,6 +1416,8 @@ class DefaultSandboxManager(
                 shimHostDir = linkShimHostDir(),
                 dshPatchGuestPaths = dshOverlayGuestPaths(),
                 pilotHostDir = pilotHostDir(),
+                browserHostDir = browserHostDir(),
+                shareBinds = shareAreaBinds(),
             )
             val prootEnv = buildProotEnv(runtimeDir, "dsh")
             dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv, onRawLine = ::ingestDshWebLaunchToken)

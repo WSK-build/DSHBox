@@ -102,8 +102,7 @@ enum class LogEvent(val level: LogLevel, val template: String) {
     // 事后排查「为什么这条一直没执行」靠这两条各归各位。
     REQUEST_DISPATCH_NOT_EXECUTABLE(LogLevel.WARN, "dispatch refused not executable id=%{id} phase=%{phase}"),
     // ── 一条请求的阶段事件（从受理到回包，逐步可查）──
-    // 这些是「排障时把一条请求的完整旅程串起来」的那组点：哪一步进的、等谁、判了什么、
-    // 派发前钉没钉住、最后什么结局、回包多大。字段一律只放标识与状态，参数原文不落。
+    // 记录请求受理、等待、审批、派发、完成及回包阶段，仅写入标识和状态，不记录参数原文。
     REQUEST_ADMITTED(LogLevel.INFO, "request admitted id=%{id}"),
     REQUEST_WAITING_USER(LogLevel.INFO, "request waiting for user id=%{id} kind=%{kind}"),
     REQUEST_APPROVAL_DECIDED(LogLevel.INFO, "approval decided id=%{id} verdict=%{verdict}"),

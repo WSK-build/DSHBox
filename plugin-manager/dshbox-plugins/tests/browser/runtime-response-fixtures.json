@@ -1,0 +1,55 @@
+{
+  "success": {
+    "version": 1,
+    "requestId": "fixture-open-ok",
+    "code": "OK",
+    "executed": true,
+    "sessionGeneration": 4,
+    "controlGeneration": 9,
+    "owner": "ai",
+    "state": "RUNNING",
+    "data": {
+      "event": "opened",
+      "url": "https://example.test"
+    }
+  },
+  "rejected": {
+    "version": 1,
+    "requestId": "fixture-disabled",
+    "code": "AUTOMATION_DISABLED",
+    "executed": false,
+    "sessionGeneration": 4,
+    "controlGeneration": 9,
+    "owner": "human",
+    "state": "RUNNING",
+    "data": {}
+  },
+  "unknown": {
+    "version": 1,
+    "requestId": "fixture-unknown",
+    "code": "UNKNOWN",
+    "executed": null,
+    "sessionGeneration": 4,
+    "controlGeneration": 9,
+    "owner": "ai",
+    "state": "RUNNING",
+    "data": {}
+  },
+  "screenshot": {
+    "version": 1,
+    "requestId": "fixture-screenshot",
+    "code": "OK",
+    "executed": true,
+    "sessionGeneration": 4,
+    "controlGeneration": 9,
+    "owner": "ai",
+    "state": "RUNNING",
+    "data": {
+      "artifactPath": "/opt/browser/out/shot/shot-fixture.png",
+      "width": 360,
+      "height": 800,
+      "format": "png",
+      "bytes": 2048
+    }
+  }
+}

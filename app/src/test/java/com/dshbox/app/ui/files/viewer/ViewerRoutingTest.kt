@@ -18,7 +18,7 @@ class ViewerRoutingTest {
     private fun auto(kind: FileTypeClassifier.FileKind?, ext: String = "", sub: String? = null, hasFull: Boolean = false): ViewerMode =
         resolveBodyMode(ViewerMode.AUTO, kind, ext, sub, hasFull)
 
-    // ---------------- 返工 A：OFFICE 抽文本视图接通 ----------------
+    // OFFICE 文本提取视图路由。
 
     @Test
     fun officeWithExtractedTextRoutesToReadonlyText() {

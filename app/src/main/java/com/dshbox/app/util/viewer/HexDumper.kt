@@ -106,8 +106,7 @@ object HexDumper {
         return h
     }
 
-    /** 采样整文件熵（大文件取头/中/尾块；返工修正 #8：块去重——size 略超 64KB 时
-     *  三块会落在同一 64KB 块上，重复采样无意义）。 */
+    /** 采样整文件熵；大文件取头、中、尾块，并按块索引去重，避免重复采样。 */
     fun entropyOf(file: File): Double {
         if (!file.isFile || file.length() <= 0L) return 0.0
         val size = file.length()

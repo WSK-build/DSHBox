@@ -113,7 +113,7 @@ class CapabilityRegistryInvariantsTest {
     /**
      * 模块最低可运行版本是 29（本模块 `build.gradle.kts` 的 `defaultConfig.minSdk`，
      * 也是注册表与描述符两处默认值）。低于它的只允许是「记录平台接口从哪一版起存在」
-     * 那几条，逐个钉住；新增一条就要先确认它没被当成放行判据。
+     * 对应条目逐项验证；新增条目也不得将该版本值作为放行判据。
      */
     @Test
     fun minSdkNeverDropsBelowTheModuleFloorUnannounced() {

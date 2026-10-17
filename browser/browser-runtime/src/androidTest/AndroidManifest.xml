@@ -1,0 +1,36 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <permission android:name="${applicationId}.permission.BROWSER_INTERNAL" android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.permission.BROWSER_INTERNAL" />
+    <application>
+        <activity
+            android:name="com.dshbox.browser.runtime.BrowserDownloadShareProbeActivity"
+            android:exported="true"
+            android:label="Browser Download Check"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="com.dshbox.browser.runtime.BrowserActivity"
+            android:process="${applicationId}"
+            android:exported="true"
+            tools:replace="android:process,android:exported" />
+        <provider
+            android:name="com.dshbox.browser.runtime.BrowserUploadProvider"
+            android:process="${applicationId}"
+            tools:replace="android:process" />
+        <activity
+            android:name="com.dshbox.browser.runtime.BrowserApprovalFocusProbeActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name="com.dshbox.browser.runtime.BrowserUploadProviderWebViewProbeActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+</manifest>

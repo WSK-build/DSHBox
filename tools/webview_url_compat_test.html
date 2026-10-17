@@ -1,10 +1,10 @@
 <!doctype html>
 <!--
-  M22 回归夹具：WebView 旧内核对「非标准 scheme」的 URL 解析兼容补丁。
+  WebView 非标准 scheme 的 URL 解析兼容测试。
 
-  背景（真机两机对照实测）：
-    手机（WebView 126）  →  new URL('dsh-resource://file/x').hostname === ''
-    平板（WebView 138）  →  new URL('dsh-resource://file/x').hostname === 'file'
+  对照两类解析行为：
+    new URL('dsh-resource://file/x').hostname === ''
+    new URL('dsh-resource://file/x').hostname === 'file'
 
   而 dsh 的 `protocolOf()` 用 hostname 取协议名：
     const u = new URL(address);

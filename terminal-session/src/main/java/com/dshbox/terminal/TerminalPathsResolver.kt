@@ -11,7 +11,12 @@ import java.io.File
  */
 object TerminalPathsResolver {
 
-    fun resolve(appFilesDir: File, nativeLibraryDir: String?): TerminalPaths? {
+    fun resolve(
+        appFilesDir: File,
+        nativeLibraryDir: String?,
+        /** 共享区绑定清单（内建 DSHBox + 用户挂载）；不可由 filesDir 推导，由 app 层注入。 */
+        shareBinds: List<Pair<String, File>> = emptyList(),
+    ): TerminalPaths? {
         val runtimeCurrent = File(File(appFilesDir, "runtime"), "runtime-current")
         // Layered layout: base is the L0 rootfs (Node is a separate L1 layer
         // bound at /usr/local). Backward-compat: if a legacy single "debian"
@@ -24,20 +29,12 @@ object TerminalPathsResolver {
             else -> return null
         }
         val nodeLayer = File(runtimeCurrent, "node")
-        // L2：DSH 层 + 其硬链接垫片。两者都可能缺——只导入 Linux 层时没有 DSH 层；
-        // 垫片由 app 在启动时落盘，首次 bootstrap 之前可能尚未写入。缺了只是终端里
-        // 没有 `dsh` 命令，不该让整个终端退化成受限 shell，所以用 takeIf。
+        // DSH 层与硬链接兼容层可选；缺失时仅省略对应绑定，其余终端环境照常装配。
         val dshLayer = File(runtimeCurrent, "dsh").takeIf { it.isDirectory }
         val dshShim = File(appFilesDir, "dshbox").takeIf { it.isDirectory }
-        // 工具链缓存挂载点（pnpm store / corepack 缓存）。无条件给出：宿主目录在
-        // TerminalCommandFactory 绑定时 mkdirs 创建（首次启动时它还不存在，用 takeIf
-        // 会变成"第一次永远不绑"的鸡生蛋问题）。
+        // 工具链缓存目录在 TerminalCommandFactory 绑定时创建，此处无需检查是否已存在。
         val guestCache = File(appFilesDir, "guest-cache")
-        // 手机助手挂载点（guest 的 /opt/pilot）。目录名 "pilot" 与沙盒侧的
-        // SandboxConfig.pilotEntryDir 同源（都是 filesDir 下的 pilot），因此终端侧
-        // 独立推导一次即可，不必为此跨模块去取沙盒配置。与 guestCache 同理**不能**
-        // 用 takeIf：宿主目录由 TerminalCommandFactory 绑定时 mkdirs 创建，
-        // 用 takeIf 会变成"第一次永远不绑"的鸡生蛋问题。
+        // 手机助手挂载到 /opt/pilot；应用侧目录在 TerminalCommandFactory 绑定时创建。
         val pilotDir = File(appFilesDir, "pilot")
 
         val androidSide = File(runtimeCurrent, "android-side")
@@ -73,6 +70,8 @@ object TerminalPathsResolver {
             prootTmpDir = prootTmpDir,
             failsafeHome = failsafeHome,
             failsafeTmpDir = failsafeTmpDir,
+            browserDir = File(appFilesDir, "browser-tools"),
+            shareBinds = shareBinds,
         )
     }
 }

@@ -61,6 +61,8 @@ fun DiagnosticsScreen(
     sandboxReady: Boolean,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 宿主页签失活时关闭返回接管，避免不可见子页吞掉其它页签的返回键。 */
+    backEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     val logsDir = File(context.filesDir, "logs")
@@ -104,7 +106,7 @@ fun DiagnosticsScreen(
         Unit
     }
 
-    BackHandler(onBack = onBack)
+    BackHandler(enabled = backEnabled, onBack = onBack)
 
     Column(
         modifier = modifier
@@ -115,7 +117,7 @@ fun DiagnosticsScreen(
     ) {
         Text(
             text = stringResource(R.string.settings_diagnostics),
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
         )
 
         Text(

@@ -1,5 +1,6 @@
 package com.dshbox.app.util
 
+import com.dshbox.app.common.Constants
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -72,6 +73,44 @@ class SandboxFilesTest {
             "/opt/dshapp/runtime/bin.js",
             guestPathOf(mapper, File(mapper.dshLayer, "bin.js")),
         )
+    }
+
+    @Test
+    fun `share area files map under the guest share root`() {
+        val shareRoot = File("/storage/emulated/0/DSHBox")
+        val shareMapper = PathMapper(base, workspace, null, null, shareRoot)
+        val guestRoot = "${Constants.SHARE_AREA_GUEST_DIR}/${Constants.SHARE_AREA_DIR_NAME}"
+        assertEquals(guestRoot, guestPathOf(shareMapper, shareRoot))
+        assertEquals("$guestRoot/a/b.txt", guestPathOf(shareMapper, File(shareRoot, "a/b.txt")))
+    }
+
+    @Test
+    fun `a lookalike sibling folder is not treated as the share area`() {
+        val shareRoot = File("/storage/emulated/0/DSHBox")
+        val shareMapper = PathMapper(base, workspace, null, null, shareRoot)
+        val guestRoot = "${Constants.SHARE_AREA_GUEST_DIR}/${Constants.SHARE_AREA_DIR_NAME}"
+        // 带分隔符边界：`/…/DSHBox2` 不得误命中共享区（否则 .deb 安装会拿到错误 guest 路径）。
+        // 断言未映射到共享区，不限定恒等回退的盘符形态，以适配不同 JVM 平台。
+        val mapped = guestPathOf(shareMapper, File("/storage/emulated/0/DSHBox2/x.txt"))
+        assertFalse("DSHBox2 不得映射为共享区路径", mapped == "$guestRoot/x.txt")
+        assertFalse("DSHBox2 不得落在 guest 共享区根下", mapped.startsWith("$guestRoot/"))
+    }
+
+    // ---------- isUnderRoot：带分隔符边界的归属判定 ----------
+
+    @Test
+    fun `isUnderRoot matches itself and children but not lookalike siblings`() {
+        val root = File("/storage/emulated/0/DSHBox")
+        assertTrue(isUnderRoot(root, root.absolutePath))
+        assertTrue(isUnderRoot(root, File(root, "a/b.txt").absolutePath))
+        assertFalse(isUnderRoot(root, File("/storage/emulated/0/DSHBox2/x.txt").absolutePath))
+        assertFalse(isUnderRoot(root, File("/storage/emulated/0/Other/x.txt").absolutePath))
+    }
+
+    @Test
+    fun `isUnderRoot rejects an empty prefix root`() {
+        // 根归一化后为空（如 "/"）时必须判 false，否则任意绝对路径恒真。
+        assertFalse(isUnderRoot(File("/"), "/data/user/0/com.dshbox.app/files/user-data"))
     }
 
     // ---------- scanDirectory：目录全保留、文件按上限截断 ----------

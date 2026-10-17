@@ -22,10 +22,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # setup-android@v3 的 packages 默认值是 `tools platform-tools`，
-      # 而 `tools` 早已从 SDK 仓库移除：新版 runner（cmdline-tools 16）上
-      # `sdkmanager tools` 会直接失败退出，CI 连门禁都跑不到。
-      # 这里只让它装仍存在的 platform-tools，其余 SDK 包由下一步手动安装。
+      # 仅安装仍受支持的 platform-tools，其余 SDK 包在下一步显式安装。
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -46,12 +43,11 @@ jobs:
         with:
           python-version: '3.x'
 
-      # 1.2.1 (P6)：多语言资源键位/占位符 parity + 源码硬编码 CJK 扫描
+      # 校验多语言资源键和占位符一致性，并扫描源码硬编码 CJK 文本。
       - name: Run i18n consistency check
         run: bash tools/i18n_check.sh
 
-      # v1.3.1：官网资源查询串须与 versionName 同步
-      # （GitHub Pages 静态资源 max-age=600，漏改会出现「新 HTML + 旧 JS」）
+      # 官网资源查询串与 versionName 同步，避免静态缓存混用不同版本资源。
       - name: Check website asset version string
         run: |
           APP_VER=$(sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
@@ -72,10 +68,11 @@ jobs:
           done
           echo "官网资源版本号已同步"
 
-      # 阻断「本机路径/用户名/凭据」随仓库公开
-      # （构建文档曾带着开发机 JDK 路径并进入公开仓库）
+      # 审查当前 checkout，不允许因忽略规则放行已存在的本地凭据文件。
       - name: Run privacy audit
-        run: python3 tools/privacy_audit.py
+        run: |
+          python3 -m unittest discover -s tools -p test_privacy_audit.py
+          python3 tools/privacy_audit.py --strict
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace

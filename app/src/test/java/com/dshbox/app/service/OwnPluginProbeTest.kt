@@ -120,10 +120,7 @@ class OwnPluginProbeTest {
     }
 
     /**
-     * 脚本用的是**调用方给的**清单，不是内建的那一份。
-     *
-     * 这条挡的是本轮真实踩到的缺陷：把适配包的清单（含 `lib/client.js`）套到没有该文件的
-     * 空壳包上，`test -f` 永远不过 → 每次都判需安装 → 每次启动重装一遍。
+     * 验证脚本使用调用方提供的指纹清单，避免检查其他插件专有的文件而反复触发装配。
      */
     @Test
     fun scriptUsesTheCallerSuppliedFingerprintList() {

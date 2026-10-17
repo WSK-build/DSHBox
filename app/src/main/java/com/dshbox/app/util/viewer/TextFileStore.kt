@@ -12,13 +12,13 @@ import java.nio.file.Files
  *
  * 1. **原子写**：写 `name.dsh-tmp` → flush/fsync → 替换原文件，杜绝写一半崩溃损坏原文件；
  * 2. **元数据保留**：原子替换产生新 inode，必须把原文件 rwx 权限位（rootfs 脚本必须
- *    保持 x 位）与 lastModified 复制到新文件；恢复后**逐项校验**（返工修正：失败不再
- *    静默），File API 失败再尝试 NIO POSIX chmod，仍失败则以警告随
+ *    保持 x 位）与 lastModified 复制到新文件；恢复后逐项校验，
+ *    File API 失败再尝试 NIO POSIX chmod，仍失败则以警告随
  *    [SaveOutcome.Success] 透传给 UI（用户可见「已保存但权限位恢复失败」）；
  * 3. **外部变更检测**：打开时记录 [ContentFingerprint]（size + mtime + 首尾各 64KB
  *    SHA-256）；保存前复查，不一致 → 返回 [SaveOutcome.ExternalChanged]，UI 弹
  *    「文件已被外部修改：用我的覆盖 / 重新载入 / 另存」；
- * 4. **新建文件语义**（返工修正）：`expected == null` 且目标不存在 = 新建，直接写入；
+ * 4. **新建文件语义**：`expected == null` 且目标不存在 = 新建，直接写入；
  *    `expected != null` 而目标已消失 = 被外部删除，仍走 ExternalChanged(null)；
  * 5. 加载时顺带清理本文件遗留的 `.dsh-tmp`（上次写盘中途崩溃的残留）。
  */
@@ -75,7 +75,7 @@ object TextFileStore {
             val fileExists = file.isFile
             val current = if (fileExists) ContentFingerprint.of(file) else null
             when {
-                // 新建（expected == null 且目标不存在）：直接写入（返工修正 #5）
+                // 新建（expected == null 且目标不存在）：直接写入。
                 !fileExists && expected == null -> {}
                 // 打开过但已被外部删除
                 !fileExists -> return SaveOutcome.ExternalChanged(null)
@@ -116,7 +116,7 @@ object TextFileStore {
             return SaveOutcome.Failed(e.message?.let { UiText.raw(it) } ?: UiText.Res(R.string.textstore_err_write_failed))
         }
         // 元数据复制：rwx 权限位（rootfs 可执行位至关重要）+ lastModified。
-        // 返工修正 #4：不再静默吞异常——逐项校验，File API 失败重试 NIO POSIX，
+        // 逐项校验，File API 失败重试 NIO POSIX，
         // 仍未恢复的差异以警告透传（UI 必须展示）。
         val warning = restoreMetadata(file, existed, srcReadable, srcWritable, srcExecutable, srcMtime)
         val fingerprint = ContentFingerprint.of(file)

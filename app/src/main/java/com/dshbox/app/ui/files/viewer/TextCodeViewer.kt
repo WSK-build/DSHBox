@@ -55,7 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** 分块只读窗口的渲染字符上限（返工 #1：超长行整窗读入时防 Compose Text 布局卡死；显示截断，翻页不丢内容）。 */
+/** 分块只读窗口的渲染字符上限，限制超长文本的单次布局开销。 */
 private const val CHUNK_RENDER_MAX_CHARS = 200_000
 
 /** 文本编辑控制器：FileViewerScreen（返回拦截/保存/菜单入口）与 TextCodeViewer（实现）的桥。 */
@@ -74,7 +74,7 @@ internal class TextEditController {
     /** 换行目标：null = 保存时按原文件风格还原（默认）；用户显式转换后为具体风格。 */
     var newlineTarget by mutableStateOf<TextEncoding.NewlineStyle?>(null)
 
-    /** 返工 P1：有损解码标记（存在无法解码的字节）——UI 禁编辑并常驻警告。 */
+    /** 有损解码标记：存在无法解码字节时禁用编辑并显示警告。 */
     var lossy by mutableStateOf(false)
 
     /**
@@ -115,7 +115,7 @@ internal fun TextCodeViewer(
     var savedFingerprint by remember(file, fullBytes) { mutableStateOf(fingerprint) }
     var charset by remember(file, fullBytes) { mutableStateOf(detection.charset) }
     var bomLength by remember(file, fullBytes) { mutableStateOf(detection.bomLength) }
-    // 返工 P1：带损解码——REPORT 试解失败 = 存在无法解码的字节（典型：探测兜底判
+    // 有损解码：REPORT 试解失败表示存在无法解码的字节（典型：探测兜底判
     // UTF-8 的未知编码文件）。lossy 时禁编辑（编辑保存会用 U+FFFD 永久覆盖原字节）。
     var decodedFull by remember(file, fullBytes) {
         mutableStateOf(
@@ -137,13 +137,13 @@ internal fun TextCodeViewer(
     var soraFailed by remember(file, fullBytes) { mutableStateOf(false) }
     var window by remember(file, fullBytes) { mutableStateOf<LargeTextLoader.TextWindow?>(null) }
     var showEncodingDialog by remember { mutableStateOf(false) }
-    // 返工修正 #6：脏状态下选择编码需二次确认（原实现提示后仍静默丢弃）
+    // 有未保存修改时，切换编码需确认是否丢弃修改。
     var pendingCharset by remember { mutableStateOf<TextEncoding.TextCharset?>(null) }
     var pendingExternalChange by remember { mutableStateOf<ContentFingerprint?>(null) }
 
     val useHighlight = highlightLanguage != null
     // Sora 承载：编辑态始终；只读态仅高亮预览（其余用轻量 BasicTextField）。
-    // 返工 P1：有损解码时强制只读（禁编辑禁保存，仅放行编码切换与另存）。
+    // 有损解码时强制只读，保留编码切换与另存入口。
     val effectiveEditing = editing && !lossy
     val useSora = !soraFailed && (effectiveEditing || (useHighlight && fullBytes != null))
     val hasFullText = fullBytes != null
@@ -206,7 +206,7 @@ internal fun TextCodeViewer(
                     savedFingerprint = result.fingerprint
                     savedText = text
                     controller.dirty = false
-                    // 返工修正：元数据（rwx/时间戳）恢复失败以警告透传，不得静默
+                    // 元数据（rwx/时间戳）恢复失败时显示保存结果中的警告。
                     onToast(result.warning?.asString(context) ?: context.getString(R.string.files_save_done))
                     onRequestRefresh()
                 }
@@ -248,7 +248,7 @@ internal fun TextCodeViewer(
 
     // ---- 渲染 ----
     Column(modifier = modifier.fillMaxSize()) {
-        // 返工 P1：有损解码常驻警告（编辑已禁用；编码切换/另存仍可用）
+        // 有损解码时持续显示警告，编码切换和另存仍可用。
         if (lossy && hasFullText) {
             Text(
                 text = stringResource(R.string.files_lossy_warning),
@@ -294,12 +294,10 @@ internal fun TextCodeViewer(
             }
         } else {
             // 大文件分块只读（大文件策略）。
-            // 返工修正 #7：SelectionContainer + Text——只读内容可长按选择/复制
+            // SelectionContainer + Text 支持只读内容长按选择和复制，
             // （BasicTextField 只读态在部分版本选择行为不可靠），并加纵向滚动。
             window?.let { win ->
-                // 返工 #1：分块窗口行尾对齐可能把超长行（big.md ≈738KB/行）整行读入，
-                // Compose Text 一次布局数十万字符 → 主线程卡死「锁屏很久」。显示端截断：
-                // 下一块起点仍从真实行尾推进，被截断的尾部会在下一块开头重现 → 内容不丢。
+                // 限制当前窗口的显示字符数，避免超长文本布局阻塞主线程。
                 val renderText = if (win.text.length > CHUNK_RENDER_MAX_CHARS) {
                     win.text.take(CHUNK_RENDER_MAX_CHARS) +
                         stringResource(R.string.files_chunk_line_truncated, CHUNK_RENDER_MAX_CHARS)
@@ -314,7 +312,7 @@ internal fun TextCodeViewer(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     if (win.lossy) {
-                        // 返工 P1：分块窗口的有损提示（只读态无保存路径，仅告知内容不完整）
+                        // 分块窗口只读展示，有损标记用于提示内容无法完整解码。
                         Text(
                             text = stringResource(R.string.files_lossy_warning),
                             fontSize = 12.sp,
@@ -410,7 +408,7 @@ internal fun TextCodeViewer(
                                 selected = option == charset,
                                 onClick = {
                                     if (controller.dirty && option != charset) {
-                                        // 返工修正 #6：有未保存修改时切换编码需二次确认
+                                        // 有未保存修改时切换编码需二次确认。
                                         pendingCharset = option
                                     } else {
                                         applyCharset(option)
@@ -436,7 +434,7 @@ internal fun TextCodeViewer(
         )
     }
 
-    // ---- 编码切换的丢弃确认（返工修正 #6：脏状态下二次确认，不静默丢弃） ----
+    // 切换编码前确认是否丢弃未保存修改。
     pendingCharset?.let { option ->
         AlertDialog(
             onDismissRequest = { pendingCharset = null },

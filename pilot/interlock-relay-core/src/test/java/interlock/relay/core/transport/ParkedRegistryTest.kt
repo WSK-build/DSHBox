@@ -12,7 +12,7 @@ import org.junit.Test
 /**
  * 挂起登记簿与挂起-续行结果形状的纯逻辑测试。登记/摘取/去重/容量/到点判定是挂起-续行流
  * 并发正确性的核心（先到者赢、满员回退、到点兜底），全部可在无设备环境下穷举验证。
- * MailboxServer 本体依赖 FileObserver，无法在纯 JVM 单测里实例化，这里钉住它的可测内核。
+ * MailboxServer 依赖 FileObserver，本测试仅覆盖可在纯 JVM 运行的登记逻辑。
  */
 class ParkedRegistryTest {
 

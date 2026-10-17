@@ -6,12 +6,14 @@
 
     <!-- Panel -->
     <string name="pm_panel_title">Plugins de Cordis</string>
+    <string name="pm_root_title">Panel de plugins</string>
+    <string name="pm_panel_tagline">Gestión de plugins · Mercado</string>
     <string name="pm_panel_hint">Cómo tratar los plugins que no se pueden cargar.</string>
     <string name="pm_safety_mode">Modo seguro</string>
     <string name="pm_safety_mode_desc">Omite los plugins que fallan al cargar</string>
-    <string name="pm_absolute_mode">Modo seguro absoluto</string>
+    <string name="pm_absolute_mode">Modo seguro</string>
     <string name="pm_absolute_mode_desc">Inicia sin cargar ningún plugin de terceros</string>
-    <string name="pm_absolute_on_hint">El modo seguro absoluto está activado: no se cargará ningún plugin de terceros.</string>
+    <string name="pm_absolute_on_hint">El modo seguro está activado: no se cargará ningún plugin de terceros.</string>
     <string name="pm_load_log_row">Registro de carga</string>
     <string name="pm_isolation_row">Plugins omitidos</string>
     <string name="pm_market_row">Mercado de plugins</string>
@@ -203,6 +205,11 @@
     <string name="pm_adapt_section_title">Plugins de adaptación de DSHBox</string>
     <string name="pm_adapt_mobile">Adaptación de página móvil de DSH</string>
     <string name="pm_adapt_mobile_pilot">Conectar el teléfono a DSH</string>
+    <string name="pm_browser_adapter_title">Automatización Browser de DSH</string>
+    <string name="pm_browser_assembled">Adaptador de Browser instalado</string>
+    <string name="pm_browser_removed">Adaptador de Browser eliminado</string>
+    <string name="pm_browser_assembly_failed">No se pudo instalar el adaptador de Browser.</string>
+    <string name="pm_browser_refresh_failed">No se pudo actualizar el adaptador de Browser; el paquete anterior sigue disponible.</string>
     <string name="pm_adapt_ok">Ensamblado</string>
     <string name="pm_adapt_fail">Error de ensamblado; revertido</string>
     <string name="pm_adapt_restart_hint">(Surte efecto después de reiniciar DSH)</string>
@@ -210,7 +217,7 @@
     <string name="pm_guard_toast_attempt_skipped">Se omitieron %1$d plugins: %2$s</string>
     <string name="pm_guard_toast_recovered_title">El modo seguro omitió %1$d plugins; DSH está en marcha</string>
     <string name="pm_guard_toast_recovered_skipped">Omitidos: %1$s</string>
-    <string name="pm_guard_toast_absolute">El modo seguro absoluto está activado</string>
+    <string name="pm_guard_toast_absolute">El modo seguro está activado</string>
     <string name="pm_guard_toast_failed">DSH no se inició; se detuvo el reintento automático</string>
     <!-- Complementos oficiales de DSH (capacidades integradas que el origen envía desactivadas) -->
     <string name="pm_official_section">Complementos oficiales de DSH</string>

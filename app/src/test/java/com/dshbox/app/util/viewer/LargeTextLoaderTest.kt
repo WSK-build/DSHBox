@@ -46,7 +46,7 @@ class LargeTextLoaderTest {
 
     @Test
     fun singleLineFileNavigableWithoutContentLoss() {
-        // 超长单行（返工修正 #3 场景）：吸附/延伸触顶后窗口边界落字节位，内容仍连续
+        // 超长单行的吸附/延伸触顶后窗口边界落在字节位置，内容仍须连续。
         val single = "x".repeat(1_000_000) // 1MB、无换行
         val f = newFile(single)
         val w1 = LargeTextLoader.readAlignedWindow(f, 0, detection, maxBytes = 256 * 1024)
@@ -77,7 +77,7 @@ class LargeTextLoaderTest {
 
     @Test
     fun windowCarriesLossyFlag() {
-        // 返工 P1：窗口解码带有损标记——含无法解码字节的文件 lossy=true。
+        // 含无法解码字节的窗口须标记 lossy=true。
         // 注意必须写「原始字节」（Shift_JIS 风格 0x83 0x65 …）：经 String 会变成合法 UTF-8
         val bad = File.createTempFile("bigtext", ".txt").apply {
             writeBytes(

@@ -6,12 +6,14 @@
 
     <!-- 面板页 -->
     <string name="pm_panel_title">Cordis plugins</string>
+    <string name="pm_root_title">Plugin panel</string>
+    <string name="pm_panel_tagline">Plugin management · Market</string>
     <string name="pm_panel_hint">How to handle plugins that fail to load.</string>
     <string name="pm_safety_mode">Safety mode</string>
     <string name="pm_safety_mode_desc">Skips plugins that fail to load</string>
-    <string name="pm_absolute_mode">Absolute safety mode</string>
+    <string name="pm_absolute_mode">Safety mode</string>
     <string name="pm_absolute_mode_desc">Starts without loading any third-party plugin</string>
-    <string name="pm_absolute_on_hint">Absolute safety mode is on: no third-party plugin will be loaded.</string>
+    <string name="pm_absolute_on_hint">Safety mode is on: no third-party plugin will be loaded.</string>
     <string name="pm_load_log_row">Plugin load log</string>
     <string name="pm_isolation_row">Failed plugin list</string>
     <string name="pm_market_row">Plugin market</string>
@@ -206,13 +208,18 @@
     <string name="pm_guard_toast_attempt_skipped">Skipped %1$d plugin(s): %2$s</string>
     <string name="pm_guard_toast_recovered_title">Safety mode skipped %1$d plugin(s); DSH is up</string>
     <string name="pm_guard_toast_recovered_skipped">Skipped: %1$s</string>
-    <string name="pm_guard_toast_absolute">Absolute safety mode is on</string>
+    <string name="pm_guard_toast_absolute">Safety mode is on</string>
     <string name="pm_guard_toast_failed">DSH did not start; automatic retry stopped</string>
 
     <!-- DSHBox adapter plugins (moved from the settings page) -->
     <string name="pm_adapt_section_title">DSHBox adapter plugins</string>
     <string name="pm_adapt_mobile">DSH mobile page adaptation</string>
     <string name="pm_adapt_mobile_pilot">Connect phone to DSH</string>
+    <string name="pm_browser_adapter_title">DSH Browser automation</string>
+    <string name="pm_browser_assembled">Browser adapter assembled</string>
+    <string name="pm_browser_removed">Browser adapter removed</string>
+    <string name="pm_browser_assembly_failed">Could not assemble the Browser adapter.</string>
+    <string name="pm_browser_refresh_failed">Could not refresh the Browser adapter; the previous package remains available.</string>
     <string name="pm_adapt_restart_hint">; restart DSH to apply</string>
     <string name="pm_adapt_ok">Assembled</string>
     <string name="pm_adapt_fail">Assembly failed</string>
