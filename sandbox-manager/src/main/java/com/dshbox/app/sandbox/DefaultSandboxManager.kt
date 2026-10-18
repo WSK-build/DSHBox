@@ -934,7 +934,12 @@ class DefaultSandboxManager(
             }
             add("--cwd=/root")
             add("--kill-on-exit")
-            add("/system/bin/sh"); add("-c")
+            // Guest entry: the rootfs's own bash instead of the host
+            // /system/bin/sh — see SandboxProcessRunner.buildProotDshCommand for
+            // the vendor-kernel EPERM this avoids. The command strings are
+            // Debian-side scripts (npm/tar/chmod/dsh), so bash is the native
+            // interpreter for them anyway.
+            add("/" + GUEST_BASH_RELATIVE); add("-c")
             add(command)
         }
         processRunner.runGuestCommand(cmd, buildProotEnv(runtimeCurrentDir(), "guest"), onLine, onProcess, shouldAbort)
@@ -1310,6 +1315,26 @@ class DefaultSandboxManager(
     private fun ensureRuntimePresent() {
         check(prootBinary().isFile) { "PRoot binary not found: ${prootBinary().absolutePath}" }
         check(baseRootfs().isDirectory) { "base layer not found: ${baseRootfs().absolutePath}" }
+        // 所有 proot guest 入口现在都直接 exec rootfs 内的 bash（见
+        // SandboxProcessRunner.buildProotDshCommand），不再经宿主 /system/bin/sh。
+        // 若 base 损坏或解包不完整导致 bash 缺失，proot 会在 execve 时立即退出，
+        // 而 startSandbox() 随后仍会把状态置为 RUNNING——UI 显示运行中但进程已死。
+        // 这里提前失败，让状态落到 ERROR 并给出明确原因。
+        //
+        // 判定必须与入口使用的路径完全一致：入口由 GUEST_BASH_RELATIVE 派生，
+        // 校验使用同一个常量。接受 bin/bash 会造成「校验放行、启动即死」的错位。
+        //
+        // x 位先尝试自愈再判失败：层的落盘若走了 copyRecursively 兜底（不保留 POSIX
+        // 权限），整层会丢 x 位，但那只是权限问题、文件本身完好。这里补一次
+        // setExecutable 能救回这类既有安装，不至于让用户因一个 chmod 而从零重装。
+        val guestBash = File(baseRootfs(), GUEST_BASH_RELATIVE)
+        if (guestBash.isFile && !guestBash.canExecute()) {
+            runCatching { guestBash.setExecutable(true, false) }
+        }
+        check(guestBash.isFile && guestBash.canExecute()) {
+            "guest bash not usable under base layer: ${guestBash.absolutePath} " +
+                "(expected $GUEST_BASH_RELATIVE, must be an executable regular file)"
+        }
         ensureGuestResolvConf()
     }
 
@@ -1553,6 +1578,14 @@ class DefaultSandboxManager(
 
     companion object {
         private const val TAG = "SandboxManager"
+
+        /**
+         * guest bash 在 base 层内的相对路径（== guest 内绝对路径去前导斜杠）。
+         * 启动校验与 proot guest 入口必须共用同一个值，避免出现
+         * 「校验放行但入口 execve 失败」的口径分叉。
+         */
+        const val GUEST_BASH_RELATIVE = "usr/bin/bash"
+
         fun logSafe(message: String) = LogRedactor.redact(message)
     }
 }

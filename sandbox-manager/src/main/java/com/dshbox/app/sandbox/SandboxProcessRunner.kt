@@ -89,8 +89,13 @@ class SandboxProcessRunner(
         )
         add("--cwd=/root")
         add("--kill-on-exit")
-        add("/system/bin/sh"); add("-c")
-        add("exec /usr/bin/bash -c 'echo ${Constants.SANDBOX_KEEPALIVE_MARKER}; trap \"\" HUP INT TERM; while true; do sleep 3600; done'")
+        // Guest entry: the rootfs's own bash (no host /system/bin/sh wrapper) —
+        // see buildProotDshCommand for why host binaries are avoided. The keepalive
+        // echo of [Constants.SANDBOX_KEEPALIVE_MARKER] stays on the cmdline so
+        // killAll()'s marker lookup keeps working.
+        add("/" + DefaultSandboxManager.GUEST_BASH_RELATIVE)
+        add("-c")
+        add("echo ${Constants.SANDBOX_KEEPALIVE_MARKER}; trap \"\" HUP INT TERM; while true; do sleep 3600; done")
     }
 
     /**
@@ -133,31 +138,30 @@ class SandboxProcessRunner(
         )
         add("--cwd=/root/projects")
         add("--kill-on-exit")
-        add("/system/bin/sh"); add("-c")
-        // Run the DSH entry (node_modules/@deepseek-ai/dsh/lib/bin.js) directly
-        // under the L1 node (bound at /usr/local). There is NO separate
-        // start_dsh.sh in the layered base; the guest env (HOME/PATH/DSH_*) is
-        // injected by the app via buildProotEnv. Boot the web profile so the
-        // DSH server serves http://127.0.0.1:3080 for the app's WebView/health.
-        // Constants.DSH_START_SCRIPT (/opt/dshapp/runtime) is the cmdline marker
-        // stop() uses to locate this PRoot and SIGKILL its tree.
-        //
-        // `--import` 预加载硬链接兼容垫片（见 SandboxProcessRunner.buildProotDshCommand
-        // 的 KDoc）：它必须先于 DSH 模块图求值，因此放在入口脚本之前。垫片缺失时
-        // Node 会直接报错退出——所以调用方只在确认垫片存在后才传入 shimHostDir。
-        val shim = if (!shimHostDir.isNullOrBlank()) {
-            " --import ${Constants.DSH_LINK_SHIM_GUEST_PATH}"
-        } else {
-            ""
+        // Guest entry: exec the guest's own node directly as argv (no host
+        // /system/bin/sh wrapper). This mirrors proot-distro's canonical form
+        // (its login entry is the rootfs's own /usr/bin/env, never a host
+        // binary): some vendor kernels reject execve of host
+        // /system/bin/* binaries from a ptraced process with
+        // EPERM, which killed every sandbox boot on those devices. The marker
+        // [Constants.DSH_START_SCRIPT] still lands in /proc/<pid>/cmdline, so
+        // stop()'s tree lookup is unaffected.
+        add("/usr/local/bin/node")
+        add("--expose-internals")
+        // `--import` 预加载硬链接兼容垫片（见本类 KDoc）：它必须先于 DSH 模块图求值，
+        // 因此放在入口脚本之前。垫片缺失时 Node 会直接报错退出——所以调用方只在确认
+        // 垫片存在后才传入 shimHostDir。
+        if (!shimHostDir.isNullOrBlank()) {
+            add("--import")
+            add(Constants.DSH_LINK_SHIM_GUEST_PATH)
         }
-        val patches = dshPatchGuestPaths
-            .filter { it.isNotBlank() }
-            .joinToString("") { " --patch $it" }
-        add(
-            "exec /usr/local/bin/node --expose-internals$shim " +
-                "/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js " +
-                "--profile ${Constants.DSH_WEB_PROFILE}$patches",
-        )
+        add("/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js")
+        add("--profile")
+        add(Constants.DSH_WEB_PROFILE)
+        dshPatchGuestPaths.filter { it.isNotBlank() }.forEach { patch ->
+            add("--patch")
+            add(patch)
+        }
     }
 
     /**

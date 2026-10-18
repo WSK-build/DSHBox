@@ -16,12 +16,12 @@ object TerminalCommandFactory {
      * Normal form (overlay already installed) is proot-distro's canonical
      * direct exec of the guest shell: `/usr/bin/bash --login`. The guest bash
      * uses its glibc loader, so no Android linker configuration lookup happens
-     * inside the guest (this avoids the "/linkerconfig" WARNING that the host
-     * /system/bin/sh wrapper used to trigger).
+     * inside the guest.
      *
      * When [initSnippet] is provided (first session after an overlay install)
-     * the legacy wrapper form runs the snippet first, then `clear`s the screen
-     * before handing over to bash.
+     * the guest bash runs the snippet first, then hands over to the login
+     * shell. The snippet contains a `clear` before its final notice (see
+     * `TerminalOverlayInstaller.INIT_SNIPPET`), so no separate wrapper is used.
      */
     fun sandboxLoginShell(paths: TerminalPaths, initSnippet: String? = null, extraBinds: List<String> = emptyList()): List<String> = buildList {
         add(paths.prootBinary.absolutePath)
@@ -76,14 +76,22 @@ object TerminalCommandFactory {
         // Shadow kernel-restricted /proc files (Android 16 SELinux denies
         // /proc/stat etc. to untrusted_app) with readable fabricated sources.
         addAll(extraBinds)
-        // Silence the guest-side Android linker's one-line WARNING about
-        // "/linkerconfig/ld.config.txt" when a host binary boots in the guest
-        // view. Only bound where the host actually provides it (Android 11+).
+        // Bind the Android linker config tree when the host provides it
+        // (Android 11+). The guest entry is the rootfs's own bash and no
+        // longer boots a host binary, so the original "silence the host
+        // linker WARNING" rationale is moot — but the bind stays: the guest
+        // view of /linkerconfig is what any dynamically linked program
+        // resolving Android-provided linker paths expects, and it is no-op
+        // where absent.
         if (File("/linkerconfig").isDirectory) add("--bind=/linkerconfig")
         add("--bind=${paths.workspaceBind.absolutePath}:/root/projects")
         add("--cwd=/root")
         if (initSnippet != null) {
-            add("/system/bin/sh")
+            // Guest entry: the rootfs's own bash, not the host /system/bin/sh —
+            // some vendor kernels reject execve of host
+            // /system/bin/* binaries from a ptraced process with EPERM. The
+            // snippet is Debian-side provisioning, so bash runs it natively.
+            add("/usr/bin/bash")
             add("-c")
             add("${initSnippet.trimEnd()} exec /usr/bin/bash --login")
         } else {

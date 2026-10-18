@@ -47,10 +47,13 @@ class TerminalCommandFactoryTest {
     }
 
     @Test
-    fun `overlay session runs snippet then bash login via wrapper and clears screen`() {
+    fun `overlay session runs snippet then bash login and clears screen`() {
         val p = paths()
         val argv = TerminalCommandFactory.sandboxLoginShell(p, "do_stuff; ")
-        assertEquals(listOf("/system/bin/sh", "-c", "do_stuff; exec /usr/bin/bash --login"), argv.takeLast(3))
+        assertEquals(listOf("/usr/bin/bash", "-c", "do_stuff; exec /usr/bin/bash --login"), argv.takeLast(3))
+        // 回归护栏：guest 入口不得是宿主 /system/bin/*（部分厂商 ROM 的内核
+        // 会以 EPERM 拒绝 proot 内的宿主二进制执行）。
+        assertTrue(argv.none { it == "/system/bin/sh" })
     }
 
     @Test

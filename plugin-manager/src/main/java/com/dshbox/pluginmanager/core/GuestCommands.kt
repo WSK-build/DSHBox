@@ -5,12 +5,15 @@ import com.dshbox.app.common.Constants
 /**
  * guest 侧命令的构造。
  *
- * **为什么不能直接用裸 `dsh`**：我们的一次性命令由宿主以 `/system/bin/sh -c` 执行，
- * 那不是登录 shell，`/etc/profile.d` 不会加载，因此 PATH 里没有
- * `/root/projects/.dsh/dshbox/bin`——真机上表现为
+ * **为什么不能直接用裸 `dsh`**：我们的一次性命令由 guest 内的
+ * `/usr/bin/bash -c` 执行（非登录 shell），`/etc/profile.d` 不会加载，因此 PATH 里
+ * 没有 `/root/projects/.dsh/dshbox/bin`——真机上表现为
  * `timeout: failed to run command 'dsh': No such file or directory`（exit=127）。
  * 所以这里一律用**绝对路径**调用包装脚本，并把 `DSH_HOME` 显式传进去，
  * 不再依赖任何环境变量。
+ *
+ * 注：入口早期是宿主 `/system/bin/sh -c`，现已改为 rootfs 内 bash——部分厂商
+ * ROM 的内核对 proot 内执行宿主 `/system/bin/` 下的二进制会以 EPERM 拒绝。
  */
 object GuestCommands {
 

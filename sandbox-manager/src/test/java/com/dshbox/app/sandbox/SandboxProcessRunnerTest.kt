@@ -57,14 +57,28 @@ class SandboxProcessRunnerTest {
             "应把垫片目录 bind 到 guest ${Constants.DSH_LINK_SHIM_GUEST_DIR}",
             command.any { it == "--bind=$shimDir:${Constants.DSH_LINK_SHIM_GUEST_DIR}" },
         )
-        val shell = command.last()
+        // argv 现在逐 token 传递（不再是一整条 sh -c 字符串），因此按 token 定位。
+        // 注意 DSH_START_SCRIPT 只是入口路径的子串（完整 token 是 guest 内绝对路径），
+        // 所以用 indexOfFirst 做子串匹配，而不是 List.indexOf 的精确匹配。
+        val importAt = command.indexOf("--import")
+        val entryAt = command.indexOfFirst { it.contains(Constants.DSH_START_SCRIPT) }
+        val shimPathAt = command.indexOf(Constants.DSH_LINK_SHIM_GUEST_PATH)
         assertTrue(
             "应以 --import 预加载垫片",
-            shell.contains("--import ${Constants.DSH_LINK_SHIM_GUEST_PATH}"),
+            importAt >= 0 && shimPathAt >= 0,
         )
         assertTrue(
             "--import 必须排在 DSH 入口脚本之前",
-            shell.indexOf("--import") < shell.indexOf(Constants.DSH_START_SCRIPT),
+            importAt in 0 until entryAt,
+        )
+        assertTrue(
+            "垫片路径必须排在 DSH 入口脚本之前",
+            shimPathAt in 0 until entryAt,
+        )
+        assertEquals(
+            "--import 必须紧跟其垫片路径（防止指向错误路径的回归）",
+            importAt + 1,
+            shimPathAt,
         )
     }
 
@@ -78,7 +92,8 @@ class SandboxProcessRunnerTest {
             workspaceBind = "/data/data/com.dshbox.app/files/user-data",
         )
         assertTrue("不应出现垫片绑定", command.none { it.contains(Constants.DSH_LINK_SHIM_GUEST_DIR) })
-        assertTrue("不应出现 --import", !command.last().contains("--import"))
+        assertTrue("不应出现 --import", command.none { it == "--import" })
+        assertTrue("不应出现垫片路径", command.none { it == Constants.DSH_LINK_SHIM_GUEST_PATH })
         // DSH 入口标记必须保持——stop() 靠它定位进程树
         assertTrue(command.any { it.contains(Constants.DSH_START_SCRIPT) })
     }

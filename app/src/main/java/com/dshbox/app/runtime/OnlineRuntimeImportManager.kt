@@ -15,6 +15,7 @@ import com.dshbox.app.common.NodeSources
 import com.dshbox.app.common.UiText
 import com.dshbox.app.common.coroutineFailureHandler
 import com.dshbox.app.sandbox.BundleManager
+import com.dshbox.app.sandbox.DefaultSandboxManager
 import com.dshbox.app.sandbox.DshUpdateOutcome
 import com.dshbox.app.sandbox.SandboxConfig
 import com.dshbox.app.sandbox.SandboxManager
@@ -443,6 +444,27 @@ class OnlineRuntimeImportManager(
             records += unpacker.unpack(cached, baseDir, scratch)
         }
 
+        // 宿主侧存在性闸门：所有后续 guest 命令（ldconfig / CA / smoke / pyc）都经由
+        // rootfs 内的 bash 执行（见 runGuest）。若 base 布局缺 usr/bin/bash，最早
+        // 失败的会是第一个 runGuest，错误被归因成 ldconfig/CA 之类，难以定位。
+        // 这里在任何 runGuest 之前直接判定，给出专用错误码。
+        // 与 DefaultSandboxManager.ensureRuntimePresent() 同口径：只认该路径、
+        // 要求可执行，且在不可执行时先尝试补 x 位（解包丢权限的既有安装可救回）。
+        val guestBash = File(baseDir, DefaultSandboxManager.GUEST_BASH_RELATIVE)
+        if (guestBash.isFile && !guestBash.canExecute()) {
+            runCatching { guestBash.setExecutable(true, false) }
+        }
+        if (!guestBash.isFile || !guestBash.canExecute()) {
+            return AppResult.Failure(
+                AppError(
+                    "ONLINE_NO_GUEST_BASH",
+                    "base layer has no executable ${DefaultSandboxManager.GUEST_BASH_RELATIVE}; " +
+                        "guest commands cannot start",
+                    userMessage = UiText.Res(R.string.online_err_verify, listOf("bash")),
+                ),
+            )
+        }
+
         // S5 dpkg 库（install ok installed——设备上 dpkg configure 不可行）。
         setStage(_debianState, R.string.online_stage_db)
         DpkgDbWriter.write(baseDir, records)
@@ -523,11 +545,15 @@ class OnlineRuntimeImportManager(
                 userMessage = UiText.Res(R.string.online_err_verify, listOf(dpkgGaps.joinToString(",")))))
         }
         val smoke = StringBuilder()
+        // 验证入口 bash 可实际执行：路径取自同一常量（见上方闸门），
+        // 这里跑一次真实的 `-c` 确认它能被 execve 起来，而不只是文件属性合格。
+        val guestBashSmoke = "/" + DefaultSandboxManager.GUEST_BASH_RELATIVE
         if (!runGuest(baseDir, scratch,
                 "echo $GUEST_MARKER; export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
-                    "/bin/bash -c 'echo BASH_OK' && /usr/bin/python3 --version 2>&1; echo SMOKE_RC=\$?",
+                    "$guestBashSmoke -c 'echo USR_BASH_OK' " +
+                    "&& /usr/bin/python3 --version 2>&1; echo SMOKE_RC=\$?",
                 out = { line -> smoke.appendLine(line) }
-            ) || !smoke.contains("BASH_OK") || !smoke.contains("SMOKE_RC=0")) {
+            ) || !smoke.contains("USR_BASH_OK") || !smoke.contains("SMOKE_RC=0")) {
             return AppResult.Failure(AppError("ONLINE_VERIFY", "guest smoke failed",
                 userMessage = UiText.Res(R.string.online_err_verify, listOf("smoke"))))
         }
@@ -933,7 +959,11 @@ class OnlineRuntimeImportManager(
             add("--bind=/system"); add("--bind=/apex"); add("--bind=/proc"); add("--bind=/dev")
             add("--cwd=/")
             add("--kill-on-exit")
-            add("/system/bin/sh"); add("-c")
+            // Guest entry: the rootfs's own bash, not the host /system/bin/sh —
+            // some vendor kernels reject execve of host
+            // /system/bin/* binaries from a ptraced process with EPERM, which
+            // broke runtime import on those devices.
+            add("/" + DefaultSandboxManager.GUEST_BASH_RELATIVE); add("-c")
             add(shellCommand)
         }
         val env = mapOf(

@@ -73,13 +73,13 @@ else
     # stdout would make `grep -v` exit 1 and kill the script, so merge stderr
     # into the pipe and tolerate grep's no-match exit (the mv below is the
     # real success check).
-    "$ADB" shell "run-as $PKG sh -c 'LD_LIBRARY_PATH=$AD PROOT_LOADER=$AD/libproot-loader.so PROOT_TMP_DIR=$RT/tmp $AD/libproot.so --rootfs=$RT/debian --bind=/system --bind=/apex --bind=/proc --bind=/dev --bind=$UD:/root/projects --cwd=/root --kill-on-exit /system/bin/sh -c \"exec /usr/bin/bash -c '\''set -e; cd /; tar --exclude=./proc --exclude=./sys --exclude=./dev --exclude=./system --exclude=./apex --exclude=./tmp --exclude=./root/projects --exclude=./root/.dsh --exclude=./root/.npm \
+    "$ADB" shell "run-as $PKG sh -c 'LD_LIBRARY_PATH=$AD PROOT_LOADER=$AD/libproot-loader.so PROOT_TMP_DIR=$RT/tmp $AD/libproot.so --rootfs=$RT/debian --bind=/system --bind=/apex --bind=/proc --bind=/dev --bind=$UD:/root/projects --cwd=/root --kill-on-exit /usr/bin/bash -c '\''set -e; cd /; tar --exclude=./proc --exclude=./sys --exclude=./dev --exclude=./system --exclude=./apex --exclude=./tmp --exclude=./root/projects --exclude=./root/.dsh --exclude=./root/.npm \
 			--exclude=./root/.cache --exclude=./root/.local --exclude=./root/.bash_history --exclude=./root/.dsh_bashrc \
-			-czf /root/projects/deploy-snapshot.tar.gz .'\''\"'" \
+			-czf /root/projects/deploy-snapshot.tar.gz .'\'''" \
         2>&1 | grep -v "WARNING: linker" >/dev/null || true
     # Compute the hash WHILE the file is still visible in the guest
     # (files/updates is outside the proot bind, so hash before moving).
-    BUNDLE_SHA=$("$ADB" shell "run-as $PKG sh -c 'LD_LIBRARY_PATH=$AD PROOT_LOADER=$AD/libproot-loader.so PROOT_TMP_DIR=$RT/tmp $AD/libproot.so --rootfs=$RT/debian --bind=/system --bind=/apex --bind=/proc --bind=/dev --bind=$UD:/root/projects --cwd=/root --kill-on-exit /system/bin/sh -c \"exec /usr/bin/bash -c '\''sha256sum /root/projects/deploy-snapshot.tar.gz'\''\"'" 2>&1 \
+    BUNDLE_SHA=$("$ADB" shell "run-as $PKG sh -c 'LD_LIBRARY_PATH=$AD PROOT_LOADER=$AD/libproot-loader.so PROOT_TMP_DIR=$RT/tmp $AD/libproot.so --rootfs=$RT/debian --bind=/system --bind=/apex --bind=/proc --bind=/dev --bind=$UD:/root/projects --cwd=/root --kill-on-exit /usr/bin/bash -c '\''sha256sum /root/projects/deploy-snapshot.tar.gz'\'''" 2>&1 \
         | grep -v "WARNING: linker" | awk '{print $1}' || true)
     [ -n "$BUNDLE_SHA" ] || die "sha256 computation failed"
     "$ADB" shell "run-as $PKG sh -c 'mv files/user-data/deploy-snapshot.tar.gz files/updates/ && ls -la files/updates/deploy-snapshot.tar.gz'" >/dev/null \

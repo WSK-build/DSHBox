@@ -26,6 +26,10 @@ export PROOT_TMP_DIR="$PROOT_TMP_DIR"
 
 # PRoot flags keep /proc, /dev, /dev/shm, /tmp, sockets, symlinks and
 # permissions working. The Debian rootfs is mounted as the Linux root.
+#
+# Guest entry must be a rootfs binary, NOT the host /system/bin/sh: some
+# vendor ROM kernels reject execve of host /system/bin/* binaries
+# from a ptraced process with EPERM, which breaks the whole sandbox there.
 exec "$PROOT_BIN" \
     --rootfs="$ROOTFS_DIR" \
     --bind=/system \
@@ -34,4 +38,4 @@ exec "$PROOT_BIN" \
     --bind=/dev \
     --bind="$APP_FILES_DIR/user-data:/root/projects" \
     --cwd=/root \
-    /system/bin/sh -c 'exec /usr/bin/bash /opt/dshapp/start_dsh.sh' 
+    /usr/bin/bash /opt/dshapp/start_dsh.sh
