@@ -38,6 +38,29 @@ class SandboxProcessRunnerTest {
     }
 
     /**
+     * 工具链缓存必须绑进 DSH 宿主进程。
+     *
+     * 不绑的时候 guest 侧看到的是 base 层里那个 root 属主的空目录 `/opt/dshbox-cache`：
+     * 不可写 → pnpm 建 store 操作锁 EPERM → 插件市场/agent 装插件全失败。
+     * 与 `runGuestCommand` 的绑定保持同一宿主目录，两处不能只修一处。
+     */
+    @Test
+    fun dshCommandBindsGuestCacheDirWhenProvided() {
+        val runner = SandboxProcessRunner(config)
+        val cacheDir = "/data/data/com.dshbox.app/files/guest-cache"
+        val command = runner.buildProotDshCommand(
+            prootBinary = "/data/data/com.dshbox.app/files/runtime/runtime-current/proot",
+            rootfsDir = "/data/data/com.dshbox.app/files/runtime/runtime-current/debian",
+            workspaceBind = "/data/data/com.dshbox.app/files/user-data",
+            guestCacheHostDir = cacheDir,
+        )
+        assertTrue(
+            "应把工具链缓存 bind 到 guest ${Constants.DSHBOX_GUEST_CACHE_DIR}",
+            command.any { it == "--bind=$cacheDir:${Constants.DSHBOX_GUEST_CACHE_DIR}" },
+        )
+    }
+
+    /**
      * 垫片注入：传入 [shimHostDir] 时必须同时出现 bind 与 `--import`，且 `--import`
      * 必须排在 DSH 入口脚本**之前**（否则 node 先执行入口，垫片来不及生效）。
      *

@@ -1196,8 +1196,10 @@ class SandboxService : Service() {
             # 只做一件事：把 pnpm 的 store 指到缓存挂载点。
             # **不动 COREPACK_HOME** —— 运行时自带的 corepack 缓存里可能已经预激活了 pnpm
             # （离线/内网场景靠它），覆盖成新目录会必然 miss、被迫重新联网下载。
-            # 缓存挂载点不存在时（理论上绑定时就 mkdirs 了，属兜底）回落到工作区。
-            if [ -d /opt/dshbox-cache ]; then
+            # 缓存挂载点不存在**或不可写**时回落到工作区。只判 `-d` 不够：挂载点在位但权限
+            # 不对（guest 侧看到 d---------）时，pnpm 建 store 操作锁会直接 EPERM，报
+            # ERR_PNPM_STORE_DIR_RESOLVE_OPERATION_LOCK —— 用户看到的是"插件装不上"。
+            if [ -w /opt/dshbox-cache ]; then
               STORE=/opt/dshbox-cache/pnpm-store
             else
               STORE=/root/projects/.dsh/pnpm-store

@@ -238,6 +238,7 @@ class DefaultSandboxManager(
                         nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
                         dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
                         shimHostDir = linkShimHostDir(),
+                        guestCacheHostDir = preparedGuestCacheDir().absolutePath,
                         dshPatchGuestPaths = dshOverlayGuestPaths(),
                         pilotHostDir = pilotHostDir(),
                         browserHostDir = browserHostDir(),
@@ -921,7 +922,11 @@ class DefaultSandboxManager(
                 ?.let { add("--bind=${it.absolutePath}:${Constants.DSH_LINK_SHIM_GUEST_DIR}") }
             // 工具链缓存（pnpm store / corepack 缓存）：`dsh plugin` 走 guest 命令时同样需要，
             // 否则 pnpm 会按默认位置把 store 写进 base 层、把 corepack 缓存写进工作区。
-            config.guestCacheDir.apply { mkdirs() }
+            // 权限必须显式补：目录由**宿主**进程创建，个别机型/文件系统上 guest 侧看到的是
+            // `d---------`，pnpm 连 store 的操作锁都建不出来，报
+            // `ERR_PNPM_STORE_DIR_RESOLVE_OPERATION_LOCK … Permission denied (os error 13)`，
+            // 用户看到的是「插件市场装不上插件」。
+            preparedGuestCacheDir()
                 .let { add("--bind=${it.absolutePath}:${Constants.DSHBOX_GUEST_CACHE_DIR}") }
             add("--bind=${config.userDataDir.absolutePath}:/root/projects")
             add("--bind=${config.npmCacheDir.absolutePath}:/root/.npm")
@@ -1256,6 +1261,14 @@ class DefaultSandboxManager(
             val resolved = substitutionExports(src, substitutions)
             parseEnvExports(resolved).forEach { (k, v) -> base[k] = v }
         }
+        // `pnpm` 只是宿主生成在 `$DSH_HOME/dshbox/bin` 里的垫片，而 env 片段里的 PATH 是
+        // 硬编码的 `/usr/local…`（层装好之后不会再重写）。缺这一项时宿主进程 spawn pnpm
+        // 直接 ENOENT：插件市场安装、agent 装插件、`dsh plugin add` 都会倒在这里。
+        // 在装配阶段合并而不是改模板，旧设备重启一次 DSH 就生效。
+        base["PATH"] = GuestPath.withEntryFirst(
+            base["PATH"],
+            "${Constants.DSHBOX_ASSETS_GUEST_DIR}/bin",
+        )
         // DSH (L2) is a separate product not present in runtime-profile.assembly;
         // set its guest env explicitly for the DSH PRoot role. DSH_HOME points at
         // the app-managed user data (bound at /root/projects) so the DSH web server
@@ -1286,6 +1299,32 @@ class DefaultSandboxManager(
         var out = source
         for ((k, v) in substitutions) out = out.replace(k, v)
         return out
+    }
+
+    /**
+     * 准备工具链缓存目录并返回它：宿主侧建好、补齐 guest 可用的权限。
+     *
+     * 两个消费方（[runGuestCommand] 的 guest 命令、DSH 宿主进程）都走这里，避免
+     * 「一处绑了、一处没绑」——那正是本 PR 修的问题本身。
+     */
+    private fun preparedGuestCacheDir(): File =
+        config.guestCacheDir.apply {
+            mkdirs()
+            ensureGuestAccessible()
+        }
+
+    /**
+     * 让 guest 进程真的能用这个目录：补上 rwx（不只是宿主自己可写）。
+     *
+     * 目录位于 app 私有区（`filesDir/…`），宿主之外的任何应用都到不了，因此
+     * 「其它用户可读写」在这里是安全的；不补的话 guest 侧可能看到 `d---------`。
+     * 用 setXxx 而不是 chmod，避免依赖外部命令。
+     */
+    private fun File.ensureGuestAccessible(): File {
+        setReadable(true, false)
+        setWritable(true, false)
+        setExecutable(true, false)
+        return this
     }
 
     /** Extracts KEY=VALUE from a bash env.d fragment ("export KEY=VALUE" or "KEY=VALUE"). */
@@ -1439,6 +1478,7 @@ class DefaultSandboxManager(
                 nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
                 dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
                 shimHostDir = linkShimHostDir(),
+                guestCacheHostDir = preparedGuestCacheDir().absolutePath,
                 dshPatchGuestPaths = dshOverlayGuestPaths(),
                 pilotHostDir = pilotHostDir(),
                 browserHostDir = browserHostDir(),

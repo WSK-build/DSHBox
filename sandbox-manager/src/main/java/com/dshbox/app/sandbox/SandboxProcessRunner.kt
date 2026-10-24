@@ -123,6 +123,14 @@ class SandboxProcessRunner(
          * 调用方只在文件确实存在时才传入，否则 dsh 会因找不到 patch 文件而启动失败。
          */
         dshPatchGuestPaths: List<String> = emptyList(),
+        /**
+         * 工具链缓存宿主目录（pnpm store / corepack 缓存），绑定到 guest 的
+         * [Constants.DSHBOX_GUEST_CACHE_DIR]。**必须绑**：base 层里同名路径只是个
+         * root 属主的空目录，guest 侧不可写，pnpm 建 store 操作锁时会直接 EPERM
+         * （`ERR_PNPM_STORE_DIR_RESOLVE_OPERATION_LOCK`），表现为插件市场装不上插件。
+         * 空则不绑（保持 base 层路径，用于没有运行时的测试形态）。
+         */
+        guestCacheHostDir: String? = null,
         /** 手机助手暴露给 guest 的宿主子树，见 [SandboxConfig.pilotEntryDir]。空则不绑。 */
         pilotHostDir: String? = null,
         /** Browser CLI/broker rendezvous tree, guest path `/opt/browser`. */
@@ -132,8 +140,8 @@ class SandboxProcessRunner(
     ): List<String> = buildList {
         addAll(
             layeredProotPrefix(
-                prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shimHostDir, pilotHostDir,
-                browserHostDir, shareBinds,
+                prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shimHostDir,
+                guestCacheHostDir, pilotHostDir, browserHostDir, shareBinds,
             ),
         )
         add("--cwd=/root/projects")
@@ -190,6 +198,7 @@ class SandboxProcessRunner(
         nodeDir: String?,
         dshDir: String?,
         shimHostDir: String? = null,
+        guestCacheHostDir: String? = null,
         pilotHostDir: String? = null,
         browserHostDir: String? = null,
         shareBinds: List<Pair<String, File>> = emptyList(),
@@ -203,6 +212,11 @@ class SandboxProcessRunner(
         if (!nodeDir.isNullOrBlank()) add("--bind=$nodeDir:/usr/local")
         if (!dshDir.isNullOrBlank()) add("--bind=$dshDir:/opt/dshapp/runtime")
         if (!shimHostDir.isNullOrBlank()) add("--bind=$shimHostDir:${Constants.DSH_LINK_SHIM_GUEST_DIR}")
+        // 工具链缓存：与 runGuestCommand 用同一个宿主目录（不绑就会落到 base 层里
+        // 那个 root 属主、guest 不可写的占位目录）。
+        if (!guestCacheHostDir.isNullOrBlank()) {
+            add("--bind=$guestCacheHostDir:${Constants.DSHBOX_GUEST_CACHE_DIR}")
+        }
         if (!pilotHostDir.isNullOrBlank()) add("--bind=$pilotHostDir:/opt/pilot")
         if (!browserHostDir.isNullOrBlank()) add("--bind=$browserHostDir:/opt/browser")
         shareBinds.forEach { (name, dir) ->
