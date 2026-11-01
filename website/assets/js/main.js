@@ -17,6 +17,7 @@
   var RELEASE_FALLBACK = "https://github.com/" + REPOSITORY + "/releases/latest";
   var CACHE_KEY = "dshbox-latest-release";
   var CACHE_DURATION = 30 * 60 * 1000;
+  var REQUEST_TIMEOUT = 10 * 1000;
   var LANG_KEY = "dshbox-lang";
 
   /* ---------------------------------------------------------
@@ -573,9 +574,16 @@
       }
     }
 
-    fetch(RELEASE_API, {
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timeout = controller
+      ? window.setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT)
+      : null;
+    var options = {
       headers: { Accept: "application/vnd.github+json" }
-    })
+    };
+    if (controller) options.signal = controller.signal;
+
+    fetch(RELEASE_API, options)
       .then(function (response) {
         if (!response.ok) {
           throw new Error("GitHub API returned " + response.status);
@@ -589,10 +597,15 @@
       .catch(function (error) {
         console.warn("Unable to resolve the latest DSHBox APK:", error);
         applyFallback();
+      })
+      .finally(function () {
+        if (timeout !== null) window.clearTimeout(timeout);
       });
   }
 
-  if (downloadButtons.length) {
+  if (FLAVORS.some(function (flavor) {
+    return (downloadButtons[flavor] || []).length > 0;
+  })) {
     loadLatestRelease();
   }
 

@@ -32,7 +32,7 @@
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.1">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.1&build=2">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -187,12 +187,12 @@
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>AI browser assistant</strong> — browser-use tools for navigation, page interaction, screenshots and selection feedback.</span>
-                <span class="lang-zh"><strong>AI 浏览器助手</strong> — browser-use 工具打通导航、网页交互、截图与元素/区域反馈。</span>
+                <span class="lang-en"><strong>System WebView / embedded Gecko APKs</strong> — one DSH page and host UI, with the same package and signature for seamless switching.</span>
+                <span class="lang-zh"><strong>系统 WebView / 内置 Gecko 双 APK</strong> — 共用同一 DSH 页面与宿主，同包名、同签名，可覆盖切换并保留数据。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Shared files &amp; DSH interaction</strong> — system folders, file sharing, full-screen chat and quick module switching.</span>
-                <span class="lang-zh"><strong>系统文件共享与 DSH 交互升级</strong> — 挂载系统目录、收发文件，全屏对话配合悬浮快捷切换。</span>
+                <span class="lang-en"><strong>Developer mode</strong> — independent ADB and Root channels with wireless pairing, devices, keys and sandbox tooling.</span>
+                <span class="lang-zh"><strong>开发者模式</strong> — 独立 ADB / Root 通道，支持无线调试配对、设备、密钥和沙箱工具管理。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -597,24 +597,28 @@
                 <span class="lang-zh">本次版本更新内容</span>
               </h2>
               <span class="whats-new-badge" data-release-tag>v1.5.1</span>
-              <span class="whats-new-date" data-release-date>2026-10-17</span>
+              <span class="whats-new-date" data-release-date>2026-11-01</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>AI browser assistant</strong> — browser-use tools for page navigation, interaction, screenshots, selection feedback and optional debugging.</span>
-                <span class="lang-zh"><strong>AI 浏览器助手</strong> — browser-use 工具支持网页导航、交互、截图、选区图文反馈与按需调试。</span>
+                <span class="lang-en"><strong>System WebView / embedded Gecko APKs</strong> — one shared DSH page, host and user data, with matching package IDs and signatures.</span>
+                <span class="lang-zh"><strong>系统 WebView / 内置 Gecko 双 APK</strong> — 共用 DSH 页面、宿主和用户数据，同包名、同签名，可覆盖切换。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>System shared folders</strong> — mount local folders, receive files from other apps and share files outward. Unmounting leaves the files intact.</span>
-                <span class="lang-zh"><strong>系统文件共享区</strong> — 挂载本地目录，接收外部分享并将文件发往其他应用；取消挂载不删除原文件。</span>
+                <span class="lang-en"><strong>Broader System WebView compatibility</strong> — startup-time API shims for older providers, with clear upgrade guidance when document-start injection is unavailable.</span>
+                <span class="lang-zh"><strong>更广泛的 System WebView 兼容</strong> — 为旧内核补齐启动期 API；缺少 document-start 时给出明确升级提示。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>DSH interaction</strong> — full-screen chat, floating quick navigation and a unified attachment source panel with multi-file support.</span>
-                <span class="lang-zh"><strong>DSH 界面交互升级</strong> — 全屏对话、悬浮快捷导航与统一附件来源面板，支持多文件传输。</span>
+                <span class="lang-en"><strong>Developer mode</strong> — independent ADB and Root channels, wireless debugging pairing, device management, keys and sandbox integration.</span>
+                <span class="lang-zh"><strong>开发者模式</strong> — 独立 ADB / Root 通道，支持无线调试配对、设备、密钥和沙箱集成。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Guided setup &amp; Pilot</strong> — step-by-step runtime installation, WebView compatibility hints, refreshed home navigation and theme-aware phone tools.</span>
-                <span class="lang-zh"><strong>安装引导与 Pilot</strong> — 分步准备运行环境、探测 WebView 兼容性，更新首页导航并统一手机助手主题。</span>
+                <span class="lang-en"><strong>Plugin marketplace reliability</strong> — official plugin addition, bundled plugin protection and consistent registry, store and activation handling.</span>
+                <span class="lang-zh"><strong>插件市场可靠性</strong> — 接通官方添加插件，保护随包插件，并统一 registry、store 与启停处理。</span>
+              </li>
+              <li>
+                <span class="lang-en"><strong>DSH 0.2.1-rc.5 and diagnostics</strong> — unmodified upstream DSH, unified renderer diagnostics and complete System WebView / Gecko page-flow adaptation.</span>
+                <span class="lang-zh"><strong>DSH 0.2.1-rc.5 与诊断</strong> — 保持 DSH 上游纯净，统一双渲染诊断，并补齐 System WebView / Gecko 页面链路。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -821,6 +825,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.5.1" defer></script>
+  <script src="./assets/js/main.js?v=1.5.1&build=2" defer></script>
 </body>
 </html>
