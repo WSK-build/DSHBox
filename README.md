@@ -317,7 +317,10 @@ Release 归档后输出：
 - 校验：逐层 SHA-256（侧车与 `runtime-profile.json` 交叉核对）+ Zip-Slip 防护；损坏 / 截断 / 加密包返回可读错误
 - 替换：旧本体移入 `previous/`（单份可回滚），绝不触碰 DSH 层与 `user-data/.dsh`
 - DSH 离线更新走「更新 DSH（离线导入）」单文件层包（如 `0.2.1-rc.5.tar.zst`），与在线更新并存。
-
+## 用户交流与反馈：  
+- **QQ交流群**：2163082322
+- **Bilibili账号**:搜索“文大师啵啵”
+- **问题反馈**：[GitHub Issues](https://github.com/WSK-build/DSHBox/issues) 
 ## 许可证
 
 本项目采用 **GPL v3**（见 [LICENSE](LICENSE)）。第三方组件按其各自原许可继续适用，详见 `THIRD_PARTY_NOTICES.md`：

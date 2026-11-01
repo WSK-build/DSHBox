@@ -316,6 +316,11 @@ The Release page also provides a complete offline runtime package containing bas
 - Replacement: previous layers move to `previous/`, retaining one rollback copy; the DSH layer and `user-data/.dsh` remain untouched.
 - Offline DSH updates use the separate DSH offline update option with a single-layer archive such as `0.2.1-rc.5.tar.zst`; online updates remain available.
 
+## User Communication & Feedback:  
+- **QQ Group**: 2163082322  
+- **Bilibili Account**: Search for "文大师啵啵"  
+- **Bug Reports**: [GitHub Issues](https://github.com/WSK-build/DSHBox/issues)
+
 ## License
 
 This project is licensed under **GPL v3**; see [LICENSE](LICENSE). Third-party components retain their own licenses. See `THIRD_PARTY_NOTICES.md` for details:
