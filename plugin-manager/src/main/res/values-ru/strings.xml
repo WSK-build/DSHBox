@@ -132,12 +132,13 @@
     <!-- Магазин · установленные -->
     <string name="pm_market_installed_empty">Плагинов сообщества пока нет</string>
     <string name="pm_market_installed_empty_hint">Загляните во вкладку «Обзор».</string>
-    <string name="pm_market_state_live">Активен</string>
+    <string name="pm_market_state_live">Установлено — активно</string>
     <string name="pm_market_state_restart">Установлен, подействует после перезапуска</string>
     <string name="pm_market_state_inert">Установлен, не используется</string>
     <string name="pm_market_state_broken">Установлен, проверка не пройдена</string>
     <string name="pm_market_state_missing">В списке есть, но файлов нет</string>
     <string name="pm_market_state_disabled">Отключён</string>
+    <string name="pm_market_state_disabled_pending">Отключено — вступит в силу после перезапуска DSH</string>
     <string name="pm_market_act_why">Подробности</string>
     <string name="pm_market_act_why_empty">Для этого состояния объяснение не сохранено.</string>
     <string name="pm_market_toggle_on">Включён</string>
@@ -239,4 +240,13 @@
 Новый каталог DSHBox — чтобы проще расширять поддержку мобильных сценариев. Присылайте pull requests и идеи!</string>
     <string name="pm_market_source_official_desc">Самый большой список плагинов DeepSeek Harness — но он рассчитан на компьютер: часть плагинов на телефоне имеет проблемы с вёрсткой или совместимостью.</string>
     <string name="pm_market_source_open_failed">Нет приложения, которое может открыть эту ссылку</string>
+    <string name="pm_market_state_denied">Отклонено хостом</string>
+    <string name="pm_market_stale_rows_title">Найдены устаревшие строки отключения</string>
+    <string name="pm_market_stale_rows_message">%1$d строк отключения больше не соответствуют ни одному установленному плагину; каждый запуск пишет предупреждение:</string>
+    <string name="pm_market_stale_rows_clean">Удалить устаревшие строки</string>
+    <string name="pm_market_stale_rows_cleaned">Устаревшие строки удалены</string>
+    <string name="pm_market_state_incompatible">Установлено — несовместимо с этим dsh</string>
+    <string name="pm_market_state_library">Библиотека</string>
+    <string name="pm_market_update_not_a_plugin">Доступен более новый выпуск (%1$s), но это библиотечная зависимость, а не плагин — обновление здесь перезапишет версию зависимости в профиле</string>
+    <string name="pm_market_update_newer_prerelease">В другом канале есть более новый выпуск (%1$s); это факт, а не обновление, которое предлагает магазин</string>
 </resources>

@@ -132,12 +132,13 @@
     <!-- 市场 · 已安装 -->
     <string name="pm_market_installed_empty">尚未安装社区插件</string>
     <string name="pm_market_installed_empty_hint">可前往「发现」页浏览。</string>
-    <string name="pm_market_state_live">已生效</string>
+    <string name="pm_market_state_live">已安装，已生效</string>
     <string name="pm_market_state_restart">已安装，重启后生效</string>
     <string name="pm_market_state_inert">已安装，未生效</string>
     <string name="pm_market_state_broken">已安装，校验未通过</string>
     <string name="pm_market_state_missing">清单里有，但文件不在</string>
     <string name="pm_market_state_disabled">已停用</string>
+    <string name="pm_market_state_disabled_pending">已停用，重启后生效</string>
     <string name="pm_market_act_why">详情</string>
     <string name="pm_market_act_why_empty">该状态没有留下判定说明。</string>
     <string name="pm_market_toggle_on">启用中</string>
@@ -243,4 +244,13 @@
 DSHBox 刚刚建立起来的收录仓库，便于扩展移动端场景的插件适配。欢迎大家向仓库提交 PR，分享自己的想法和创意！</string>
     <string name="pm_market_source_official_desc">DeepSeek Harness 社区最大插件精选列表！但主要面向电脑端使用，部分插件在移动端会存在页面不适配和兼容性问题。</string>
     <string name="pm_market_source_open_failed">没有可以打开这个链接的应用</string>
+    <string name="pm_market_state_denied">宿主拒绝加载</string>
+    <string name="pm_market_stale_rows_title">发现残留停用行</string>
+    <string name="pm_market_stale_rows_message">%1$d 条停用行已不对应任何已装插件，每次启动都会为它们产生一条加载告警：</string>
+    <string name="pm_market_stale_rows_clean">清理残留行</string>
+    <string name="pm_market_stale_rows_cleaned">残留行已清理</string>
+    <string name="pm_market_state_incompatible">已安装，与当前 dsh 不兼容</string>
+    <string name="pm_market_state_library">依赖库</string>
+    <string name="pm_market_update_not_a_plugin">有更新的发布（%1$s），但它是依赖库而不是插件——在这里更新会改写 profile 的依赖版本</string>
+    <string name="pm_market_update_newer_prerelease">其它通道有更新的版本（%1$s）；这只是事实，不是市场提供的更新</string>
 </resources>

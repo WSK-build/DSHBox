@@ -81,10 +81,13 @@ class SandboxProcessRunner(
         dshDir: String? = null,
         /** 共享区宿主目录（guest `/root/share/<别名>` 的一组绑定）；见 [layeredProotPrefix]。 */
         shareBinds: List<Pair<String, File>> = emptyList(),
+        /** 能力模块追加的绑定参数；本类不解释语义，原样追加。 */
+        extraBinds: List<String> = emptyList(),
     ): List<String> = buildList {
         addAll(
             layeredProotPrefix(
-                prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shareBinds = shareBinds,
+                prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir,
+                shareBinds = shareBinds, extraBinds = extraBinds,
             ),
         )
         add("--cwd=/root")
@@ -115,6 +118,13 @@ class SandboxProcessRunner(
         dshDir: String? = null,
         shimHostDir: String? = null,
         /**
+         * 工具链缓存的宿主目录，绑定到 guest `/opt/dshbox-cache`（pnpm store 与
+         * corepack 内置缓存都在其中）。pnpm 垫片按挂载点判存，漏绑时静默退回
+         * 工作区位、内置缓存随之失效——所以 dsh 角色必须与 guest 命令通道同口径
+         * 绑定。空/不存在则不绑。
+         */
+        guestCacheHostDir: String? = null,
+        /**
          * 追加给 dsh 启动器的 `--patch` overlay（guest 内路径，可多个）。
          *
          * 这是 dsh **官方**的额外 patch 层入口（应用在 profile 层之后，见 `dsh/lib/bin.js`），
@@ -129,11 +139,13 @@ class SandboxProcessRunner(
         browserHostDir: String? = null,
         /** 共享区绑定清单（guest 别名 → 宿主目录）；见 [layeredProotPrefix]。 */
         shareBinds: List<Pair<String, File>> = emptyList(),
+        /** 能力模块追加的绑定参数；本类不解释语义，原样追加。 */
+        extraBinds: List<String> = emptyList(),
     ): List<String> = buildList {
         addAll(
             layeredProotPrefix(
                 prootBinary, rootfsDir, workspaceBind, nodeDir, dshDir, shimHostDir, pilotHostDir,
-                browserHostDir, shareBinds,
+                browserHostDir, shareBinds, guestCacheHostDir, extraBinds,
             ),
         )
         add("--cwd=/root/projects")
@@ -193,6 +205,9 @@ class SandboxProcessRunner(
         pilotHostDir: String? = null,
         browserHostDir: String? = null,
         shareBinds: List<Pair<String, File>> = emptyList(),
+        guestCacheHostDir: String? = null,
+        /** 能力模块追加的绑定参数；本类不解释语义，原样追加。 */
+        extraBinds: List<String> = emptyList(),
     ): List<String> = buildList {
         add(prootBinary)
         add("--rootfs=$rootfsDir")
@@ -205,12 +220,17 @@ class SandboxProcessRunner(
         if (!shimHostDir.isNullOrBlank()) add("--bind=$shimHostDir:${Constants.DSH_LINK_SHIM_GUEST_DIR}")
         if (!pilotHostDir.isNullOrBlank()) add("--bind=$pilotHostDir:/opt/pilot")
         if (!browserHostDir.isNullOrBlank()) add("--bind=$browserHostDir:/opt/browser")
+        // 工具链缓存：与 guest 命令通道（buildProotCommand :924）同口径。
+        // 垫片按挂载点判存，漏绑时 [ -d /opt/dshbox-cache ] 为假，pnpm 静默退回
+        // 工作区位——内置缓存随之失效。
+        if (!guestCacheHostDir.isNullOrBlank()) add("--bind=$guestCacheHostDir:${Constants.DSHBOX_GUEST_CACHE_DIR}")
         shareBinds.forEach { (name, dir) ->
             if (name.isNotBlank() && dir.isDirectory) {
                 add("--bind=${dir.absolutePath}:${Constants.SHARE_AREA_GUEST_DIR}/$name")
             }
         }
         add("--bind=$workspaceBind:/root/projects")
+        addAll(extraBinds)
     }
 
     fun start(

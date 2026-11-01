@@ -2,6 +2,7 @@ package com.dshbox.pluginmanager.core
 
 import android.content.Context
 import com.dshbox.app.common.Constants
+import com.dshbox.pluginmanager.contract.HostContract
 import java.io.File
 
 /**
@@ -32,7 +33,16 @@ class PluginPaths(
     val userDataDir: File = File(filesDir, "user-data")
 
     /** 运行层根目录（base/node/dsh 各层都在它下面）。 */
-    val runtimeCurrentDir: File = File(filesDir, "runtime/runtime-current")
+    val runtimeCurrentDir: File = File(filesDir, HostContract.RUNTIME_CURRENT)
+
+    /**
+     * pnpm 镜像源覆盖文件（宿主侧；guest 内为 `/opt/dshbox-cache/pnpm-registry`）。
+     *
+     * 由 App 侧 bootstrap 探测后原子写入，一行裸 URL；执行面垫片不读它，唯一
+     * 消费者是本模块的判定面（更新检测、预发布通道、浏览期兼容性）。
+     */
+    val pnpmRegistryFile: File =
+        File(File(filesDir, Constants.GUEST_CACHE_DIR_LEAF), Constants.PNPM_REGISTRY_FILE_LEAF)
 
     /** `user-data/.dsh` —— DSH 的 home。 */
     val dshHomeDir: File = File(userDataDir, ".dsh")
@@ -41,12 +51,18 @@ class PluginPaths(
     val profileDir: File = File(profilesDir, profile)
 
     /** profile 清单（依赖与 `dsh.profile.bundles`）。 */
-    val profileManifest: File = File(profileDir, "package.json")
+    val profileManifest: File = File(profileDir, HostContract.PROFILE_MANIFEST)
 
     /** **用户的**补丁层：本模块只读，永不写入。 */
-    val userPatchFile: File = File(profileDir, "cordis.patch.yml")
+    val userPatchFile: File = File(profileDir, HostContract.USER_PATCH)
 
-    val nodeModulesDir: File = File(profileDir, "node_modules")
+    /** 版本豁免文件；命中的插件不会被兼容门禁拒绝。 */
+    val compatibilityFile: File = File(profileDir, HostContract.COMPATIBILITY)
+
+    /** pnpm workspace 声明；存在与否决定安装命令要不要注入 `-w`。 */
+    val pnpmWorkspaceFile: File = File(profileDir, HostContract.PNPM_WORKSPACE)
+
+    val nodeModulesDir: File = File(profileDir, HostContract.NODE_MODULES)
 
     /** 市场状态（字段沿用上游格式，便于与桌面端互迁）。 */
     val marketStateFile: File = File(File(profileDir, ".dsh-market"), "state.json")
@@ -56,6 +72,23 @@ class PluginPaths(
      * 桌面端所有，我们只负责原样带回；手机端自己的设置另放一个文件。
      */
     val catalogSourceFile: File = File(File(profileDir, ".dsh-market"), "catalog-source")
+
+    /**
+     * 卸载中断的行日志（remove 之前记下将孤儿化的行 id，下次卸载入口结算）。
+     *
+     * 刻意**不与上游的 `pending-rows.json` 同名**：同路径下两侧 schema 互不兼容，
+     * 整文件重写会静默毁掉对方的待结算记录。
+     */
+    val pendingRowsFile: File = File(File(profileDir, ".dsh-market"), "pending-rows.dshbox.json")
+
+    /**
+     * 市场自己拨过、但要等 DSH 下次启动才生效的包。
+     *
+     * 市场写的是启动参数里的 `--patch` 覆盖层，宿主只在组合时读它；安装与 DSH
+     * 自身页面的开关走 profile/用户补丁层（HMR），是即时生效的。这张表只用来把
+     * 前者与后者区分开。
+     */
+    val pendingTogglesFile: File = File(File(profileDir, ".dsh-market"), "pending-toggles.json")
 
     /** 我方随包资产目录（`.dsh/dshbox`）。 */
     val assetsDir: File = File(dshHomeDir, "dshbox")
@@ -110,5 +143,5 @@ class PluginPaths(
 
     /** 某个包的清单；不存在返回 null。 */
     fun installedManifest(name: String): File? =
-        File(installedPackageDir(name), "package.json").takeIf { it.isFile }
+        File(installedPackageDir(name), HostContract.PROFILE_MANIFEST).takeIf { it.isFile }
 }

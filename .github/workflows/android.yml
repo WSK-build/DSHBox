@@ -32,7 +32,12 @@ jobs:
         run: |
           sdkmanager --update >/dev/null 2>&1 || true
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          sdkmanager "platforms;android-36" "platforms;android-37.2" "build-tools;36.0.0" "platform-tools"
+
+      - name: Set up Node for DSH compatibility tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
 
       - name: Grant execute permission to scripts
         run: chmod +x gradlew tools/*.sh runtime-bundle/scripts/*.sh runtime-bundle/build_rootfs.sh
@@ -78,13 +83,32 @@ jobs:
         run: ./gradlew testDebugUnitTest --stacktrace
 
       - name: Run lint
-        run: ./gradlew lintDebug --stacktrace
+        run: >-
+          ./gradlew
+          :app:lintSystemWebViewDebug
+          :app:lintGeckoDebug
+          --stacktrace
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload debug APK
+      - name: Assemble release APK variants
+        run: >-
+          ./gradlew
+          :app:assembleSystemWebViewRelease
+          :app:assembleGeckoRelease
+          --stacktrace
+
+      - name: Upload System WebView debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: dshapp-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: dshapp-system-webview-debug-apk
+          path: app/build/outputs/apk/systemWebView/debug/app-systemWebView-debug.apk
+          if-no-files-found: error
+
+      - name: Upload Gecko debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dshapp-gecko-arm64-debug-apk
+          path: app/build/outputs/apk/gecko/debug/app-gecko-debug.apk
+          if-no-files-found: error

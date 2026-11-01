@@ -2,7 +2,7 @@
 
 > 本文档描述**在 WSL2/Linux 与真机上**构建运行环境并验证的步骤。
 >
-> 目标：在 WSL2 构建「base/node/android-side」三层 bundle（无 DSH），在 Windows 用 `build_apk.sh`/Gradle 内嵌 → 产出自包含 APK → 真机覆盖安装验证。
+> 目标：在 WSL2 构建「base/node/android-side」三层 bundle（无 DSH），再通过 Gradle 生成 System WebView 与 Gecko 两个自包含 APK → 真机覆盖安装验证。
 >
 > 路径一律用 `<项目根>` 表示源码所在目录；请按自己的实际位置替换。
 
@@ -15,7 +15,7 @@
   - `tools/build_arm64_runtime_bundle.sh`（调度器）
   - `runtime-bundle/build_base.sh / build_node.sh / build_android_side.sh`
   - `tools/pack_runtime.sh`、`runtime-bundle/scripts/gen_profile.sh`
-- release APK 产出在 `app/build/outputs/apk/release/`（构建阶段见第 ② 步）。
+- Release APK 产出在 `app/build/outputs/apk/{systemWebView,gecko}/release/`（构建阶段见第 ② 步）。
 
 ---
 
@@ -67,39 +67,53 @@ cp build/dist/* <项目根>/dist/
 
 ---
 
-## ② Windows 内嵌 bundle（选择一种方式）
+## ② 构建两个 APK 变体
 
-### 方式 A：`build_apk.sh`（推荐，自动检测分层/单体）
-在 Windows PowerShell（`JAVA_HOME` 指向本机 JDK 21；不指定则用环境里已有的）：
-```powershell
-$env:JAVA_HOME="<JDK21 路径>"
-# build_apk.sh 会读取 dist/；有 runtime-profile.json 则分层嵌入，否则回退单体
-<项目根>\tools\build_apk.sh
+源码构建需要 JDK 21、Android SDK 37.2，以及源码目录上一级 `runtime/android-assets/`
+中的运行层：
+
+```text
+runtime/android-assets/runtime/android-side.tar.zst(+.sha256)
+runtime/android-assets/dsh/<dsh-version>.tar.zst(+.sha256)
 ```
 
-### 方式 B：直接 `assembleRelease`（分层 assets 会被 Gradle 打包进 APK 的 assets/runtime）
-把 `dist/` 里的 `runtime-profile.json + base/node/android-side.tar.zst + .sha256` 放到
-`app/src/main/assets/runtime/`，然后：
-```powershell
-$env:JAVA_HOME="<JDK21 路径>"
-cmd /c "set JAVA_HOME=<JDK21 路径>&& <项目根>\gradlew.bat -p <项目根> --offline -Dorg.gradle.vfs.watch=false -Dorg.gradle.workers.max=4 -Pkotlin.compiler.execution.strategy=in-process :app:assembleRelease"
-```
-产出 `app\build\outputs\apk\release\app-release.apk`。
-> 若你要的 DSH 也随包走，把 `assets/dsh/<version>.tar.zst(+.sha256)` 一并放入 `app/src/main/assets/dsh/`，`SandboxService.provisionBundledDsh()` 会在首启自动装配。
+`android-side` 从 Release 发布的环境整包中提取。`base`、`node` 不进入 APK；缺失的
+运行层在 App 内通过在线获取或离线导入安装。
 
-验证签名：
+在源码根目录执行：
+
 ```powershell
 $env:JAVA_HOME="<JDK21 路径>"
-& "<Android SDK>\build-tools\36.0.0\apksigner.bat" verify --print-certs "app\build\outputs\apk\release\app-release.apk"
-# 应显示 CN=DSHapp Dev（自建开发签名；见 tools/create_keystore.sh）
+$env:ANDROID_HOME="<Android SDK 路径>"
+.\gradlew.bat :app:assembleSystemWebViewRelease :app:assembleGeckoRelease
+pwsh tools/assemble_release_apks.ps1
+```
+
+归档脚本默认在源码根目录的 `apk/` 下生成：
+
+```text
+apk/dshbox-v<version>-system-release.apk
+apk/dshbox-v<version>-gecko-release.apk
+```
+
+Linux/WSL 可执行 `tools/build_linux.sh` 完成两个 Debug、两个 Release、全量 JVM
+测试和两个变体的 Lint。已有运行层位于 `dist/` 时，`tools/build_apk.sh` 也可先
+内嵌运行层，再构建两个变体。
+
+验证两个 APK 的包名、版本号、共同签名与内嵌资产：
+
+```powershell
+pwsh tools/verify_release_apk_contract.ps1 `
+  -SystemApk apk/dshbox-v<version>-system-release.apk `
+  -GeckoApk apk/dshbox-v<version>-gecko-release.apk
 ```
 
 ---
 
-## ③ （可选）DSH 独立编排
-- 方式 1：构建时把 DSH 层 `.tar.gz` 放 `app/src/main/assets/dsh/<version>.tar.gz`，首启自动装配。
-- 方式 2：真机上在「设置 → DSH → 更新 DSH」离线导入 DSH 包 `.tar.gz`（版本仲裁：已装更新→保留，入站更新→替换）。
-- npx 在线升级链路依赖网络，按文档在恢复网络后接入。
+## ③ DSH 层装配
+- 开发构建可把 DSH 层 `.tar.zst` 与 `.sha256` 放到 `runtime/android-assets/dsh/`，首启自动装配。
+- 真机可在「设置 → DSH → 更新 DSH」离线导入同格式的 DSH 层；版本仲裁为已装更新时保留，入站更新时替换。
+- 在线更新链路依赖网络与上游发布状态。
 
 ---
 

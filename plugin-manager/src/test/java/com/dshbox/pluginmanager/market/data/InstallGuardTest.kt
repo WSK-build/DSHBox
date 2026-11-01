@@ -303,7 +303,7 @@ class InstallGuardTest {
         val facts = FakeFacts(emptyMap())
         val lines = mutableListOf<String>()
         val result = guard(runner, facts).install("#", "", onLine = { lines.add(it) })
-        // 推不出包名 ≠ 安装失败：tarball 直链这类目标本来就还原不出包名，
+        // 推不出包名 ≠ 安装失败：tarball 直链这类目标的文件名无法还原包名，
         // 报失败会让一次**成功**的安装看起来没装上，用户会反复重试。
         assertTrue(result is AppResult.Success)
         // 必须如实说明"没校验"，也不能瞎猜一个名字去 remove（那可能删掉别的包）。

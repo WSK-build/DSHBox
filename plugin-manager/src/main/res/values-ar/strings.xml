@@ -132,12 +132,13 @@
     <!-- المتجر · المثبَّتة -->
     <string name="pm_market_installed_empty">لا توجد إضافات مجتمعية مثبَّتة بعد</string>
     <string name="pm_market_installed_empty_hint">تصفّح تبويب «استكشاف» للعثور على بعضها.</string>
-    <string name="pm_market_state_live">مُفعَّلة</string>
+    <string name="pm_market_state_live">مثبّت — نشط</string>
     <string name="pm_market_state_restart">مثبَّتة، تسري بعد إعادة التشغيل</string>
     <string name="pm_market_state_inert">مثبَّتة، غير مستخدمة</string>
     <string name="pm_market_state_broken">مثبَّتة، لم تجتز التحقّق</string>
     <string name="pm_market_state_missing">مُدرجة، لكن ملفاتها مفقودة</string>
     <string name="pm_market_state_disabled">مُعطَّلة</string>
+    <string name="pm_market_state_disabled_pending">معطّل — يسري بعد إعادة تشغيل DSH</string>
     <string name="pm_market_act_why">التفاصيل</string>
     <string name="pm_market_act_why_empty">لم يُسجَّل أي تشخيص لهذه الحالة.</string>
     <string name="pm_market_toggle_on">مُفعَّلة</string>
@@ -239,4 +240,13 @@
 فهرس DSHBox الجديد، لتسهيل توسيع دعم الإضافات على الجوّال. نرحّب بطلبات السحب والأفكار!</string>
     <string name="pm_market_source_official_desc">أكبر قائمة مختارة لإضافات DeepSeek Harness — لكنها موجَّهة للحاسوب، لذا تعاني بعض الإضافات من مشاكل في التخطيط أو التوافق على الجوّال.</string>
     <string name="pm_market_source_open_failed">لا يوجد تطبيق يمكنه فتح هذا الرابط</string>
+    <string name="pm_market_state_denied">رفضه المضيف</string>
+    <string name="pm_market_stale_rows_title">صفوف تعطيل متبقية</string>
+    <string name="pm_market_stale_rows_message">%1$d صف تعطيل لم تعد تقابل أي إضافة مثبتة؛ كل تشغيل يسجل تحذيرًا لها:</string>
+    <string name="pm_market_stale_rows_clean">إزالة الصفوف المتبقية</string>
+    <string name="pm_market_stale_rows_cleaned">تمت إزالة الصفوف المتبقية</string>
+    <string name="pm_market_state_incompatible">مثبّت — غير متوافق مع dsh الحالي</string>
+    <string name="pm_market_state_library">مكتبة</string>
+    <string name="pm_market_update_not_a_plugin">يتوفر إصدار أحدث (%1$s)، لكن هذه مكتبة تابعة وليست إضافة — التحديث من هنا سيعيد كتابة نسخة التبعية في الملف الشخصي</string>
+    <string name="pm_market_update_newer_prerelease">يوجد إصدار أحدث (%1$s) على قناة أخرى؛ هذه معلومة وليست تحديثًا يقدمه السوق</string>
 </resources>

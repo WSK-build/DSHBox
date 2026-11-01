@@ -33,11 +33,22 @@ import json, os, sys, tempfile
 path, pkg = sys.argv[1], sys.argv[2]
 d = json.load(open(path))
 bundles = (d.get('dsh', {}).get('profile', {}).get('bundles')) or []
+changed = False
 if pkg in bundles:
     d['dsh']['profile']['bundles'] = [b for b in bundles if b != pkg]
+    changed = True
+# 同时摘掉依赖声明：装着时 install.sh 会写 dependencies[<pkg>] = file:<暂存目录>，
+# 卸载只删目录而不摘声明的话，下一次任何 pnpm 安装都会按 manifest 把它重新装回来
+# （磁盘上复活、但不在 bundles 所以不加载），与"已卸载"的状态自相矛盾。
+deps = d.get('dependencies')
+if isinstance(deps, dict) and pkg in deps:
+    deps.pop(pkg, None)
+    changed = True
+if changed:
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or '.')
-    with os.fdopen(fd, 'w') as handle:
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
         json.dump(d, handle, ensure_ascii=False, indent=2)
+        handle.write('\n')
     os.replace(tmp, path)
     print('   bundles =', d['dsh']['profile']['bundles'])
 else:

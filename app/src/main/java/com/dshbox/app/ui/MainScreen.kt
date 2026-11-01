@@ -191,12 +191,13 @@ fun MainScreen(
     var sandboxError by remember { mutableStateOf(false) }
     var dshState by remember { mutableStateOf(DshState.UNINITIALIZED) }
     var dshUnresponsive by remember { mutableStateOf(false) }
-    // 首页子页整屏提升：Pilot / Cordis 模块内子页打开时，首页壳层（品牌栏 + 页签行）
+    // 首页子页整屏提升：DSH 访问设置、Pilot / Cordis 模块内子页打开时，首页壳层（品牌栏 + 页签行）
     // 与这里的底部导航同步收起，整屏让给模块子页（返回由子页顶栏箭头与系统返回键承接）。
     // 两个模块各记一份：Cordis 的 insets 反档只看它自己的子页，不被另一模块的
     // 上报串扰（只作整屏判定，不参与导航，故不会互相覆盖）。
     var pilotSubPageVisible by remember { mutableStateOf(false) }
     var cordisSubPageVisible by remember { mutableStateOf(false) }
+    var homeSubPageVisible by remember { mutableStateOf(false) }
     var showLaunch by remember { mutableStateOf(true) }
     var runtimeInstalled by remember { mutableStateOf(sandboxManager.isRuntimeInstalled()) }
     var nodeLayerInstalled by remember { mutableStateOf(sandboxManager.isNodeLayerInstalled()) }
@@ -391,7 +392,11 @@ fun MainScreen(
                 bottomBar = {
                     // 首页子页整屏提升时底部导航让位：子页自身顶栏提供返回，导航条不该
                     // 出现在整屏面板底下（其交互也被子页覆盖）。
-                    if (!immersive && !pilotSubPageVisible && !cordisSubPageVisible) {
+                    if (!immersive &&
+                        !homeSubPageVisible &&
+                        !pilotSubPageVisible &&
+                        !cordisSubPageVisible
+                    ) {
                         AppBottomNavigationBar(
                             tabs = tabs,
                             selectedTab = selectedTab,
@@ -442,6 +447,7 @@ fun MainScreen(
                                 },
                             )
                         },
+                        onHomeSubPageVisibilityChanged = { homeSubPageVisible = it },
                         // DSH 快捷条路由：MainScreen 是唯一知道内容栈下标的地方；
                         // DSH 页只报语义动作（DshQuickAction），不感知页签编号。
                         onQuickAction = { action ->
@@ -648,6 +654,8 @@ private fun TabContent(
         onBackToControl: () -> Unit,
         onSubPageVisible: (Boolean) -> Unit,
     ) -> Unit,
+    /** 首页自身的全屏子页（DSH 访问设置）可见性。 */
+    onHomeSubPageVisibilityChanged: (Boolean) -> Unit,
     /** DSH 悬浮球快捷条的语义路由（页签下标只在本文件解析）。 */
     onQuickAction: (DshQuickAction) -> Unit,
     /** DSH 根页面返回（其 WebView 历史见底）：宿主切回进入 DSH 之前的页签。 */
@@ -663,6 +671,7 @@ private fun TabContent(
     onInboundShareConsumed: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
     val dshReady = dshState == DshState.READY
     val dshError = dshState == DshState.ERROR
     // 启动中（STARTING/RUNNING 统一按一档展示）：READY 由健康循环首次探测成功置位，
@@ -717,9 +726,11 @@ private fun TabContent(
             bundledRuntimeAvailable = bundledRuntimeAvailable,
             onNavigateToSettings = onNavigateToSettings,
             onGetRuntimeOnline = onGetRuntimeOnline,
+            dshLaunchToken = dshLaunchToken,
             readSandboxCpuMillis = readSandboxCpuMillis,
             pilotContent = pilotContent,
             cordisContent = cordisContent,
+            onSubPageVisibilityChanged = onHomeSubPageVisibilityChanged,
             onOpenInBrowser = {
                 // 必须带 token：外部浏览器拿不到 WebView 的 cookie 交换，也拿不到注入脚本，
                 // 直接开 Constants.DSH_BASE_URL 会停在鉴权页（用户实证"打不开"）。
@@ -735,10 +746,12 @@ private fun TabContent(
                             dshBrowserChooser(
                                 Constants.DSH_BASE_URL,
                                 token,
-                                context.getString(R.string.home_open),
+                                resources.getString(R.string.home_open),
                             ),
                         )
-                    }.onFailure { t -> Log.w(TAG, "open DSH in browser failed: ${t.message}") }.isSuccess
+                    }.onFailure { failure ->
+                        Log.w(TAG, "open DSH in browser failed: ${failure.javaClass.simpleName}")
+                    }.isSuccess
                     if (!opened) {
                         Toast.makeText(context, R.string.home_open_browser_failed, Toast.LENGTH_SHORT).show()
                     }

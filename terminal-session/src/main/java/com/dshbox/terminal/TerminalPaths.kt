@@ -67,4 +67,18 @@ data class TerminalPaths(
      * 从公共存储与挂载清单注入（本模块不感知 Android 存储权限）。
      */
     val shareBinds: List<Pair<String, File>> = emptyList(),
+    /**
+     * 追加的 PRoot 绑定参数（完整 `--bind=宿主路径` 或 `--bind=宿主路径:guest路径` 形式）。
+     *
+     * 由 app 层注入，本模块不解释其语义。宿主编译期不依赖具体能力模块，故以纯字符串
+     * 清单传递；**注入方须保证绑定目标已存在**（PRoot 对不存在的绑定目标会报错）。
+     */
+    val extraGuestBinds: List<String> = emptyList(),
+    /**
+     * 追加到 guest PATH 的目录（位于 CLI 包装脚本目录之后、系统路径之前）。
+     *
+     * 与 [extraGuestBinds] 配套：绑定提供目录，此处让该目录出现在 PATH 上，
+     * 使 guest 内可直接按命令名调用其中的程序。
+     */
+    val extraPathEntries: List<String> = emptyList(),
 )

@@ -84,7 +84,7 @@ import com.dshbox.app.common.R as CommonR
  * 已结束的操作记录最多留这么多条。
  *
  * 面板回答的是"当前发生了什么"，不是操作历史；不设上限的话，一次失败重试风暴
- * 就能把面板填满历史噪声（真机上就积攒到过 6 条，用户看到的是一屏红）。
+ * 就能把面板填满历史噪声（实测可积攒到 6 条，占满整屏）。
  */
 private const val MAX_SETTLED_OPERATIONS = 3
 
@@ -118,6 +118,7 @@ fun MarketScreen(repository: MarketRepository, onBack: () -> Unit) {
 
     var tabIndex by rememberSaveable { mutableStateOf(MarketTab.DISCOVER.ordinal) }
     var query by rememberSaveable { mutableStateOf("") }
+    var staleRows by remember { mutableStateOf<List<String>>(emptyList()) }
 
     var registry by remember { mutableStateOf<Registry?>(null) }
     var installed by remember { mutableStateOf<List<InstalledPlugin>>(emptyList()) }
@@ -126,20 +127,20 @@ fun MarketScreen(repository: MarketRepository, onBack: () -> Unit) {
     var updatesFailure by remember { mutableStateOf<AppError?>(null) }
     var compatibility by remember { mutableStateOf<Map<String, HostCompatibility>>(emptyMap()) }
     var loading by remember { mutableStateOf(true) }
-    // reloadKey：重新读一遍数据（磁盘真状态）。refreshKey：**显式刷新**，
-    // 只有它变化时才允许绕过目录内存副本与更新检测缓存。两者分开是因为本地
-    // 操作（启停、写备注、装完重载）原来也走 reloadKey，而 force 又跟 reloadKey
-    // 绑定——于是每拨一次开关都要重下几 MB 的目录、重查一遍 npm。
-    //
-    // appliedRefreshKey 记录"上一次加载时用的是哪个 refreshKey"：`refreshKey > 0`
-    // 这种写法会让**之后每一次**本地重载都重新联网，等于把 bug 换个地方。
+    // 已装清单单独一个加载标志：它只依赖本地读盘，不该跟着目录一起转圈。
+    var installedLoading by remember { mutableStateOf(true) }
+    // 三个键分工：
+    // - reloadKey：只重读已装清单（启停、写备注这类本地操作）；
+    // - catalogKey：重拉目录与更新检测，但**不强制联网**（装/卸/更新后、切源后）；
+    // - refreshKey：**显式刷新**，唯一允许绕过目录内存副本与更新检测缓存的入口。
+    // 分开的原因是 force 只能跟"用户按了刷新"绑定：force 原先与普通重载共用开关，
+    // 于是每拨一次开关都要重下几 MB 的目录。
     var reloadKey by remember { mutableStateOf(0) }
+    var catalogKey by remember { mutableStateOf(0) }
     var refreshKey by remember { mutableStateOf(0) }
+    // appliedRefreshKey 记录"上一次加载时用的是哪个 refreshKey"：`refreshKey > 0`
+    // 这种写法会让之后每一次重载都联网，等于把 bug 换个地方。
     var appliedRefreshKey by remember { mutableStateOf(0) }
-    // 纯本地重载标记：拨开关 / 写备注这类**不可能改变插件版本**的操作，重载时
-    // 复用上一份更新结果，不重跑更新检测。装/卸/更新结束后的重载仍走完整检测
-    // （版本可能真的变了，复用会显示过期的"有更新"）。
-    var reloadIsLocal by remember { mutableStateOf(false) }
     // 更新检测是否正在跑：行内更新按钮据此禁用并显示"更新检测中"。
     var checkingUpdates by remember { mutableStateOf(false) }
     // 市场状态文件坏了：所有写入都会被拒，界面给用户一条「备份并重建」的出路。
@@ -167,45 +168,50 @@ fun MarketScreen(repository: MarketRepository, onBack: () -> Unit) {
     val installingNames = runningNames[MarketOperationKind.INSTALL].orEmpty().toSet()
     val updatingNames = runningNames[MarketOperationKind.UPDATE].orEmpty().toSet()
 
-    // 目录 / 已装 / 更新三项一起刷新：它们互相依赖（已装清单决定卡片上的"已装"
-    // 标记，更新状态决定行上的按钮），分三次加载会让界面短暂自相矛盾。
+    // 目录与更新检测**独立成一条**：本地重载（启停、备注）只重启下面那条已装清单，
+    // 不会取消正在进行的目录请求——否则用户在目录下载途中拨一次开关，目录请求被
+    // 取消、又没人补拉，发现页会停在"目录不可用"且没有出口。
     //
-    // force 只看 refreshKey 是否**变化**：显式刷新才联网重取，本地操作只重读磁盘。
-    LaunchedEffect(reloadKey, refreshKey) {
+    // force 只看 refreshKey 是否**变化**：显式刷新才联网重取。
+    LaunchedEffect(refreshKey, catalogKey) {
         val force = forceForLoad(refreshKey, appliedRefreshKey)
-        appliedRefreshKey = refreshKey
         // 先读一次数据源选择、再取目录：用户选了非默认源时，否则会先用默认源
         // 白拉一遍网络，界面还会闪一下别人的内容。
         repository.loadCatalogSource()
         loading = true
-        // 纯本地重载且非显式刷新时，复用上一份更新结果，**不重跑更新检测**：
-        // 启停/写备注不会改变任何插件的版本，重算没有意义，还会在查询失败时
-        // 留下几十秒的"检测中"空窗。
-        val reuse = if (reloadIsLocal && !force) updates else null
-        checkingUpdates = reuse == null
-        val snapshot = loadMarket(repository, force = force, reuseUpdates = reuse)
+        checkingUpdates = true
+        val snapshot = loadCatalogPart(repository, force = force)
         // 目录失败时保留上一份快照：网络抖动不该把用户正在看的目录清空，
         // 失败原因由 registryFailure 横幅给出。
         snapshot.registry?.let { registry = it }
-        installed = snapshot.installed
-        // 失败要**留着**：折叠成空列表会让界面显示"尚未安装社区插件"。
-        installedFailure = snapshot.installedFailure
         updates = snapshot.updates
         updatesFailure = snapshot.updatesFailure
         loading = false
         checkingUpdates = false
+        // 加载完成后才推进：被取消的那一轮不算"刷新已兑现"，否则用户按了刷新
+        // 又被别的重载顶掉时，下一次不会再强制联网。
+        appliedRefreshKey = refreshKey
     }
 
-    /** 本地重载：只重读磁盘，复用上一份更新结果。 */
+    // 已装清单：纯本地读盘，先于目录渲染；本地重载与显式刷新都会重读它。
+    LaunchedEffect(reloadKey, refreshKey, catalogKey) {
+        installedLoading = true
+        val local = loadInstalledPart(repository)
+        installed = local.installed
+        // 失败要**留着**：折叠成空列表会让界面显示"尚未安装社区插件"。
+        installedFailure = local.installedFailure
+        installedLoading = false
+        staleRows = repository.auditOverlay()
+    }
+
+    /** 本地重载：只重读已装清单，不请求目录、不重跑更新检测。 */
     fun reloadLocal() {
-        reloadIsLocal = true
         reloadKey++
     }
 
-    /** 完整重载：重读磁盘并重跑更新检测（版本可能变了的场合）。 */
+    /** 完整重载：重拉目录与更新检测，但**不强制联网**（装/卸/更新、切源后）。 */
     fun reloadFull() {
-        reloadIsLocal = false
-        reloadKey++
+        catalogKey++
     }
 
     // 数据源选择页：整页替换市场本体，但**留在同一个 composable 里** ——
@@ -221,9 +227,10 @@ fun MarketScreen(repository: MarketRepository, onBack: () -> Unit) {
                 if (picked != catalogSource) {
                     scope.launch {
                         when (val result = repository.setCatalogSource(picked)) {
-                            // 取数点在 setCatalogSource 内部已经丢掉了上一个源的目录副本，
-                            // 所以这里一次**普通**重载就会联网取新源 —— 不必去动 refreshKey。
-                            is AppResult.Success -> reloadLocal()
+                            // 取数点在 setCatalogSource 内部已经丢掉上一个源的目录副本，
+                            // 所以一次完整重载（非强制）就会联网取新源；这里必须是
+                            // 完整重载，否则发现页会继续显示上一个源的目录。
+                            is AppResult.Success -> reloadFull()
                             is AppResult.Failure ->
                                 snackbarHostState.showSnackbar(result.userText(context, language))
                         }
@@ -235,26 +242,27 @@ fun MarketScreen(repository: MarketRepository, onBack: () -> Unit) {
         return
     }
 
-    // 宿主兼容性按批查询（数据层契约上限 64 个/批），一次把整个目录问完，
-    // 免得滚动时才逐个加载、卡片上的徽章忽明忽暗。
+    // 宿主兼容性按批查询：一次把整个目录问完，免得滚动时才逐个加载、
+    // 卡片上的徽章忽明忽暗。批大小只决定并发取数，不改变判定结果。
     LaunchedEffect(registry) {
         val plugins = registry?.plugins.orEmpty()
         if (plugins.isEmpty()) return@LaunchedEffect
         val accumulator = mutableMapOf<String, HostCompatibility>()
-        plugins.map { it.displayName }.distinct().chunked(COMPAT_BATCH).forEach { batch ->
-            accumulator += repository.hostCompatibility(batch)
+        plugins.distinctBy { it.displayName }.chunked(COMPAT_BATCH).forEach { batch ->
+            accumulator += repository.browseCompatibility(batch)
         }
         compatibility = accumulator
     }
 
     /** 执行（或重试）一次操作。同一时间只允许一个——数据层是串行的。 */
-    fun launchOperation(operation: MarketOperation) {        if (operations.any { it.state == MarketOperationState.RUNNING && it !== operation }) {
+    fun launchOperation(operation: MarketOperation) {
+        if (operations.any { it.state == MarketOperationState.RUNNING && it !== operation }) {
             scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.pm_market_busy_wait)) }
             return
         }
         if (operations.none { it === operation }) {
             // 同一个插件的**已结束**记录先撤掉：重试不该把上一次的失败留在面板里，
-            // 否则每失败一次就多一条，面板很快就只剩一串历史噪声（真机上就是这么积攒的）。
+            // 否则每失败一次就多一条，面板很快就只剩一串历史噪声（实测即如此积攒）。
             operations.removeAll { it !== operation && it.pluginName == operation.pluginName && it.state != MarketOperationState.RUNNING }
             operations.add(operation)
             pruneSettledOperations(operations)
@@ -467,6 +475,35 @@ fun MarketScreen(repository: MarketRepository, onBack: () -> Unit) {
                 )
             }
 
+            // 残留停用行只在「已安装」页签提示：它们只体现在宿主启动日志里，
+            // 与已装状态同属一个语境；清理后做一次本地重载。
+            if (MarketTab.entries[tabIndex] == MarketTab.INSTALLED && staleRows.isNotEmpty()) {
+                MarketFailureBanner(
+                    title = stringResource(R.string.pm_market_stale_rows_title),
+                    message = stringResource(
+                        R.string.pm_market_stale_rows_message,
+                        staleRows.size,
+                    ) + " / " + staleRows.take(STALE_ROWS_PREVIEW).joinToString(", "),
+                    onRetry = { reloadLocal() },
+                    secondaryLabel = stringResource(R.string.pm_market_stale_rows_clean),
+                    onSecondary = {
+                        scope.launch {
+                            when (val result = repository.cleanOverlayRows(staleRows)) {
+                                is AppResult.Success -> {
+                                    staleRows = emptyList()
+                                    snackbarHostState.showSnackbar(
+                                        context.getString(R.string.pm_market_stale_rows_cleaned),
+                                    )
+                                }
+                                is AppResult.Failure ->
+                                    snackbarHostState.showSnackbar(result.userText(context, language))
+                            }
+                            reloadLocal()
+                        }
+                    },
+                )
+            }
+
             // 忙碌时按钮会置灰，必须同时说清原因，否则用户只看到一片点不动的按钮。
             if (busy) {
                 Text(
@@ -514,7 +551,7 @@ fun MarketScreen(repository: MarketRepository, onBack: () -> Unit) {
                     notices = notices,
                     updatingNames = updatingNames,
                     busy = busy,
-                    loading = loading,
+                    loading = installedLoading,
                     checkingUpdates = checkingUpdates,
                     // 失败原因原样传下去：列表位置要显示"读不出来 + 重试"，
                     // 而不是"尚未安装社区插件"。
@@ -840,6 +877,9 @@ internal fun MarketFailureBanner(
 
 /** 宿主兼容性一次查询的批上限，与数据层契约一致。 */
 private const val COMPAT_BATCH = 64
+
+/** 残留行提示里最多列出多少个 id，避免横幅被长列表撑开。 */
+private const val STALE_ROWS_PREVIEW = 8
 
 /** 失败文案：优先用领域层给的可本地化文案，回退到原始 message 并**择半双语**。 */
 private fun AppResult.Failure.userText(context: Context, language: String): String =

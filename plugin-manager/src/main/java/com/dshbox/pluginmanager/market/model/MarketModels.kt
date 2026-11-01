@@ -33,6 +33,11 @@ data class RegistryPlugin(
      * 目录里只有约两成条目带这个字段；没有时卡片不显示图，不做额外的 README 抽取。
      */
     val screenshots: List<String> = emptyList(),
+    /**
+     * 目录策展的店面图标（与截图同一信任边界：只收 https 的 GitHub 图床地址）。
+     * 缺席或加载失败时，界面回落到作者的 GitHub 头像。
+     */
+    val icon: String? = null,
 ) {
     /** 显示名：优先 npm 名，否则 owner/name。 */
     val displayName: String get() = npm ?: "$owner/$name"
@@ -66,12 +71,17 @@ data class HostCompatibility(
     }
 }
 
-/** 激活状态（六态，语义与上游一致）。 */
+/**
+ * 激活状态。
+ *
+ * 与上游的差别有两处：[LIVE] 不是进程内观测，而是「在 profile bundle 层里、
+ * 且没有已知的待生效变更」；[DISABLED_PENDING] 是上游没有的"停用待重启"态。
+ */
 enum class ActivationState {
-    /** 已加载、正在提供能力。 */
+    /** 已在 profile bundle 层，且没有待生效的变更。 */
     LIVE,
 
-    /** 已装但需要重启才生效。 */
+    /** 有变更要等宿主下次启动才生效（市场自己写的 `--patch` 层，或由用户补丁层引用）。 */
     RESTART,
 
     /** 装上但当前不参与组合（普通依赖 / 仅在客户端侧存在）。 */
@@ -83,8 +93,23 @@ enum class ActivationState {
     /** 清单里有，但文件不在。 */
     MISSING,
 
-    /** 被开关关掉。 */
+    /** 已停用，且停用已在宿主侧生效。 */
     DISABLED,
+
+    /** 刚在市场里停用：行已写入，宿主下次启动才真正不再加载。 */
+    DISABLED_PENDING,
+
+    /** 兼容门禁会在每次启动时拒绝它：由清单声明推出，装完即可判定。 */
+    INCOMPATIBLE,
+
+    /** 宿主启动日志显示它被拒绝加载：需真正启动过一次，可覆盖兼容性以外的原因。 */
+    DENIED,
+
+    /**
+     * 清单声明 `dsh.kind: "library"`（且无 bundle / client）：共享代码，
+     * 不是等待启动的插件。上游对同形态判 inert 并单列 library 标记。
+     */
+    LIBRARY,
 }
 
 /** 已安装插件。 */
@@ -101,6 +126,12 @@ data class InstalledPlugin(
     val note: String? = null,
     /** 是否属于第三方（包名不以官方前缀开头）。 */
     val thirdParty: Boolean = true,
+    /**
+     * 市场能不能在这里启停它：条目 id 可解析、且不属于宿主基础设施。
+     *
+     * 由数据层判定——UI 只看激活态是猜不出来的（受保护的包同样是 `LIVE`）。
+     */
+    val toggleable: Boolean = false,
 )
 
 /** 更新检测结果。 */
@@ -125,6 +156,12 @@ data class UpdateStatus(
      * 只会显示"未检测"，不会谎报"已是最新"。
      */
     val checked: Boolean = false,
+
+    /** 对端确有更新，但它是普通库依赖而非插件：收回更新入口，只展示事实。 */
+    val notAPlugin: Boolean = false,
+
+    /** 用户跟的那条线（非 latest）上有更新的构建；纯事实，不参与 [updateAvailable]。 */
+    val newerPrerelease: String? = null,
 )
 
 /** 目录加载失败的说明（用于 UI 给出具体原因，而不是"加载失败"四个字）。 */

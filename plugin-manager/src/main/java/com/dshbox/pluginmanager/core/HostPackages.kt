@@ -1,6 +1,7 @@
 package com.dshbox.pluginmanager.core
 
 import android.util.Log
+import com.dshbox.pluginmanager.contract.HostContract
 import java.io.File
 
 /**
@@ -24,12 +25,6 @@ object HostPackages {
 
     private const val TAG = "PluginGuard"
 
-    /** 命名空间前缀：官方包永远属于官方。 */
-    private const val OFFICIAL_NAMESPACE = "@deepseek-ai/"
-
-    /** loader 合成的条目（include / loader / group / base…）所在的命名空间。 */
-    private const val LOADER_NAMESPACE = "cordis:"
-
     /**
      * 扫描安装层，得到"这台机器上安装层实际自带的包名"。
      *
@@ -37,8 +32,8 @@ object HostPackages {
      */
     fun installedPackages(paths: PluginPaths): Set<String> {
         val roots = listOf(
-            File(paths.runtimeCurrentDir, "dsh/node_modules"),
-            File(paths.runtimeCurrentDir, "node_modules"),
+            File(paths.runtimeCurrentDir, "${HostContract.DSH_LAYER}/${HostContract.NODE_MODULES}"),
+            File(paths.runtimeCurrentDir, HostContract.NODE_MODULES),
         )
         val names = mutableSetOf<String>()
         roots.forEach { root ->
@@ -67,8 +62,8 @@ object HostPackages {
      */
     fun isHostPackage(name: String?, installed: Set<String>): Boolean {
         if (name.isNullOrBlank()) return false
-        if (name.startsWith(LOADER_NAMESPACE)) return true
-        if (name.startsWith(OFFICIAL_NAMESPACE)) return true
+        if (HostContract.isLoaderEntry(name)) return true
+        if (HostContract.isOfficial(name)) return true
         return name in installed
     }
 
@@ -80,7 +75,7 @@ object HostPackages {
      */
     fun isThirdParty(name: String?, installed: Set<String>): Boolean {
         if (name.isNullOrBlank()) return false
-        if (name.startsWith("@local/")) return false
+        if (HostContract.isLocalAsset(name)) return false
         return !isHostPackage(name, installed)
     }
 }

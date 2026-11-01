@@ -1,7 +1,10 @@
 package com.dshbox.app.ui.webview
 
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
+import android.provider.Settings
+import com.dshbox.dsh.renderer.api.DshOriginPolicy
 
 /**
  * 「用外部浏览器打开 DSH」的两个意图构造器。
@@ -28,3 +31,50 @@ internal fun dshBrowserIntent(base: String, token: String?): Intent =
 internal fun dshBrowserChooser(base: String, token: String?, title: String): Intent =
     Intent.createChooser(dshBrowserIntent(base, token), title)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+/**
+ * Opens Android's default-app settings. Some OEM builds do not expose the
+ * dedicated default-apps destination, so the general settings page is the
+ * fallback.
+ */
+internal fun openDefaultAppsSettings(context: Context): Boolean {
+    val intents = listOf(
+        Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS),
+        Intent(Settings.ACTION_SETTINGS),
+    )
+    for (intent in intents) {
+        if (runCatching {
+                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.isSuccess
+        ) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Opens a validated external HTTP(S) page through Android's default handler.
+ * The DSH origin is handled by its embedded renderer and is not accepted here.
+ */
+internal fun openExternalInDefaultBrowser(
+    context: Context,
+    rawUrl: String,
+    trustedBaseOrigin: String,
+): Boolean = runCatching {
+    if (rawUrl.isBlank() || rawUrl.length > EXTERNAL_URL_MAX_CHARS) return@runCatching false
+    val uri = Uri.parse(rawUrl)
+    val scheme = uri.scheme?.lowercase()
+    if (scheme != "http" && scheme != "https") return@runCatching false
+    if (uri.host.isNullOrBlank()) return@runCatching false
+    if (uri.userInfo != null) return@runCatching false
+    if (DshOriginPolicy.create(trustedBaseOrigin).isTrusted(uri.toString())) {
+        return@runCatching false
+    }
+    context.startActivity(
+        Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+    true
+}.getOrDefault(false)
+
+private const val EXTERNAL_URL_MAX_CHARS = 8_192

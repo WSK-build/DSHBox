@@ -7,7 +7,7 @@ import com.dshbox.app.common.AppResult
  * 读一个已装包在磁盘上的事实。
  *
  * [ProfileReader] 是生产实现；抽出接口是为了让"装后校验"这条链路能在单测里
- * 用一个**伪造的**事实来源驱动，不需要真机与真实文件系统。
+ * 用一个**伪造的**事实来源驱动，不需要实机与真实文件系统。
  */
 interface PackageFactsSource {
     fun facts(name: String, spec: String?): PackageFacts
@@ -98,10 +98,10 @@ internal fun declaredPackageName(declaredName: String): String? {
 /**
  * 安装的「假成功守卫」。
  *
- * ## 为什么命令退出码为 0 还不够
+ * ## 退出码为 0 不足以判定成功的原因
  *
  * `dsh plugin add` 的成功只说明"pnpm 这一趟没报错"。下面几种情况它都会返回 0，
- * 而插件**根本加载不了**：包拉下来了但清单损坏；装的其实是同名的一个普通
+ * 而插件**根本加载不了**：包拉下来了但清单损坏；装进来的只是同名的一个普通
  * npm 包（没有 `dsh` 元数据）；`dsh.bundle` / `dsh.client` 没声明、或声明了但
  * 入口产物不存在（构建脚本被拦）；甚至命令装到了别的目录。用户看到的会是
  * "安装成功"，然后重启后插件不存在——这比直接报失败难查得多。
@@ -154,7 +154,7 @@ class InstallGuard(
 
         if (newNames.isEmpty()) {
             // 推不出包名 ≠ 安装失败：tarball 直链这类目标的文件名里带版本号，
-            // 本来就还原不出包名，目录条目也可能没有 npm 名。把它报成失败会让
+            // 无法据此还原包名，目录条目也可能没有 npm 名。把它报成失败会让
             // 一次**成功**的安装看起来没装上，用户会反复重试。这里保留安装结果，
             // 并把"没校验"如实说出来，也绝不去 remove 一个猜出来的名字。
             onLine("未校验：无法确定它装成了哪个包，请刷新列表核对 / unverified: installed package unknown")

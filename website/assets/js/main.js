@@ -25,18 +25,12 @@
 
   var STR = {
     en: {
-      download: "Download APK",
-      viewLatest: "View latest release",
-      checking: "Checking the latest release…",
       latestOnGitHub: "Latest release on GitHub",
       copy: "Copy download link",
       copied: "Copied \u2713",
       copyFailed: "Copy failed"
     },
     zh: {
-      download: "下载 APK",
-      viewLatest: "查看最新 Release",
-      checking: "正在获取最新版本…",
       latestOnGitHub: "最新版本见 GitHub",
       copy: "复制下载链接",
       copied: "已复制 \u2713",
@@ -48,9 +42,17 @@
     return document.documentElement.lang === "zh" ? STR.zh : STR.en;
   }
 
-  var downloadButtons = Array.prototype.slice.call(
-    document.querySelectorAll("[id^='download-apk']")
-  );
+  /* 双版本下载入口：system = 系统 WebView 版，gecko = 内置 Gecko 版。
+     两组按钮各自独立取址，任一方资源缺失时只回落该方，不影响另一方。 */
+  var FLAVORS = ["system", "gecko"];
+  var downloadButtons = {
+    system: Array.prototype.slice.call(
+      document.querySelectorAll("[id^='download-apk-system']")
+    ),
+    gecko: Array.prototype.slice.call(
+      document.querySelectorAll("[id^='download-apk-gecko']")
+    )
+  };
   var releaseInfos = Array.prototype.slice.call(
     document.querySelectorAll("[id^='release-information']")
   );
@@ -58,10 +60,11 @@
     document.querySelectorAll("[id^='copy-download-link']")
   );
 
-  /* releaseState: null = still checking, {tag,size} = resolved,
+  /* releaseState: null = still checking, {tag} = resolved,
      "fallback" = API unavailable */
   var releaseState = null;
-  var currentApkUrl = RELEASE_FALLBACK;
+  /* 每个版本的下载地址；资源缺失或 API 失败时回落到 Releases 页面。 */
+  var currentApkUrls = { system: RELEASE_FALLBACK, gecko: RELEASE_FALLBACK };
 
   /* ---------------------------------------------------------
      1. Language toggle
@@ -99,29 +102,43 @@
     return megabytes.toFixed(1) + " MB";
   }
 
-  function selectApk(assets) {
-    var apkAssets = (assets || []).filter(function (asset) {
-      return asset.name.toLowerCase().endsWith(".apk");
+  /**
+   * 按 flavor 选择 release 里的 APK 资源。
+   *
+   * 发布产物命名形如 `dshbox-v<version>-system-release.apk` /
+   * `dshbox-v<version>-gecko-release.apk`：两者都是 ARM64 产物，
+   * 因此只能靠 flavor 段区分，不能取"第一个 arm64 的 APK"。
+   *
+   * @param {Array} assets release 资源列表
+   * @param {"system"|"gecko"} flavor 目标版本
+   * @returns {Object|null} 命中的资源；缺失时返回 null，由调用方回落 Releases 页
+   */
+  function selectApk(assets, flavor) {
+    var isGecko = flavor === "gecko";
+    var candidates = (assets || []).filter(function (asset) {
+      var name = String(asset.name || "");
+      if (!name.toLowerCase().endsWith(".apk")) return false;
+      return isGecko ? /gecko/i.test(name) : /system/i.test(name) && !/gecko/i.test(name);
     });
-    return (
-      apkAssets.find(function (asset) {
-        return /arm64|aarch64/i.test(asset.name);
-      }) ||
-      apkAssets[0] ||
-      null
-    );
+    if (!candidates.length) return null;
+    /* 同名多产物时优先 release 包，避免误选 debug */
+    var released = candidates.filter(function (asset) {
+      return /release/i.test(asset.name);
+    });
+    return released[0] || candidates[0];
   }
 
   function applyRelease(release) {
-    var apk = selectApk(release.assets);
-    if (!apk) {
+    var systemApk = selectApk(release.assets, "system");
+    var geckoApk = selectApk(release.assets, "gecko");
+    if (!systemApk && !geckoApk) {
       throw new Error("No APK asset was found in the latest release.");
     }
-    currentApkUrl = apk.browser_download_url;
-    releaseState = {
-      tag: release.tag_name,
-      size: formatBytes(apk.size)
+    currentApkUrls = {
+      system: systemApk ? systemApk.browser_download_url : RELEASE_FALLBACK,
+      gecko: geckoApk ? geckoApk.browser_download_url : RELEASE_FALLBACK
     };
+    releaseState = { tag: release.tag_name };
     // 下载指向实际已发布版本；较旧 Release 不覆盖新版页面的内容与构建数据。
     var currentPageVersion = pageVersion();
     var matchesPage = !currentPageVersion || compareVersions(release.tag_name, currentPageVersion) >= 0;
@@ -134,7 +151,7 @@
   }
 
   function applyFallback() {
-    currentApkUrl = RELEASE_FALLBACK;
+    currentApkUrls = { system: RELEASE_FALLBACK, gecko: RELEASE_FALLBACK };
     releaseState = "fallback";
     /* 保留 HTML 里的静态兜底文案，不覆盖 */
     renderDynamic();
@@ -344,7 +361,8 @@
 
      ① Release 资源（每次发版自动变，零维护）
         · version      ← tag_name（本身带 v 前缀，与静态兜底同形）
-        · apkSize      ← `.apk` 资源的体积
+        · apkSizeSystem ← `-system-release.apk` 资源的体积
+        · apkSizeGecko  ← `-gecko-release.apk` 资源的体积
         · runtimeSize  ← 名字含 runtime 的 `.zip` 资源体积（运行环境包）
         · dshVersion   ← DSH 层资源名去掉 `.tar.zst`
                          该资源按 DSH 版本命名（如 `0.1.5-rc.2.tar.zst`），
@@ -413,8 +431,15 @@
 
     if (release && release.tag_name) facts.version = release.tag_name;
 
-    var apk = selectApk(assets);
-    if (apk && formatBytes(apk.size)) facts.apkSize = formatBytes(apk.size);
+    var systemApk = selectApk(assets, "system");
+    if (systemApk && formatBytes(systemApk.size)) {
+      facts.apkSizeSystem = formatBytes(systemApk.size);
+    }
+
+    var geckoApk = selectApk(assets, "gecko");
+    if (geckoApk && formatBytes(geckoApk.size)) {
+      facts.apkSizeGecko = formatBytes(geckoApk.size);
+    }
 
     var bundle = selectRuntimeBundle(assets);
     if (bundle && formatBytes(bundle.size)) facts.runtimeSize = formatBytes(bundle.size);
@@ -442,20 +467,24 @@
   function renderDynamic() {
     var s = t();
 
-    downloadButtons.forEach(function (button) {
-      if (releaseState && releaseState !== "fallback") {
-        button.href = currentApkUrl;
-        button.textContent = s.download + " \u00B7 " + releaseState.tag;
-      } else if (releaseState === "fallback") {
-        button.href = RELEASE_FALLBACK;
-        button.textContent = s.viewLatest;
-      }
-      /* while checking (null), keep the initial HTML markup untouched */
+    FLAVORS.forEach(function (flavor) {
+      var group = downloadButtons[flavor] || [];
+      group.forEach(function (button) {
+        if (releaseState && releaseState !== "fallback") {
+          button.href = currentApkUrls[flavor] || RELEASE_FALLBACK;
+          button.setAttribute("data-release-flavor", flavor);
+        } else if (releaseState === "fallback") {
+          button.href = RELEASE_FALLBACK;
+          button.removeAttribute("data-release-flavor");
+        }
+        /* 文案由 HTML 的中英双语节点保持，JS 只切换目标地址，
+           避免覆盖 lang-en / lang-zh 结构。 */
+      });
     });
 
     releaseInfos.forEach(function (el) {
       if (releaseState && releaseState !== "fallback") {
-        el.textContent = [releaseState.tag, releaseState.size, "Android ARM64"]
+        el.textContent = [releaseState.tag, "Android ARM64"]
           .filter(Boolean)
           .join(" \u00B7 ");
       } else if (releaseState === "fallback") {
@@ -584,7 +613,10 @@
 
   copyButtons.forEach(function (button) {
     button.addEventListener("click", function () {
-      var url = currentApkUrl;
+      var flavor = button.getAttribute("data-copy-flavor") === "gecko"
+        ? "gecko"
+        : "system";
+      var url = currentApkUrls[flavor] || RELEASE_FALLBACK;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard
           .writeText(url)

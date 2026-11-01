@@ -132,12 +132,13 @@
     <!-- Market · installed list -->
     <string name="pm_market_installed_empty">No community plugins installed yet</string>
     <string name="pm_market_installed_empty_hint">Browse the Discover tab to find some.</string>
-    <string name="pm_market_state_live">Active</string>
+    <string name="pm_market_state_live">Installed — active</string>
     <string name="pm_market_state_restart">Installed, takes effect after restart</string>
     <string name="pm_market_state_inert">Installed, not in use</string>
     <string name="pm_market_state_broken">Installed, failed validation</string>
     <string name="pm_market_state_missing">Listed, but the files are gone</string>
     <string name="pm_market_state_disabled">Disabled</string>
+    <string name="pm_market_state_disabled_pending">Disabled — takes effect after DSH restarts</string>
     <string name="pm_market_act_why">Details</string>
     <string name="pm_market_act_why_empty">No diagnosis was recorded for this state.</string>
     <string name="pm_market_toggle_on">Enabled</string>
@@ -243,4 +244,13 @@
 The catalog newly created by DSHBox, to make extending mobile plugin coverage easier. Pull requests and ideas are welcome!</string>
     <string name="pm_market_source_official_desc">The largest curated list of DeepSeek Harness plugins — but it targets desktop use, so some plugins have layout or compatibility problems on mobile.</string>
     <string name="pm_market_source_open_failed">No app can open this link</string>
+    <string name="pm_market_state_denied">Denied by host</string>
+    <string name="pm_market_stale_rows_title">Stale disable rows found</string>
+    <string name="pm_market_stale_rows_message">%1$d disable rows no longer match any installed plugin; each startup logs a warning for them:</string>
+    <string name="pm_market_stale_rows_clean">Remove stale rows</string>
+    <string name="pm_market_stale_rows_cleaned">Stale rows removed</string>
+    <string name="pm_market_state_incompatible">Installed — incompatible with this dsh</string>
+    <string name="pm_market_state_library">Library</string>
+    <string name="pm_market_update_not_a_plugin">A newer release (%1$s) exists, but this is a library dependency, not a plugin — updating it here would rewrite the profile\'s dependency version</string>
+    <string name="pm_market_update_newer_prerelease">A newer build (%1$s) exists on another channel; this is a fact, not an update the market offers</string>
 </resources>

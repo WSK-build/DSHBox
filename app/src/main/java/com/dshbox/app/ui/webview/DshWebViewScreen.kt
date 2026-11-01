@@ -1,33 +1,15 @@
 package com.dshbox.app.ui.webview
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.Settings
-import android.util.Log
-import android.view.ViewGroup
-import android.view.ViewTreeObserver
-import android.view.inputmethod.InputMethodManager
-import android.webkit.PermissionRequest
-import android.webkit.RenderProcessGoneDetail
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
-import android.webkit.WebChromeClient.FileChooserParams
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -78,6 +60,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 // 改为 Tabler 描边图标后不再使用：import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -106,6 +90,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -117,20 +102,17 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.dshbox.app.BuildConfig
 import com.dshbox.app.R
+import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.common.Constants
-import com.dshbox.app.common.LogRedactor
 import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.util.ShareArea
+import com.dshbox.dsh.renderer.api.DshRenderer
+import com.dshbox.dsh.renderer.api.DshSelectedFile
+import com.dshbox.dsh.renderer.api.DshAsyncRequestId
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -139,35 +121,31 @@ import androidx.compose.ui.res.vectorResource
 import com.dshbox.app.common.R as CommonR
 
 /**
- * 可插拔内嵌 WebView 容器 —— 移动模式 · 原生键盘处理版。
+ * DSH 页 —— 可插拔渲染引擎 · 移动模式 · 原生键盘处理版。
  *
  * 设计原则：
- *  - 专注移动模式：固定移动 UA，不做桌面/移动切换。
+ *  - 引擎无关：本文件只依赖 `dsh-renderer:api` 的 [DshRenderer] 契约，
+ *    具体引擎（系统 WebView / GeckoView）由 build flavor 选定；页面层不感知，
+ *    也不直接触碰任何引擎专有类型。
  *  - 零注入：不注入任何 JS/CSS、不篡改 viewport、不做任何页面级 hack。
- *  - 滚动修复（已确诊）：setOnTouchListener + requestDisallowInterceptTouchEvent(true)
- *    强制 Compose 父容器不拦截 WebView 触摸滚动。
+ *  - 滚动修复（已确诊）：渲染层用 setOnTouchListener +
+ *    requestDisallowInterceptTouchEvent(true) 强制 Compose 父容器不拦截触摸滚动。
  *  - 键盘自适应（原生层处理，自适应任何设备/平板）：
- *    把 WebView 放进纯原生 FrameLayout（DshWebContainer），用「屏幕坐标法」
- *    精确对齐：WebView 高度 = 键盘顶(屏幕y) − WebView 顶(屏幕y)。
+ *    把引擎视图放进纯原生 FrameLayout（DshWebContainer），用「屏幕坐标法」
+ *    精确对齐：视图高度 = 键盘顶(屏幕y) − 视图顶(屏幕y)。
  *    键盘顶用 decorView 的 getWindowVisibleDisplayFrame 实时测量（挂在
  *    decorView 的 OnGlobalLayoutListener，键盘弹/收必触发），不依赖 Scaffold
- *    innerPadding / Tab 栏 / 导航栏的任何假设（在 content 区内压缩会让 WebView
+ *    innerPadding / Tab 栏 / 导航栏的任何假设（在 content 区内压缩会让视图
  *    底边比键盘顶高出「Tab 栏+手势条」，页面表现为空白）。
- *    只读 ime insets 触发重算，**不消费**它：消费掉会让 WebView/Chromium 读不到键盘
+ *    只读 ime insets 触发重算，**不消费**它：消费掉会让引擎读不到键盘
  *    状态并主动收键盘（表现为「点输入框键盘闪一下就没」）。
- *  - 缩放：仅 WebView 原生双指缩放（内核自带，不触碰页面）。
+ *  - 缩放：仅引擎原生双指缩放（内核自带，不触碰页面）。
  *  - 常驻悬浮球（可拖动）：点击展开五图标快捷条（刷新/首页/文件/终端/浏览器），
  *    长按按当前状态刷新/重试。
- *  - 宿主主题注入只发生在 WebView 环境层（prefers-color-scheme 随宿主主题的
- *    isLightTheme 属性解析、画布底色随宿主主题、显式关闭 algorithmic darkening），
- *    不注入任何 JS、不写 DSH 数据；DSH 自身的显式主题选择优先级始终更高。
+ *  - 宿主主题注入只发生在渲染环境层（画布底色随宿主主题），不注入任何 JS、
+ *    不写 DSH 数据；DSH 自身的显式主题选择优先级始终更高。
  *  - 无服务端注入：不修改 DSH 源码，npx 更新后本容器继续可用。
  */
-
-/** 移动 UA（固定） */
-private const val MOBILE_UA =
-    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
 
 /**
  * 上传来源由**宿主自绘面板**决定，网页端不再参与。
@@ -187,19 +165,6 @@ private const val MOBILE_UA =
  * 放 `cacheDir` 而非 `filesDir`：拍完即被上传，属于可回收的中间产物。
  */
 internal const val CAPTURE_DIR_NAME = "camera-capture"
-
-/**
- * 释放网页侧输入焦点的脚本。
- *
- * WebView 的 `clearFocus()` 只清 Android 侧的 View 焦点，页面里的 `document.activeElement`
- * 未必随之失焦（各内核行为不一致）；而只要页面仍有聚焦的可编辑元素，Chromium 就会在
- * 窗口重新获得焦点、或自身尺寸变化重排时，再次请求软键盘。故这里显式 blur 一次。
- *
- * IIFE + `try/catch` 收口：调用时机在页签切换 / 覆盖层打开当帧，页面可能正在跳转或销毁。
- */
-private const val BLUR_ACTIVE_ELEMENT_JS =
-    "(function(){try{var e=document.activeElement;" +
-        "if(e&&typeof e.blur==='function')e.blur();}catch(x){}})()"
 
 /**
  * 附件上传来源 —— 与来源面板的七枚方块一一对应。
@@ -222,16 +187,17 @@ enum class DshQuickAction { REFRESH, HOME, FILES, TERMINAL, BROWSER }
 
 /**
  * DSH 页返回键策略：处理顺序固定为
- * 收起自绘覆盖层（控制面板/快捷条）→ WebView 后退 → 交还系统默认行为。
+ * 收起自绘覆盖层（控制面板/快捷条）→ 渲染器后退 → 交还系统默认行为。
  *
- * [webViewBackEnabled] 是 WebView 后退的总开关；[overlaysFirst] 是自绘覆盖层是否优先
- * 消费返回键（关闭时覆盖层不拦返回，直接按 WebView 后退 → 根页面交还处理）。
+ * [webViewBackEnabled] 是渲染器后退的总开关；[overlaysFirst] 是自绘覆盖层是否优先
+ * 消费返回键（关闭时覆盖层不拦返回，直接按渲染器后退 → 根页面交还处理）。
  * 注：控制面板入口由 `PANEL_BALL_ENABLED` 关闭，故 `panelVisible` 分支当前是休眠路径，
  * 保留是为了面板重新启用时返回键次序不变。
  * [crossOriginHistoryOnly] 为休眠的历史策略开关——开启时仅当回退落点是跨源真实文档
  * （http/https）才消费返回键并按落点距离直达（合成条目 chrome-error/about:blank 与
  * 环回别名不构成落点）。DSH 是单页应用，内部页面切换都会向历史栈压入同源条目（含它
- * 内置的浏览器页），故默认关闭该过滤，canGoBack 时逐条回退。
+ * 内置的浏览器页），故默认关闭该过滤，canGoBack 时逐条回退。该过滤依赖引擎的历史
+ * 条目列表，属引擎专有能力，迁移后随 WebView 专有辅助函数一并移除。
  * 根页面历史见底时交还应用导航，切回进入 DSH 之前的页签。
  */
 private data class DshBackPolicy(
@@ -276,7 +242,7 @@ private const val PICK_IMAGES_MAX = 100
  * 单选正常」。这里按 **ClipData → data** 依次收全并去重，任何一条通道有结果都不丢。
  *
  * 不再逐条 `grantUriPermission`：系统选择器返回的 URI 已由返回 Intent 携带读授权，
- * 而 WebView 与本应用同进程同 UID，直接可用。反过来对外部 authority（系统媒体库等）
+ * 而渲染引擎与本应用同进程同 UID，直接可用。反过来对外部 authority（系统媒体库等）
  * 授予自身权限可能抛 `SecurityException`，那不该让有效选择被丢弃。
  *
  * @return null 表示用户取消或没有可用结果 —— 恰好等价于「以取消结清回调」。
@@ -350,7 +316,7 @@ internal fun systemFilePickerIntent(
  * @return null 表示输出无法准备（FileProvider 未配置、目录建不出来等），
  *   调用方据此以取消结清回调，而不是发起一次注定回填失败的拍摄。
  */
-internal fun createCaptureIntent(context: Context, video: Boolean): Pair<Intent, Uri>? {
+internal fun createCaptureIntent(context: Context, video: Boolean): Triple<Intent, Uri, File>? {
     val dir = File(context.cacheDir, CAPTURE_DIR_NAME)
     if (!dir.isDirectory && !dir.mkdirs()) return null
     val file = File(dir, "capture-${System.currentTimeMillis()}${if (video) ".mp4" else ".jpg"}")
@@ -363,13 +329,13 @@ internal fun createCaptureIntent(context: Context, video: Boolean): Pair<Intent,
         .addFlags(
             Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION,
         )
-    return intent to uri
+    return Triple(intent, uri, file)
 }
 
 /**
  * 网页端 → 原生的自定义 scheme 通道。
  *
- * 本 WebView **没有 `addJavascriptInterface`**，插件无法直接调用原生；
+ * 本容器**没有 `addJavascriptInterface`**，插件无法直接调用原生；
  * 但主框架导航一定会经过 `shouldOverrideUrlLoading`，于是约定一个
  * 只在 app 内部流通的 scheme，由 `shouldOverrideUrlLoading` 拦截后处理。
  * 相比加 JS 桥：无需暴露任何 Java 对象、无需额外攻击面，且可精确白名单。
@@ -380,6 +346,7 @@ internal fun createCaptureIntent(context: Context, video: Boolean): Pair<Intent,
  */
 internal const val DSHBOX_SCHEME = "dshbox"
 internal const val DSHBOX_ACTION_SETTINGS_DOCUMENT = "open-settings-document"
+internal const val DSHBOX_ACTION_OPEN_EXTERNAL = "open-external"
 
 /**
  * DSH 配置文件相对 `filesDir` 的位置。
@@ -461,515 +428,6 @@ internal fun prepareSettingsDocument(filesDir: File): String? {
     return file.absolutePath.takeIf { file.isFile }
 }
 
-/**
- * 原生 WebView 容器：FrameLayout + WebView + 键盘自适应。
- *
- * 键盘处理完全在原生 View 层（确定性）：
- *  ① ViewCompat.setOnApplyWindowInsetsListener —— 实时读 ime insets 触发重算，
- *     **不消费**（消费会让 Chromium 读不到键盘状态并主动收键盘）；
- *  ② OnGlobalLayoutListener —— 直接量窗口可见区域差值兜底，
- *     兼容 insets 派发不完整/不标准的部分厂商 ROM。
- *
- * 两种机制都实时计算、零写死：换手机/平板/横竖屏都自适应。
- */
-@SuppressLint("SetJavaScriptEnabled")
-internal class DshWebContainer(
-    context: Context,
-    /** 基础地址（不含 token）。401 自动重试要在它上面重新拼 token，故提升为属性。 */
-    private val url: String,
-    private val onProgress: (Int) -> Unit,
-    private val onPageStarted: () -> Unit,
-    private val onPageFinished: () -> Unit,
-    private val onError: (String) -> Unit,
-    /** 渲染进程崩溃通知：宿主按此销毁并重建容器（渲染进程死亡后旧实例不可靠）。 */
-    private val onRendererGone: () -> Unit = {},
-    /**
-     * 网页端发起文件选择请求。首个参数是**发起请求的容器自身**：来源面板与后续各条
-     * 取文件通道都是异步的，结果可能在该容器离开 Compose 树之后才回来，调用方需要
-     * 知道「该回填给谁」，而不能依赖「当前活着的容器」这一共享状态。
-     *
-     * 第二个参数是页面声明的**是否允许多选**（`<input multiple>` 经 `mode` 送到）：
-     * 来源由宿主面板决定，但「能返回几个文件」仍须尊重页面。
-     */
-    private val onFileChooserRequest: (DshWebContainer, Boolean) -> Unit,
-    /**
-     * 网页端请求 Web 能力（当前只有语音输入的录音）。与 [onFileChooserRequest] 同理，
-     * 首个参数是**发起请求的容器自身**：系统权限弹窗是异步的，结果回来时该容器
-     * 可能已离开 Compose 树，回填必须投递给发起者而不是"当前活着的容器"。
-     */
-    private val onWebPermissionRequest: (DshWebContainer, PermissionRequest) -> Unit,
-    private val onDshboxScheme: (Uri) -> Unit,
-    /** 创建容器时已知的 launchToken（见下方 [onLaunchTokenChanged] 的修复说明）。 */
-    initialLaunchToken: String? = null,
-) : FrameLayout(context) {
-
-    val webView: WebView = WebView(context)
-
-    /**
-     * 最近一次已知的 DSH `launchToken`，以及「401 自动重试是否已经用掉」。
-     *
-     * 401 自动重试必须**带当前 token** 重新加载：裸 `reload()` 请求的仍是同一个
-     * **不带 token** 的 URL，必然再次 401；此时 `autoRefreshedForAuth` 已置位，
-     * 就再没有第二次机会，页面只能靠手动刷新或重启 DSH 恢复。
-     * 这是时序竞态而非架构相关：DSH 首次引导/重启期间会**换新 token**，
-     * 此刻打开 DSH 页就会落进这个死角。
-     *
-     * 现在：401 时带**当前 token** 重新加载（完成 token → 签名 cookie 交换）；
-     * 并在 token 变化时重新武装这一次重试（新 token 应获得新的一次机会）。
-     */
-    private var launchToken: String? = initialLaunchToken
-    private var autoRefreshedForAuth = false
-
-    /** 挂在 Activity decorView 上的全局布局监听器（见 onDetachedFromWindow 的摘除）。 */
-    private var globalLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
-
-    /** 最近一次已发起加载的 URL（含 token），用于抑制重复导航。 */
-    private var lastLoadedUrl: String? = null
-
-    /** DSH 换新 launchToken 时由 UI 调用：更新 token 并重新武装 401 重试。 */
-    fun onLaunchTokenChanged(token: String?) {
-        if (token != launchToken) {
-            launchToken = token
-            autoRefreshedForAuth = false
-        }
-    }
-
-    /**
-     * 手动重新加载（错误覆盖层的"重试"、刷新按钮、面板按钮共用）。
-     *
-     * 三处入口都必须**带当前 token 加载**：裸 `webView.reload()` 请求的是当前文档地址，
-     * 一旦 DSH 换过 token（重启/健康循环拉起），手动刷新拿到的仍是旧（或无）token 的地址，
-     * 页面继续白屏，表现为"连手动刷新都不好使"。同时把 401 自动重试重新武装 ——
-     * 手动重试应获得新的一次机会。
-     *
-     * 注意取的是容器自己的 [launchToken]（由 [onLaunchTokenChanged] 持续更新），
-     * 而不是组合期捕获的值 —— 点击发生在组合之后，捕获值会是旧的。
-     */
-    fun reloadWithToken() {
-        autoRefreshedForAuth = false
-        val token = launchToken
-        if (token != null) {
-            // 手动刷新/重试：同一地址也要真重新走一次，故 force。
-            loadIfNeeded(dshUrlWithToken(url, token), force = true)
-        } else {
-            webView.reload()
-        }
-    }
-
-    /**
-     * 应用宿主主题到 WebView 画布（背景色）。
-     *
-     * prefers-color-scheme 不在此处理：它由主题的 isLightTheme 属性解析、随
-     * AppCompatDelegate 夜模式自动更新（见 init 的主题注入说明）。这里只负责
-     * 底色——WebView 默认纯白，深色主题下加载间隙/白屏期会突兀闪烁。
-     *
-     * 由 DshWebViewScreen 经 AndroidView.update 调用：宿主主题切换必然触发该
-     * 组合重组，本方法随之以最新值执行；同值重复调用等价于无操作。
-     */
-    fun applyAppTheme(canvasColor: Int) {
-        // 组合释放竞态守卫：ON_DESTROY/onRelease 之后 update 仍可能到达一次，
-        // 对已销毁 WebView 调 View 方法属未定义行为，直接跳过。
-        if (released) return
-        webView.setBackgroundColor(canvasColor)
-    }
-
-    /**
-     * 页面 `<input type="file">` 当前挂起的回调。
-     * WebView 要求它「恰好被调用一次」（传 null 表示取消），否则该 input 会被
-     * 永久锁死（后续点击不再弹选择器）——因此任何新请求到达前都必须先把旧的
-     * 以 null 结清；容器销毁时同理。
-     */
-    private var filePathCallback: ValueCallback<Array<Uri>>? = null
-
-    /**
-     * 页面发起的、尚未结清的 Web 能力请求（见 [onPermissionRequest] 覆写）。
-     *
-     * WebView 同样要求它「恰好被调用一次」（`grant` 或 `deny`）：未结清会让该请求
-     * 永久悬空，页面侧表现为一直等待。新请求到达前与容器销毁时都必须结清。
-     */
-    private var pendingWebPermission: PermissionRequest? = null
-
-    /** 请求是否来自 DSH 自身的环回地址——只有它才有资格拿到录音能力。 */
-    private fun isDshLoopbackOrigin(origin: Uri?): Boolean = when (origin?.host?.lowercase()) {
-        "127.0.0.1", "localhost", "::1" -> true
-        else -> false
-    }
-
-    /**
-     * 把运行时权限结果回填给 WebView。
-     *
-     * 只按**录音**这一个资源授予（`grant` 传精确资源列表而不是 `request.resources`）：
-     * 页面若同时申请了摄像头，那部分应当继续被拒——宿主与页面之间只有 `dshbox://`
-     * 一条自研通道，能力面按需开、不按页面要求开。
-     */
-    fun submitWebPermissionResult(granted: Boolean) {
-        val request = pendingWebPermission ?: return
-        pendingWebPermission = null
-        runCatching {
-            if (granted) {
-                request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
-            } else {
-                request.deny()
-            }
-        }
-    }
-
-    /**
-     * 把选择器结果回填给 WebView（[uris] 为 null 表示用户取消）。
-     *
-     * 包 `runCatching`：结果可能晚于容器销毁才回来，此时底层 WebView 已 destroy，
-     * 回填本身可能抛异常——但那已经是收尾阶段，不该把异常抛回 ActivityResult 回调。
-     *
-     * 这是**唯一的交付出口**：七来源面板、两条自有选择器与三个系统通道最终都汇聚到这里，
-     * 对页面而言始终是同一个 `<input type="file">` 的一次普通上传 —— 附件照旧落在
-     * DSH 的 composer 里，交付方式与改造前完全一致。
-     */
-    fun submitFileChooserResult(uris: Array<Uri>?) {
-        val callback = filePathCallback ?: return
-        filePathCallback = null
-        runCatching { callback.onReceiveValue(uris) }
-    }
-
-    /**
-     * 以「取消」结清仍然挂起的回调。
-
-     *
-     * 容器销毁时调用：WebView 要求回调**恰好被调用一次**，遗留未结清会让该
-     * `<input type="file">` 永久锁死（后续点击再也不弹选择器）。
-     */
-    fun releasePendingResult() {
-        pendingWebPermission?.let { runCatching { it.deny() } }
-        pendingWebPermission = null
-        val callback = filePathCallback ?: return
-        filePathCallback = null
-        runCatching { callback.onReceiveValue(null) }
-    }
-
-    /**
-     * 销毁容器持有的 WebView：先结清挂起的回调（WebView 要求恰好被调用一次），
-     * 再停载、清历史、摘出视图树并销毁。宿主 ON_DESTROY 与组合节点释放（onRelease）
-     * 共用本方法，两处收尾保持一致、避免漂移。
-     */
-    private var released = false
-
-    fun release() {
-        // 幂等：Activity ON_DESTROY 与组合 onRelease 可能先后到达，二次销毁未定义。
-        if (released) return
-        released = true
-        releasePendingResult()
-        webView.stopLoading()
-        webView.loadUrl("about:blank")
-        webView.clearHistory()
-        (webView.parent as? ViewGroup)?.removeView(webView)
-        webView.destroy()
-    }
-
-    init {
-        // ── WebView 基础配置 ──────────────────────────────
-        webView.layoutParams = LayoutParams(
-            LayoutParams.MATCH_PARENT,
-            LayoutParams.MATCH_PARENT,
-        )
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        webView.settings.databaseEnabled = true
-        webView.settings.allowFileAccess = true
-        webView.settings.allowContentAccess = true
-        webView.settings.mediaPlaybackRequiresUserGesture = false
-        webView.settings.mixedContentMode =
-            WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        webView.settings.useWideViewPort = true
-        webView.settings.loadWithOverviewMode = true
-        webView.settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
-        webView.settings.textZoom = 100
-        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
-        webView.settings.setSupportMultipleWindows(false)
-        webView.settings.javaScriptCanOpenWindowsAutomatically = false
-
-        // ── 移动 UA（固定）───────────────────────────────
-        webView.settings.userAgentString = MOBILE_UA
-
-        // ── 原生滚动 + 双指缩放（内核自己管）──────────────
-        webView.settings.setSupportZoom(true)
-        webView.settings.builtInZoomControls = true
-        webView.settings.displayZoomControls = false
-
-        // ── 宿主主题注入（全部在 WebView 环境层：零 JS、零 DSH 数据写入）──
-        // prefers-color-scheme：WebView 按应用主题的 isLightTheme 属性解析该查询
-        // （true → light，false → dark）。本应用主题是 AppCompat DayNight——明暗
-        // 两套变体分别声明 isLightTheme，变体由 AppCompatDelegate 的夜模式决定
-        // （含用户在设置里手动选择的浅色/深色），WebView 经创建它的 Activity 上下文
-        // 取到同一配置。因此 DSH 页读到的系统主题即宿主主题，无需任何设置或脚本；
-        // DSH 自己显式选择的主题在其页面逻辑里优先于该查询，不会被宿主覆盖。
-        // algorithmic darkening：显式关闭，防止系统在深色态对 DSH 自有配色再叠加
-        // 一次强制变暗（DSH 有完整主题体系，二次着色会破坏其配色）。
-        // 画布底色：随宿主主题更新，见 [applyAppTheme]（由 DshWebViewScreen 在
-        // 主题变化时经 AndroidView.update 调用），消除加载间隙/白屏期的突兀纯白底。
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-            WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, false)
-        }
-        webView.setBackgroundColor(Color.White.toArgb())
-
-        // ── WebViewClient：内部消化跳转 ───────────────────
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest,
-            ): Boolean {
-                // 内部 scheme 通道（插件 → 原生）。命中即消费，
-                //    绝不让 WebView 真的去加载它（否则会 ERR_UNKNOWN_URL_SCHEME）。
-                val url = request.url ?: return false
-                if (url.scheme.equals(DSHBOX_SCHEME, ignoreCase = true)) {
-                    onDshboxScheme(url)
-                    return true
-                }
-                return false
-            }
-
-            override fun onPageStarted(
-                view: WebView?,
-                url: String?,
-                favicon: Bitmap?,
-            ) {
-                onPageStarted()
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                onPageFinished()
-            }
-
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: WebResourceError?,
-            ) {
-                if (request?.isForMainFrame == true) {
-                    onError(error?.description?.toString() ?: "")
-                }
-            }
-
-            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
-                // 渲染进程崩溃：旧 WebView 不可靠（裸 reload 不能保证恢复），通知宿主
-                // 销毁并重建容器，重建后的带 token 加载自动完成页面恢复（不重启 DSH）。
-                onRendererGone()
-                return true
-            }
-
-            // DSH 重启换新 launchToken 后，旧 token 的首次访问返回 401
-            // （WebView 显示 ERR_HTTP_RESPONSE_CODE_FAILURE）。
-            //
-            // 这里必须**带当前 token 重新加载**才能完成
-            // token → 签名 cookie 交换：裸 `reload()` 请求的还是同一个不带 token
-            // 的 URL，必然再次 401 且本次不再重试（症状：DSH 页白屏 + 进度条卡住，
-            // 需手动刷新/重启 DSH 才恢复）。
-            // token 变化会经 [onLaunchTokenChanged] 重新武装，所以"新 token 用掉了这次机会"也安全。
-            // 仅主框架 401 且本次 token 尚未重试过时触发，防死循环。
-            override fun onReceivedHttpError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                errorResponse: android.webkit.WebResourceResponse?,
-            ) {
-                if (!autoRefreshedForAuth &&
-                    request?.isForMainFrame == true &&
-                    errorResponse?.statusCode == 401
-                ) {
-                    autoRefreshedForAuth = true
-                    val token = launchToken
-                    if (token != null) {
-                        // 重试要真重走一次（地址可能相同），故 force。
-                        loadIfNeeded(dshUrlWithToken(url, token), force = true)
-                    } else {
-                        // 还没有 token（DSH 尚未打印启动 URL）：退回兜底加载
-                        view?.reload()
-                    }
-                }
-            }
-        }
-
-        // ── 滚动修复（关键）：强制父容器不拦截触摸 ─────────
-        webView.setOnTouchListener { v, event ->
-            v.parent?.requestDisallowInterceptTouchEvent(true)
-            false
-        }
-
-        // ── WebChromeClient：进度 + 文件选择 ───────────────
-        // onShowFileChooser：WebView 默认**不会**处理 <input type="file">，必须由
-        // 宿主 Activity 起选择器并把结果回填。DSH 网页端的图片/附件上传入口
-        // 就是 <input type="file">；没有这个覆写，点击「上传」不会有任何反应。
-        //
-        // **来源由宿主决定**：这里**无条件**接管页面的每一次文件选择请求，弹宿主自绘的
-        // 七来源面板（见 UploadSourcePanel）—— 不再读 accept，也不再依赖插件打哨兵。
-        // 唯一沿用页面的声明是「是否允许多选」，见 onShowFileChooser 内的注释。
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                onProgress(newProgress)
-            }
-
-            /**
-             * 把网页端 console 的 warn/error 转发到 logcat。
-             *
-             * 排障必需：DSH 前端把「文件资源服务不可用」这类故障只写在浏览器 console，
-             * 页面不抛异常、宿主进程无感知——没有这条转发，release 包上此类问题只能靠猜。
-             * 仅记录 warn/error（info/log 噪音太大），内容走统一打码。
-             */
-            override fun onConsoleMessage(msg: android.webkit.ConsoleMessage?): Boolean {
-                msg ?: return false
-                val level = msg.messageLevel()
-                if (level == android.webkit.ConsoleMessage.MessageLevel.ERROR ||
-                    level == android.webkit.ConsoleMessage.MessageLevel.WARNING
-                ) {
-                    Log.w(
-                        "DshWebConsole",
-                        "[$level] ${LogRedactor.redact(msg.message())} (${msg.sourceId()}:${msg.lineNumber()})",
-                    )
-                }
-                return true
-            }
-
-            override fun onShowFileChooser(
-                webView: WebView?,
-                filePathCallback: ValueCallback<Array<Uri>>?,
-                fileChooserParams: FileChooserParams?,
-            ): Boolean {
-                if (filePathCallback == null || fileChooserParams == null) return false
-                // 结清上一次未决回调，防 input 被锁死。与 submitFileChooserResult 同口径：
-                // 回填可能晚于 WebView 销毁，容错吞掉，不让异常从 WebView 回调里冒出去。
-                runCatching { this@DshWebContainer.filePathCallback?.onReceiveValue(null) }
-                this@DshWebContainer.filePathCallback = filePathCallback
-                // **无条件接管**：来源不再由页面决定（accept 哨兵通道已随插件段一并删除），
-                // 一律弹宿主自绘的来源面板（见 UploadSourcePanel）。不读 acceptTypes ——
-                // DSH 的隐藏 input 本来就没有 accept，且「无条件」正是为了与插件解耦。
-                //
-                // 唯一保留的页面声明是「是否允许多选」：它由 `multiple` 属性经 mode 送到，
-                // 决定后面各条通道最多能回填几个文件。**已核验** DSH 0.2.0-rc.2 的 composer
-                // input 是 `type="file" multiple`（解包 conversation 客户端可见），故五条
-                // 多选来源实际都允许多选。保留这道门控是为了不向页面超额返回：页面若是单值
-                // input，返回多条会被浏览器截断，反而重现「选多个只回来一个」。
-                val multiple = fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE
-                return try {
-                    onFileChooserRequest(this@DshWebContainer, multiple)
-                    true
-                } catch (t: Throwable) {
-                    // 派发失败：立即以取消结清并返回 false 让 WebView 走默认失败路径，
-                    // 而不是把回调永久悬空。
-                    this@DshWebContainer.filePathCallback = null
-                    filePathCallback.onReceiveValue(null)
-                    false
-                }
-            }
-
-            /**
-             * 页面请求 Web 能力。DSH 语音输入用 `navigator.mediaDevices.getUserMedia`
-             * 采集音频，走的就是这里。
-             *
-             * WebView 默认**拒绝**一切此类请求，不覆写就没有麦克风（页面拿到
-             * `NotAllowedError`，只显示它自己的"权限未开启"提示）。
-             *
-             * 放行条件从严：只认**录音**资源、且请求来源必须是 DSH 自身的环回地址；
-             * 其余（摄像头、非环回来源）一律拒绝。系统运行时权限尚未授予时，
-             * 先转交 Compose 层去请求，结果经 [submitWebPermissionResult] 回填。
-             */
-            override fun onPermissionRequest(request: PermissionRequest?) {
-                request ?: return
-                val wantsAudio = request.resources.any {
-                    it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
-                }
-                if (!wantsAudio || !isDshLoopbackOrigin(request.origin)) {
-                    runCatching { request.deny() }
-                    return
-                }
-                // 结清上一次未决请求，防其永久悬空。
-                pendingWebPermission?.let { runCatching { it.deny() } }
-                pendingWebPermission = request
-                onWebPermissionRequest(this@DshWebContainer, request)
-            }
-        }
-
-        WebView.setWebContentsDebuggingEnabled(
-            BuildConfig.ENABLE_WEBVIEW_DEBUGGING,
-        )
-
-        addView(webView)
-
-        // ── 键盘自适应（原生层 · 屏幕坐标法）────────────────
-        // 核心公式：WebView 高度 = 键盘顶(屏幕坐标) − WebView 顶(屏幕坐标)。
-        // 直接量两个屏幕坐标相减，不依赖 Scaffold innerPadding / Tab 栏 /
-        // 导航栏的任何假设 —— 任何设备、任何 ROM、任何导航模式都精确。
-        //
-        // ① OnGlobalLayoutListener（主力）：挂在 decorView 上 —— 键盘弹/收
-        //    必触发窗口/视图全局布局；直接量窗口可见区域（不依赖 insets 派发）。
-        //    监听器存字段：decorView 比容器活得久，漏摘会让旧容器的回调一直持有已销毁的 WebView。
-        val decor = (context as? Activity)?.window?.decorView
-        val layoutListener = ViewTreeObserver.OnGlobalLayoutListener { applyKeyboardHeight() }
-        globalLayoutListener = layoutListener
-        decor?.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
-
-        // ② ime insets 监听（补充，部分 ROM insets 派发及时）。
-        //    **不消费** insets：消费掉 ime 会让 WebView/Chromium 读不到键盘状态并主动
-        //    hide(ime())，表现为「点输入框键盘闪一下就没」。本 App 是 edge-to-edge，
-        //    系统不会为 IME 缩放窗口，因而不存在"内建视口缩放二次压缩"。
-        //    弹与收都走同一个 applyKeyboardHeight()：它有恢复 MATCH_PARENT 的分支，
-        //    键盘收起必然回满屏（若只在 ime > 0 时调用，高度一旦被压下去就没有恢复入口）。
-        ViewCompat.setOnApplyWindowInsetsListener(this) { _, windowInsets ->
-            applyKeyboardHeight()
-            windowInsets
-        }
-
-        // 首次加载不在这里做：AndroidView 的 factory 在布局阶段才被调用，组合期的
-        // LaunchedEffect 已经先行；两侧都打会连发 2~3 次。统一由 keys 含 webContainer
-        // 的那个 effect 触发（见 DshWebViewScreen）。
-    }
-
-    /**
-     * 只在目标 URL 变化时加载。     *
-     * token/状态流每次发射都无条件 `loadUrl` 会让页面反复重新导航（表现为"一发消息就刷新"）；
-     * [force] 供手动刷新与 401 重试使用（同一地址也要重新走一次）。
-     */
-    fun loadIfNeeded(target: String?, force: Boolean = false) {
-        target ?: return
-        if (!force && target == lastLoadedUrl) return
-        lastLoadedUrl = target
-        webView.loadUrl(target)
-    }
-
-    override fun onDetachedFromWindow() {
-        globalLayoutListener?.let { listener ->
-            val vto = (context as? Activity)?.window?.decorView?.viewTreeObserver
-            if (vto != null && vto.isAlive) vto.removeOnGlobalLayoutListener(listener)
-        }
-        globalLayoutListener = null
-        super.onDetachedFromWindow()
-    }
-
-    /**
-     * 键盘弹出时把 WebView 底边精确对齐到键盘顶。
-     * 公式：newHeight = 键盘顶(屏幕y) − WebView 顶(屏幕y)。
-     */
-    private fun applyKeyboardHeight() {
-        val decor = (context as? Activity)?.window?.decorView ?: return
-        val rect = Rect()
-        decor.getWindowVisibleDisplayFrame(rect)
-        val diff = decor.height - rect.bottom
-        if (diff > decor.height / 4) {
-            // 键盘出现：WebView 底边 = 键盘顶
-            val loc = IntArray(2)
-            webView.getLocationOnScreen(loc)
-            val newHeight = (rect.bottom - loc[1]).coerceAtLeast(0)
-            setWebViewHeight(newHeight)
-        } else {
-            // 键盘收起：恢复占满
-            setWebViewHeight(LayoutParams.MATCH_PARENT)
-        }
-    }
-
-    private fun setWebViewHeight(h: Int) {
-        val lp = webView.layoutParams
-        if (lp.height != h) {
-            lp.height = h
-            webView.layoutParams = lp
-        }
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -984,20 +442,22 @@ fun DshWebViewScreen(
     /** 悬浮球快捷条的语义路由；由宿主换算成页签切换或浏览器启动。 */
     onQuickAction: (DshQuickAction) -> Unit = {},
     /**
-     * 根页面返回：WebView 历史见底时由宿主接手——宿主把它换算成「切回进入 DSH 之前的
+     * 根页面返回：渲染器历史见底时由宿主接手——宿主把它换算成「切回进入 DSH 之前的
      * 页签」。不再交还系统兜底，避免任务退后台把独立任务的浏览器顶到前台。
      */
     onBackAtRoot: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
+    val configuration = LocalConfiguration.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // DSH 进程级 launchToken（从 `dsh web:` 原始输出解析）——
-    // 首次加载携带它完成 token→签名 cookie 交换，此后 WebView 凭持久 cookie 访问。
+    // 首次加载携带它完成 token→签名 cookie 交换，此后渲染器凭持久 cookie 访问。
     val dshLaunchToken by (context.applicationContext as com.dshbox.app.DshApp)
         .container.sandboxManager.dshLaunchToken.collectAsState()
 
-    var webView by remember { mutableStateOf<WebView?>(null) }
+    var renderer by remember { mutableStateOf<DshRenderer?>(null) }
     var webContainer by remember { mutableStateOf<DshWebContainer?>(null) }
     var loadProgress by remember { mutableIntStateOf(0) }
     var pageError by remember { mutableStateOf<String?>(null) }
@@ -1010,38 +470,45 @@ fun DshWebViewScreen(
     // 容器已从 Compose 树摘除（乃至 `webContainer` 已被 ON_DESTROY 置空）之后才回来。
     // 只认 `webContainer` 会让这种晚到的结果被 `?.` 静默丢弃，发起请求的那个
     // `filePathCallback` 就此永远收不到值。因此结果一律投递给**发起者**。
-    val chooserOwner = remember { mutableStateOf<DshWebContainer?>(null) }
+    val chooserOwner = remember { mutableStateOf<DshFileChooserOwner?>(null) }
+    val systemPickerOwner = remember { mutableStateOf<DshFileChooserOwner?>(null) }
+    val shareAccessOwner = remember { mutableStateOf<DshFileChooserOwner?>(null) }
 
     val systemPickLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val owner = chooserOwner.value
-        chooserOwner.value = null
+        val owner = systemPickerOwner.value
+        systemPickerOwner.value = null
+        if (chooserOwner.value === owner) chooserOwner.value = null
         // 结果自己解析（见 parsePickedUris）：多选在 ClipData 里；取消时为 null，
         // 恰好等价于「以取消结清回调」。
         val uris = parsePickedUris(result.resultCode, result.data)
-        // 优先投递给发起者；发起者已不可达时退回当前容器（同样是 null 才是真丢弃）。
-        (owner ?: webContainer)?.submitFileChooserResult(uris)
+        // **只投递给发起者**。发起者已不可达即视为该请求被放弃：不退回当前容器 ——
+        // 当前容器是另一次请求的宿主，把旧结果塞给它会让一个 `<input>` 收到两次回填，
+        // 而真正发起者那边的回调则永远悬空（该 input 后续点击不再弹选择器）。
+        owner?.submitFileChooserResult(uris)
     }
 
     // Web 能力请求（DSH 语音输入的录音）—— 系统运行时权限的请求与回填。
     // 与文件选择器同一套"记住发起者"的约定：权限弹窗是异步的，结果可能晚于容器摘除。
-    val permissionOwner = remember { mutableStateOf<DshWebContainer?>(null) }
+    val permissionOwner = remember { mutableStateOf<DshPermissionOwner?>(null) }
 
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         val owner = permissionOwner.value
         permissionOwner.value = null
-        (owner ?: webContainer)?.submitWebPermissionResult(granted)
+        // 同上：只投递给发起者，发起者不可达即放弃，不退回当前容器。
+        owner?.submitWebPermissionResult(granted)
     }
 
     // 相机拍摄（拍照 / 录像）—— 需要 CAMERA 运行时权限：本应用已声明 CAMERA，
     // 系统会要求 ACTION_IMAGE_CAPTURE / ACTION_VIDEO_CAPTURE 的调用方持有该权限。
     // 与文件选择器同一套"记住发起者"的约定：拍摄是异步的，结果可能晚于容器摘除。
-    val cameraOwner = remember { mutableStateOf<DshWebContainer?>(null) }
+    val cameraOwner = remember { mutableStateOf<DshFileChooserOwner?>(null) }
     val pendingCaptureIntent = remember { mutableStateOf<Intent?>(null) }
     val pendingCaptureUri = remember { mutableStateOf<Uri?>(null) }
+    val pendingCaptureFile = remember { mutableStateOf<File?>(null) }
 
     // 拍摄结果：成功回填输出 URI；取消则清掉可能已建出的空文件并以 null 结清。
     val captureLauncher = rememberLauncherForActivityResult(
@@ -1049,17 +516,21 @@ fun DshWebViewScreen(
     ) { result ->
         val owner = cameraOwner.value
         val uri = pendingCaptureUri.value
+        val file = pendingCaptureFile.value
         cameraOwner.value = null
         pendingCaptureIntent.value = null
         pendingCaptureUri.value = null
+        pendingCaptureFile.value = null
         // 本次上传已终结，发起者引用一并清掉（与 settleUpload 口径一致）。
-        chooserOwner.value = null
+        if (chooserOwner.value === owner) chooserOwner.value = null
         if (result.resultCode == Activity.RESULT_OK && uri != null) {
-            (owner ?: webContainer)?.submitFileChooserResult(arrayOf(uri))
+            owner?.submitSelectedFileChooserResult(listOf(DshSelectedFile(
+                uri = uri, displayName = file?.name, localFile = file,
+            )))
         } else {
             // 取消/失败：相机应用可能已按 EXTRA_OUTPUT 建出文件，删掉避免缓存堆积。
             runCatching { uri?.let { context.contentResolver.delete(it, null, null) } }
-            (owner ?: webContainer)?.submitFileChooserResult(null)
+            owner?.submitFileChooserResult(null)
         }
     }
 
@@ -1077,21 +548,23 @@ fun DshWebViewScreen(
                 cameraOwner.value = null
                 pendingCaptureIntent.value = null
                 pendingCaptureUri.value = null
-                chooserOwner.value = null
+                pendingCaptureFile.value = null
+                if (chooserOwner.value === owner) chooserOwner.value = null
                 // 相机未起，按 EXTRA_OUTPUT 建出的空文件要清掉。
                 runCatching { uri?.let { context.contentResolver.delete(it, null, null) } }
-                (owner ?: webContainer)?.submitFileChooserResult(null)
+                owner?.submitFileChooserResult(null)
             }
         } else {
             val uri = pendingCaptureUri.value
             cameraOwner.value = null
             pendingCaptureIntent.value = null
             pendingCaptureUri.value = null
-            chooserOwner.value = null
+            pendingCaptureFile.value = null
+            if (chooserOwner.value === owner) chooserOwner.value = null
             // 权限被拒：createCaptureIntent 只铸 URI 不落盘，通常无文件可删；
             // 仍统一走一次删除，与其余收尾分支口径一致（对不存在的 URI 是 no-op）。
             runCatching { uri?.let { context.contentResolver.delete(it, null, null) } }
-            (owner ?: webContainer)?.submitFileChooserResult(null)
+            owner?.submitFileChooserResult(null)
         }
     }
 
@@ -1102,12 +575,20 @@ fun DshWebViewScreen(
     var uploadMultiple by remember { mutableStateOf(false) }
     // 非 null = 本板块全屏选择器已打开（工作区 / 共享区）。
     var localPickRoot by remember { mutableStateOf<UploadPickRoot?>(null) }
+    data class Preparation(val owner: DshWebContainer, val requestId: DshAsyncRequestId, val bytes: Long)
+    var preparing by remember { mutableStateOf<Preparation?>(null) }
+
+    fun cancelPreparation() {
+        val current = preparing ?: return
+        current.owner.cancelFilePreparation(current.requestId)
+        if (preparing?.owner === current.owner && preparing?.requestId == current.requestId) preparing = null
+    }
 
     /**
      * 以「取消」结清当前上传回调，并收起所有上传 UI。
      *
      * **所有放弃路径都必须经过它**：关面板、关选择器、找不到可用选择器、授权未通过。
-     * WebView 要求回调恰好被调用一次，遗留未结清会让那个 `<input type="file">`
+     * 引擎要求回调恰好被调用一次，遗留未结清会让那个 `<input type="file">`
      * 永久锁死（后续点击再也不弹选择器）。
      */
     fun settleUpload(uris: Array<Uri>?) {
@@ -1115,7 +596,24 @@ fun DshWebViewScreen(
         localPickRoot = null
         val owner = chooserOwner.value
         chooserOwner.value = null
-        (owner ?: webContainer)?.submitFileChooserResult(uris)
+        owner?.submitFileChooserResult(uris)
+    }
+
+    /**
+     * 以**带本地文件元数据**的选择结果结清当前上传回调，并收起所有上传 UI。
+     *
+     * 与 [settleUpload] 同口径，只是回填载荷不同：本板块自有的选择器（工作区 / 共享区）
+     * 直接持有本地 `File`，可连同原始文件名、MIME 一起交给渲染层 —— 引擎若需要本地路径
+     * 可直接用，不必先把文件复制一份（GeckoView 的 GB 复制正是这么来的）。
+     *
+     * 同样**只投递给发起者**：发起者不可达即放弃，不退回当前容器。
+     */
+    fun settleSelectedUpload(files: List<DshSelectedFile>?) {
+        uploadPanelVisible = false
+        localPickRoot = null
+        val owner = chooserOwner.value
+        chooserOwner.value = null
+        owner?.submitSelectedFileChooserResult(files)
     }
 
     /**
@@ -1125,6 +623,12 @@ fun DshWebViewScreen(
      * 已经释放过。将来若新增从本分支直入选择器的路径，需自行补一次 `releaseDshInputFocus()`。
      */
     fun onShareAccessReturned() {
+        val owner = shareAccessOwner.value
+        shareAccessOwner.value = null
+        if (owner == null || chooserOwner.value !== owner) {
+            owner?.submitFileChooserResult(null)
+            return
+        }
         if (ShareArea.hasAccess(context)) {
             runCatching { ShareArea.ensureReady() }
             uploadPanelVisible = false
@@ -1132,7 +636,7 @@ fun DshWebViewScreen(
         } else {
             Toast.makeText(
                 context,
-                context.getString(R.string.webview_upload_share_denied),
+                resources.getString(R.string.webview_upload_share_denied),
                 Toast.LENGTH_SHORT,
             ).show()
             settleUpload(null)
@@ -1145,34 +649,20 @@ fun DshWebViewScreen(
      * 四种时机：① **离开 DSH 页签时**；② **打开上传来源面板前**；③ **进入某个来源的
      * 取文件通道前**；④ **RECORD_AUDIO 未授权、即将弹系统权限对话框前**。②③④ 的必要性：
      * 只收键盘不释放焦点时，窗口重新获得焦点（来源面板、系统选择器与系统权限对话框都是独立
-     * 窗口）或 WebView 重排（键盘收起后恢复满高）都会让键盘回来。
+     * 窗口）或页面重排（键盘收起后恢复满高）都会让键盘回来。
      *
-     * 三个职责缺一不可：
-     *  - `clearFocus()`：清 Android 侧的 View 焦点，并令 Chromium 收起 IME —— **承重步骤**，
-     *    删掉它本函数即失效；
-     *  - `hideSoftInputFromWindow` 与 `hide(ime())`：显式收起键盘，这一组互为冗余，
-     *    删任一条安全；
-     *  - [BLUR_ACTIVE_ELEMENT_JS]：清页面侧 `activeElement` —— `clearFocus()` 不保证它失焦。
+     * 焦点与键盘的收口**全部下沉到渲染层**：[DshRenderer.clearFocusAndHideKeyboard]
+     * 负责清原生焦点、blur 页面侧 `activeElement` 并收起键盘 —— 各引擎的实现不同
+     * （系统 WebView 需要额外注入一次 blur 脚本），页面层不再自己拼这一套。
      *
-     * `webView` 为空时直接返回，这同时挡住了窗口级的 `hide(ime())`：首帧落在非 DSH 页签时
-     * 本函数会被调用一次，若此刻放行会把**其它页签**（如终端）的键盘误收。
+     * 渲染器尚未就绪时直接返回：首帧落在非 DSH 页签时本函数会被调用一次，
+     * 若此刻放行会把**其它页签**（如终端）的键盘误收。
      *
      * 副作用：回到 DSH 页签后 composer 处于失焦态，需用户重新点一下输入区。有意**不**自动
      * 恢复焦点：自动聚焦会连带把键盘弹起，与「离开即落下」相悖。
      */
     fun releaseDshInputFocus() {
-        val view = webView ?: return
-        runCatching { view.clearFocus() }
-        runCatching {
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.hideSoftInputFromWindow(view.windowToken, 0)
-        }
-        runCatching {
-            val window = (context as? Activity)?.window ?: return@runCatching
-            WindowCompat.getInsetsController(window, window.decorView)
-                .hide(WindowInsetsCompat.Type.ime())
-        }
-        runCatching { view.evaluateJavascript(BLUR_ACTIVE_ELEMENT_JS, null) }
+        renderer?.clearFocusAndHideKeyboard()
     }
 
     // 共享区取文件需要公共存储的完整读写能力（Android 11+ 的「所有文件访问」，
@@ -1191,10 +681,23 @@ fun DshWebViewScreen(
     ) { onShareAccessReturned() }
 
     /** 起一个系统选择器意图；找不到可用 Activity 时以取消结清，不留悬空回调。 */
-    fun launchSystemPicker(intent: Intent) {
+    fun launchSystemPicker(intent: Intent, fallback: Intent? = null) {
         uploadPanelVisible = false
-        runCatching { systemPickLauncher.launch(intent) }
-            .onFailure { settleUpload(null) }
+        if (systemPickerOwner.value != null) {
+            settleUpload(null)
+            return
+        }
+        val owner = chooserOwner.value ?: return
+        systemPickerOwner.value = owner
+        val first = runCatching { systemPickLauncher.launch(intent) }
+        val launched = if (first.isFailure && fallback != null) {
+            runCatching { systemPickLauncher.launch(fallback) }
+        } else first
+        launched.onFailure {
+                systemPickerOwner.value = null
+                if (chooserOwner.value === owner) settleUpload(null)
+                else owner.submitFileChooserResult(null)
+            }
     }
 
     /** 进入某个来源的取文件通道。 */
@@ -1204,16 +707,21 @@ fun DshWebViewScreen(
         releaseDshInputFocus()
         when (source) {
             UploadSource.PHOTO, UploadSource.VIDEO -> {
+                if (cameraOwner.value != null) {
+                    settleUpload(null)
+                    return
+                }
                 val prepared = createCaptureIntent(context, video = source == UploadSource.VIDEO)
                 if (prepared == null) {
                     // 输出无法准备（FileProvider 未配置等）：以取消结清，不发注定失败的一枪。
                     settleUpload(null)
                     return
                 }
-                val (intent, uri) = prepared
+                val (intent, uri, file) = prepared
                 cameraOwner.value = chooserOwner.value
                 pendingCaptureIntent.value = intent
                 pendingCaptureUri.value = uri
+                pendingCaptureFile.value = file
                 uploadPanelVisible = false
                 val granted = ContextCompat.checkSelfPermission(
                     context,
@@ -1232,6 +740,7 @@ fun DshWebViewScreen(
                     cameraOwner.value = null
                     pendingCaptureIntent.value = null
                     pendingCaptureUri.value = null
+                    pendingCaptureFile.value = null
                     // 相机未起，按 EXTRA_OUTPUT 建出的空文件要清掉。
                     runCatching { context.contentResolver.delete(uri, null, null) }
                     settleUpload(null)
@@ -1254,8 +763,7 @@ fun DshWebViewScreen(
                 // 旧系统解析不到该动作会抛 ActivityNotFoundException（Android 13 之前，
                 // 或未回移相册选择器的设备）—— 此时改用文件选择器。ActivityResultRegistry
                 // 在 onLaunch 抛异常时会撤销本次登记，故紧接着换意图重试是安全的。
-                runCatching { systemPickLauncher.launch(gallery) }
-                    .onFailure { launchSystemPicker(fallback) }
+                launchSystemPicker(gallery, fallback)
             }
 
             UploadSource.PHONE ->
@@ -1285,6 +793,11 @@ fun DshWebViewScreen(
                 } else {
                     // 未授权：引导去系统设置页（Android 11+ 的「所有文件访问」；Android 10
                     // 走旧式存储运行时权限）。返回后由 onShareAccessReturned 收口。
+                    if (shareAccessOwner.value != null) {
+                        settleUpload(null)
+                        return
+                    }
+                    shareAccessOwner.value = chooserOwner.value
                     val launched = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         runCatching {
                             shareAccessLauncher.launch(
@@ -1304,9 +817,10 @@ fun DshWebViewScreen(
                         }.isSuccess
                     }
                     if (!launched) {
+                        shareAccessOwner.value = null
                         Toast.makeText(
                             context,
-                            context.getString(R.string.webview_upload_share_denied),
+                            resources.getString(R.string.webview_upload_share_denied),
                             Toast.LENGTH_SHORT,
                         ).show()
                         settleUpload(null)
@@ -1339,7 +853,7 @@ fun DshWebViewScreen(
     // 刷新请求计数：超时兜底计时器的 key，连续触发时计时器重启、不残留上一轮剩余时长。
     var refreshTick by remember { mutableIntStateOf(0) }
     // 容器重建代数：渲染进程崩溃后自增，作为 AndroidView 的 key 强制丢弃旧节点、
-    // 重建全新容器（渲染进程死亡后旧 WebView 不可靠，仅 reload 不能保证恢复）。
+    // 重建全新容器（渲染进程死亡后旧实例不可靠，仅 reload 不能保证恢复）。
     var webViewEpoch by remember { mutableIntStateOf(0) }
     // 容器重建（渲染进程崩溃 → webViewEpoch 自增）会由 onRelease 结清挂起的上传回调；
     // 此时必须一并收起上传 UI —— 否则面板/选择器还开着却指向已释放的容器，
@@ -1348,11 +862,45 @@ fun DshWebViewScreen(
         uploadPanelVisible = false
         localPickRoot = null
     }
+    // xdg-open 垫片请求消费：DSH 服务器端「打开配置文件」最终调用 /opt/dshbox/xdg-open，
+    // 垫片把目标路径写进请求文件。这里轮询消费（1s 一次 stat，命中才读），映射回宿主
+    // 路径后交给内置查看器——System 与 Gecko 共用同一链路，不依赖页面注入。
+    val xdgRequestFile = remember {
+        File(File(context.filesDir, "dshbox"), Constants.XDG_OPEN_REQUEST_NAME)
+    }
+    LaunchedEffect(xdgRequestFile) {
+        var lastTs = 0L
+        while (true) {
+            if (xdgRequestFile.isFile) {
+                val parsed = runCatching {
+                    val text = xdgRequestFile.readText().trim()
+                    val pathMatch = Regex("\"path\"\\s*:\\s*\"([^\"]+)\"").find(text)
+                    val tsMatch = Regex("\"ts\"\\s*:\\s*(\\d+)").find(text)
+                    pathMatch?.groupValues?.get(1) to (tsMatch?.groupValues?.get(1)?.toLongOrNull() ?: 0L)
+                }.getOrNull()
+                val (guestPath, ts) = parsed ?: (null to 0L)
+                if (guestPath != null && ts > lastTs) {
+                    lastTs = ts
+                    // guest /root/projects/ ↔ 宿主 user-data；其余前缀交由查看器
+                    // 的白名单校验拒绝（与点击 dshbox:// 同一套安全边界）。
+                    val workspacePrefix = "/root/projects/"
+                    val hostPath = if (guestPath.startsWith(workspacePrefix)) {
+                        File(context.filesDir, "user-data/" + guestPath.removePrefix(workspacePrefix)).absolutePath
+                    } else {
+                        guestPath
+                    }
+                    if (File(hostPath).isFile) viewerPath = hostPath
+                }
+            }
+            delay(1_000L)
+        }
+    }
     // 渲染进程连续崩溃计数：onPageFinished 即清零（含主框架加载失败触发错误页的
     // 宽松场景），超过上限不再自动重建、转错误覆盖层由用户显式重试（防无限重建循环）。
     var rendererCrashes by remember { mutableIntStateOf(0) }
     // 悬浮球快捷条（点击球展开/再点收起）：球常驻于未就绪态，条也两态皆可用。
     var quickBarVisible by remember { mutableStateOf(false) }
+
     LaunchedEffect(isActiveTab) {
         if (!isActiveTab) {
             quickBarVisible = false
@@ -1363,6 +911,10 @@ fun DshWebViewScreen(
             // 保活态，容器不会走 release() 那条收尾路径。
             // （工作区/共享区选择器是内容树内覆盖层，随本页签一起隐藏，无需在此处理。）
             if (uploadPanelVisible) settleUpload(null)
+        } else if (dshState == DshState.READY) {
+            // 保活页签从零尺寸放置恢复时，View 可能不会重发 attach；显式补一次
+            // 生命周期回调，确保 Gecko 会话回到激活态（否则 reload 对非激活会话无效）。
+            webContainer?.onAttachedToWindowActive()
         }
     }
     // 防转圈卡死：未就绪时触发重试会置 isRefreshing=true，但没有 onPageFinished 来
@@ -1370,7 +922,7 @@ fun DshWebViewScreen(
     LaunchedEffect(dshState) {
         if (dshState != DshState.READY) {
             isRefreshing = false
-            // 离开 READY 时 WebView 分支被移除、容器经 onRelease 结清挂起的上传回调；
+            // 离开 READY 时渲染分支被移除、容器经 onRelease 结清挂起的上传回调；
             // 上传 UI 必须一并收起，否则回到 READY 后会重现一个指向已释放容器的陈旧面板
             // （再选来源只会被静默丢弃）。与 webViewEpoch 的处理同口径。
             uploadPanelVisible = false
@@ -1386,7 +938,7 @@ fun DshWebViewScreen(
         loadProgress = 0
     }
 
-    // WebView 画布底色快照（宿主 background）：主题切换必然触发本组合重组，
+    // 渲染画布底色快照（宿主 background）：主题切换必然触发本组合重组，
     // AndroidView.update 随之把最新值推进容器（见 applyAppTheme）。
     val webCanvasColor = MaterialTheme.colorScheme.background.toArgb()
 
@@ -1443,10 +995,10 @@ fun DshWebViewScreen(
     // 失败，见 reloadWithToken）；其余状态为安全空操作。转圈只是视觉反馈，复位由
     // onPageFinished/onError/超时兜底负责。
     val refreshAction: () -> Unit = {
-        if (dshState == DshState.READY && (webContainer != null || webView != null)) {
+        if (dshState == DshState.READY && webContainer != null) {
             refreshTick += 1
             isRefreshing = true
-            webContainer?.reloadWithToken() ?: webView?.reload()
+            webContainer?.reloadWithToken()
         }
     }
 
@@ -1460,19 +1012,19 @@ fun DshWebViewScreen(
         }
     }
 
-    // WebView 是否具备后退条件（策略见 DshBackPolicy）：容器未就绪或无历史时返回 false。
+    // 渲染器是否具备后退条件（策略见 DshBackPolicy）：容器未就绪或无历史时返回 false。
     // 只在返回键**派发期**（回调体内）调用：canGoBack() 不是反应式状态，历史变化不触发
     // 重组，放进 BackHandler 的 enabled 会滞后一帧——表现为「偶发一次返回没反应」。
-    fun webViewBackAvailable(): Boolean {
+    fun rendererBackAvailable(): Boolean {
         if (!DSH_BACK_POLICY.webViewBackEnabled) return false
-        val wv = webView ?: return false
-        return wv.canGoBack()
+        val r = renderer ?: return false
+        return r.canGoBack()
     }
 
     // 返回键的单一条目：三个层级在同一个回调体里按次序表达（次序见 DshBackPolicy）——
-    //   自绘覆盖层（控制面板 / 快捷条）→ WebView 逐条回退 → 根页面交还宿主。
+    //   自绘覆盖层（控制面板 / 快捷条）→ 渲染器逐条回退 → 根页面交还宿主。
     // 为什么不拆成多条 BackHandler：拆开就必须把 canGoBack() 写进 enabled，而它不是
-    // 反应式状态（见 webViewBackAvailable 注释），历史变化后 enabled 会滞后一帧，在
+    // 反应式状态（见 rendererBackAvailable 注释），历史变化后 enabled 会滞后一帧，在
     // 判定已失效的 handler 里空转吞键。判定因此全部挪到派发期现算，enabled 只依赖
     // 真反应式状态（激活态与上传选择器让位）。
     // 根页面（历史见底）不再交还系统兜底：由宿主经 [onBackAtRoot] 切回进入 DSH 之前的
@@ -1482,29 +1034,29 @@ fun DshWebViewScreen(
     // 到根再取消」，本条目以 localPickRoot == null 整体让位。
     BackHandler(enabled = isActiveTab && localPickRoot == null) {
         when {
+            preparing != null -> cancelPreparation()
             DSH_BACK_POLICY.overlaysFirst && panelVisible -> panelVisible = false
             DSH_BACK_POLICY.overlaysFirst && quickBarVisible -> quickBarVisible = false
-            webViewBackAvailable() -> webView?.goBack()
+            rendererBackAvailable() -> renderer?.goBack()
             else -> onBackAtRoot()
         }
     }
 
-    // 生命周期绑定
+    // 生命周期绑定：把 Activity 生命周期转成渲染器的生命周期回调。
+    //
+    // ON_START / ON_STOP 也在这里转发：引擎（GeckoView）用这两步切换会话的激活状态，
+    // 只转发 ON_PAUSE/ON_RESUME 会让它停在"未激活"。
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            val wv = webView ?: return@LifecycleEventObserver
+            val r = renderer ?: return@LifecycleEventObserver
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> {
-                    wv.onPause()
-                    wv.pauseTimers()
-                }
-                Lifecycle.Event.ON_RESUME -> {
-                    wv.onResume()
-                    wv.resumeTimers()
-                }
+                Lifecycle.Event.ON_START -> r.onStart()
+                Lifecycle.Event.ON_RESUME -> r.onResume()
+                Lifecycle.Event.ON_PAUSE -> r.onPause()
+                Lifecycle.Event.ON_STOP -> r.onStop()
                 Lifecycle.Event.ON_DESTROY -> {
                     webContainer?.release()
-                    webView = null
+                    renderer = null
                     webContainer = null
                 }
                 else -> Unit
@@ -1521,19 +1073,22 @@ fun DshWebViewScreen(
     //
     // keys 里必须包含 `webContainer`：`AndroidView` 的 factory 在**布局/挂载阶段**才被调用
     // （晚于组合期），而本 effect 的协程在组合期结束就开始跑 —— 于是存在一个窗口：
-    // effect 先跑、`webView` 仍为 null，这次"带 token 加载"被静默跳过；此后 token 与
+    // effect 先跑、`webContainer` 仍为 null，这次"带 token 加载"被静默跳过；此后 token 与
     // dshState 都不再变化，**再也没有任何事件触发加载** → 白屏 + 进度条卡住，
     // 直到手动刷新/重启 DSH。把 webContainer 纳入 keys 后：容器一旦建好就会重跑本 effect。
     //
     // 加载统一走 `loadIfNeeded`（按 URL 去重）：本 effect 的 keys 里含 dshState，
-    // 状态抖动一次就会重跑一次 —— 无条件 loadUrl 会把"状态变化"放大成"页面重新导航"，
+    // 状态抖动一次就会重跑一次 —— 无条件导航会把"状态变化"放大成"页面重新导航"，
     // 用户看到的就是发消息/切页面时页面自己刷新。地址没变就不该重新导航。
     LaunchedEffect(dshLaunchToken, dshState, webContainer) {
-        val token = dshLaunchToken
+        val token = dshLaunchToken?.takeIf(String::isNotEmpty)
         // token 变化时通知容器重新武装 401 重试（见 DshWebContainer.onLaunchTokenChanged）
         val container = webContainer ?: return@LaunchedEffect
         container.onLaunchTokenChanged(token)
-        if (token != null && dshState == DshState.READY) {
+        if (dshState == DshState.READY && (token != null || !container.hasNavigation)) {
+            // 这里传带 token 的地址仅作为**去重键**：token 轮换后地址变了，才不会
+            // 被容器的"同地址不重复导航"规则吞掉。真正下发给引擎的地址由容器
+            // 自己用**当前** token 拼（见 DshWebContainer）。
             container.loadIfNeeded(dshUrlWithToken(url, token))
         }
     }
@@ -1543,6 +1098,26 @@ fun DshWebViewScreen(
                 .fillMaxSize()
                 .onSizeChanged { boardSize = it },
         ) {
+        val preparation = preparing
+        if (preparation != null && isActiveTab) {
+            AlertDialog(
+                onDismissRequest = { cancelPreparation() },
+                title = { Text(stringResource(R.string.dsh_renderer_preparing_attachment)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        CircularProgressIndicator()
+                        Text(stringResource(R.string.dsh_renderer_prepared_bytes,
+                            String.format(configuration.locales[0], "%.1f", preparation.bytes / 1048576.0)))
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { cancelPreparation() }) {
+                        Text(stringResource(R.string.files_cancel))
+                    }
+                },
+            )
+        }
         if (dshState != DshState.READY) {
             WaitingState(
                 dshState = dshState,
@@ -1551,20 +1126,36 @@ fun DshWebViewScreen(
                 onStartSandbox = onStartSandbox,
             )
         } else {
-            // ── 原生 WebView 容器（键盘处理在原生层，自适应）──
+            // ── 原生渲染容器（键盘处理在原生层，自适应）──
             // 容器重建代数作为 key：渲染进程崩溃后自增，强制 AndroidView 丢弃旧节点、
-            // 走 factory 重建全新容器（渲染进程死亡后旧 WebView 不可靠，仅 reload 不能
+            // 走 factory 重建全新容器（渲染进程死亡后旧实例不可靠，仅 reload 不能
             // 保证恢复）；重建后的带 token 加载由下方 LaunchedEffect 自动完成。
             key(webViewEpoch) {
                 AndroidView(
                     factory = { ctx ->
+                        try {
                         DshWebContainer(
                             context = ctx,
-                            url = dshUrlWithToken(url, dshLaunchToken),
+                            // **裸基础地址**：token 由容器自己管理（构造时给一份初值，
+                            // 之后经 onLaunchTokenChanged 更新）。地址在这里拼一次
+                            // 会把建容器那一刻的 token 烤死进信任源与后续导航里。
+                            url = url,
+                            initialLaunchToken = dshLaunchToken,
+                            onFilePreparation = { owner, request, bytes, active ->
+                                if (active && owner === webContainer) {
+                                    preparing = Preparation(owner, request, bytes)
+                                } else if (!active && preparing?.owner === owner && preparing?.requestId == request) {
+                                    preparing = null
+                                }
+                            },
                             onProgress = { loadProgress = it },
                             onPageStarted = {
                                 loadProgress = 0
                                 pageError = null
+                                chooserOwner.value = null
+                                uploadPanelVisible = false
+                                localPickRoot = null
+                                preparing = null
                             },
                             onPageFinished = {
                                 loadProgress = 100
@@ -1576,7 +1167,7 @@ fun DshWebViewScreen(
                                 // onPageFinished，漏掉它会让刷新圈/进度条恒挂。
                                 isRefreshing = false
                                 loadProgress = 0
-                                pageError = it.ifEmpty { context.getString(R.string.webview_load_failed) }
+                                pageError = it.ifEmpty { resources.getString(R.string.webview_load_failed) }
                             },
                             onRendererGone = {
                                 // 渲染进程崩溃：限额内由 key 重建链路销毁旧容器并建新
@@ -1585,44 +1176,55 @@ fun DshWebViewScreen(
                                 pageError = null
                                 isRefreshing = false
                                 loadProgress = 0
-                                if (rendererCrashes < RENDERER_REBUILD_LIMIT) {
+                                if (rendererCrashes >= RENDERER_REBUILD_LIMIT) {
+                                    pageError = resources.getString(R.string.webview_load_failed)
+                                } else {
                                     rendererCrashes += 1
                                     webViewEpoch += 1
-                                } else {
-                                    pageError = context.getString(R.string.webview_load_failed)
                                 }
                             },
                             onFileChooserRequest = { owner, multiple ->
                                 // 记下发起者：来源面板与后续各条取文件通道都是异步的，
                                 // 结果可能晚于容器摘除（见 chooserOwner 注释）。
-                                chooserOwner.value = owner
+                                chooserOwner.value = owner.captureFileChooserOwner()
                                 uploadMultiple = multiple
                                 // 先释放页面输入焦点再弹面板：只收键盘不释放焦点时，
                                 // 面板（独立窗口）关闭后窗口重获焦点会把键盘叫回来。
                                 releaseDshInputFocus()
                                 uploadPanelVisible = true
                             },
-                            onWebPermissionRequest = { owner, _ ->
+                            onWebPermissionRequest = { owner, request ->
                                 // 系统权限已授予就直接放行，避免每次都弹一遍；
                                 // 否则转交系统弹窗，结果由 audioPermissionLauncher 回填。
                                 val granted = ContextCompat.checkSelfPermission(
                                     context,
                                     Manifest.permission.RECORD_AUDIO,
                                 ) == PackageManager.PERMISSION_GRANTED
-                                if (granted) {
+                                if (com.dshbox.dsh.renderer.api.DshWebPermission.AUDIO_CAPTURE !in request.permissions) {
+                                    owner.submitWebPermissionResult(false)
+                                } else if (granted) {
                                     owner.submitWebPermissionResult(true)
+                                } else if (permissionOwner.value != null) {
+                                    owner.submitWebPermissionResult(false)
                                 } else {
                                     // 仅在 RECORD_AUDIO **未授权**这一支释放焦点：多数情况下会
                                     // 弹系统权限对话框，而它是独立窗口，关闭后本窗口重获焦点会把
                                     // 键盘叫回。已授权分支放行时不动焦点，避免每次用语音都把
                                     // composer 弄失焦。
                                     releaseDshInputFocus()
-                                    permissionOwner.value = owner
-                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    val pending = owner.capturePermissionOwner()
+                                    permissionOwner.value = pending
+                                    if (pending != null) {
+                                        runCatching { audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+                                            .onFailure {
+                                                if (permissionOwner.value === pending) permissionOwner.value = null
+                                                pending.submitWebPermissionResult(false)
+                                            }
+                                    }
                                 }
                             },
-                            onDshboxScheme = { url ->
-                                when (url.host?.lowercase()) {
+                            onDshboxScheme = { actionUri ->
+                                when (actionUri.host?.lowercase()) {
                                     DSHBOX_ACTION_SETTINGS_DOCUMENT -> {
                                         // 补齐上游 prepareDocument()（插件拦截后它不会执行）：
                                         // 文件缺失时按上游语义建一个空文件再打开。
@@ -1634,7 +1236,7 @@ fun DshWebViewScreen(
                                                 context,
                                                 // 路径用常量传入而不是写进资源：profile 名只在
                                                 // 一处定义，资源里不重复一份会漂移的字面量。
-                                                context.getString(
+                                                resources.getString(
                                                     R.string.webview_settings_doc_missing,
                                                     SETTINGS_DOCUMENT_RELATIVE_PATH,
                                                 ),
@@ -1642,28 +1244,63 @@ fun DshWebViewScreen(
                                             ).show()
                                         }
                                     }
+                                    DSHBOX_ACTION_OPEN_EXTERNAL -> {
+                                        val externalUrl = actionUri.getQueryParameter("url")
+                                        if (externalUrl == null ||
+                                            !openExternalInDefaultBrowser(context, externalUrl, url)
+                                        ) {
+                                            Toast.makeText(
+                                                context,
+                                                R.string.home_open_browser_failed,
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    }
                                     else -> Unit
                                 }
                             },
+                            onExternalUrlRequested = { externalUrl ->
+                                if (!openExternalInDefaultBrowser(context, externalUrl, url)) {
+                                    Toast.makeText(
+                                        context,
+                                        R.string.home_open_browser_failed,
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            },
                         ).also { container ->
-                            webView = container.webView
+                            renderer = container.renderer
                             webContainer = container
                             // 注意：这里**不**再补一次加载。AndroidView 的 factory 在布局阶段被调用，
                             // 而 LaunchedEffect 的 keys 里已经包含 webContainer（见下方），
                             // 容器一确定就会重跑并带 token 加载 —— 在这里再打一次会让同一个 URL
                             // 连发 2~3 次（init + factory + effect），把 onPageFinished/进度状态提前触发。
                         }
+                        } catch (failure: Exception) {
+                            com.dshbox.app.dsh.DshRendererReportStore.failed()
+                            rendererCrashes = RENDERER_REBUILD_LIMIT
+                            pageError = resources.getString(R.string.webview_engine_failed)
+                            android.util.Log.e("DshRenderer", "Initialization failed", failure)
+                            android.widget.FrameLayout(ctx)
+                        } catch (failure: LinkageError) {
+                            com.dshbox.app.dsh.DshRendererReportStore.failed()
+                            rendererCrashes = RENDERER_REBUILD_LIMIT
+                            pageError = resources.getString(R.string.webview_engine_failed)
+                            android.util.Log.e("DshRenderer", "Engine unavailable", failure)
+                            android.widget.FrameLayout(ctx)
+                        }
                     },
                     update = { container ->
                         // 宿主主题注入入口：主题切换时本组合重组，update 随之重跑。
-                        container.applyAppTheme(webCanvasColor)
+                        (container as? DshWebContainer)?.applyAppTheme(webCanvasColor)
                     },
                     onRelease = { container ->
                         // 组合节点被永久移除（区别于切页签的保活停用）时同步销毁容器，
-                        // 防止 DSH 重启往返中遗弃带渲染进程的 WebView；同时清空状态引用，
-                        // 已销毁实例不可再被 canGoBack/loadUrl 触碰。
-                        container.release()
-                        webView = null
+                        // 防止 DSH 重启往返中遗弃带渲染进程的实例；同时清空状态引用，
+                        // 已销毁实例不可再被 canGoBack/load 触碰。
+                        (container as? DshWebContainer)?.release()
+                        if (preparing?.owner === container) preparing = null
+                        renderer = null
                         webContainer = null
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -1810,15 +1447,15 @@ fun DshWebViewScreen(
                     multiple = uploadMultiple,
                     backEnabled = isActiveTab,
                     onDismiss = { settleUpload(null) },
-                    onConfirm = { uris -> settleUpload(uris) },
+                    // 本板块的选择器持有本地 `File`，连同原始文件名/MIME 一起回填 ——
+                    // 引擎若需要本地路径可直接用，不必先复制一份（GeckoView 的 GB 复制）。
+                    onConfirm = { files -> settleSelectedUpload(files) },
                 )
             }
 
-            // ── 内置文件查看器（网页端 dshbox:// 通道唤起）──────────
-            // 典型用途：「打开配置文件」——DSH 原生走宿主的 OS 默认应用打开，
-            // 而宿主跑在 PRoot 里（无 xdg-open / 无默认应用），必然失败并弹
-            // 「无法打开配置文件」。这里改为用 app 自带查看器打开，
-            // 且查看器内置 YAML 高亮（util/viewer/highlight），完全不依赖外部 app。
+            // ── 内置文件查看器 ──────────
+            // 承接 DSH 页内发起的配置文件打开请求：路径经请求文件消费段映射后传入，
+            // 查看器内置 YAML 高亮（util/viewer/highlight），不依赖外部应用。
             val path = viewerPath
             if (path != null) {
                 com.dshbox.app.ui.files.viewer.FileViewerScreen(
@@ -1862,7 +1499,7 @@ fun DshWebViewScreen(
                     CircularProgressIndicator(
                         modifier = Modifier
                             .size(20.dp)
-                            .semantics { contentDescription = context.getString(R.string.webview_refresh) },
+                            .semantics { contentDescription = resources.getString(R.string.webview_refresh) },
                         strokeWidth = 2.dp,
                         // 球体填充为 surface，进度圈取反色的 onSurface 才可见。
                         color = MaterialTheme.colorScheme.onSurface,
@@ -2067,59 +1704,6 @@ private fun clampBallCenter(c: Offset, board: IntSize, radius: Float): Offset {
     return Offset(c.x.coerceIn(radius, maxX), c.y.coerceIn(radius, maxY))
 }
 
-/**
- * 提取 URI 的 origin（scheme + host + port，统一小写）：判定历史条目是否离开
- * DSH 同源的基准。token 等查询参数不参与，同源 SPA 的 pushState 条目不会被误判。
- */
-private fun uriOrigin(uri: Uri): String {
-    val scheme = uri.scheme?.lowercase() ?: return ""
-    val host = uri.host?.lowercase() ?: return ""
-    val port = if (uri.port != -1) ":${uri.port}" else ""
-    return "$scheme://$host$port"
-}
-
-/**
- * 环回别名归一：DSH 同时接受 127.0.0.1 / localhost / [::1]（与鉴权口径一致），
- * 同端口的环回主机互为同源。
- */
-private fun isSameDshOrigin(origin: String, dshOrigin: String): Boolean {
-    if (origin == dshOrigin) return true
-    val left = Uri.parse(origin)
-    val right = Uri.parse(dshOrigin)
-    val loopback = setOf("127.0.0.1", "localhost", "::1")
-    val leftHost = left.host?.lowercase()?.removePrefix("[")?.removeSuffix("]")
-    val rightHost = right.host?.lowercase()?.removePrefix("[")?.removeSuffix("]")
-    return leftHost in loopback && rightHost in loopback && left.port == right.port
-}
-
-/**
- * 返回键在历史栈上的跨源落点距离：从当前条目的前一位向前找最近的跨源真实文档
- * （http/https）条目，返回需回退的步数；无可落点返回 null。
- *
- * 以「返回落点」而非「栈中曾存在跨源条目」为准：goBack 只回退一步，若仅判定栈中
- * 存在跨源条目，落点仍可能停在 DSH 同源的 SPA 条目上（跳到内置浏览器页的复发路径）。
- * 合成条目（chrome-error 错误页、about:blank）不作为落点——主框架加载失败会以错误页
- * 入栈，误判为跨源会让返回键被长期占用。环回别名按 [isSameDshOrigin] 归一。
- *
- * 休眠策略助手：当前返回策略为逐条回退（crossOriginHistoryOnly=false），本助手与
- * [isSameDshOrigin] 保留备用——如需恢复按落点过滤，先以 uriOrigin(Uri.parse(url))
- * 计算 DSH origin，再在 webViewBackAvailable 中调用本助手。
- */
-private fun WebView.crossOriginBackSteps(dshOrigin: String): Int? {
-    val list = copyBackForwardList()
-    var steps = 0
-    for (index in list.currentIndex - 1 downTo 0) {
-        steps++
-        val entryUrl = list.getItemAtIndex(index)?.url ?: continue
-        val parsed = Uri.parse(entryUrl)
-        val scheme = parsed.scheme?.lowercase()
-        if (scheme != "http" && scheme != "https") continue
-        val origin = uriOrigin(parsed)
-        if (origin.isEmpty() || isSameDshOrigin(origin, dshOrigin)) continue
-        return steps
-    }
-    return null
-}
 
 /**
  * 可拖动的悬浮球。[center] 为球心（容器内坐标），拖动经 [onCenterChange] 回写；

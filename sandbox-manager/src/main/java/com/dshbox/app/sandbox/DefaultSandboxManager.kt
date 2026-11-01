@@ -242,6 +242,8 @@ class DefaultSandboxManager(
                         pilotHostDir = pilotHostDir(),
                         browserHostDir = browserHostDir(),
                         shareBinds = shareAreaBinds(),
+                        guestCacheHostDir = config.guestCacheDir.absolutePath,
+                        extraBinds = config.extraGuestBindsProvider(),
                     )
                     val prootEnv = buildProotEnv(runtimeDir, "dsh")
                     Log.i(TAG, "starting dsh proot")
@@ -932,6 +934,8 @@ class DefaultSandboxManager(
             shareAreaBinds().forEach { (name, dir) ->
                 add("--bind=${dir.absolutePath}:${Constants.SHARE_AREA_GUEST_DIR}/$name")
             }
+            // 能力模块追加的绑定（宿主注入，本类不解释语义）。
+            addAll(config.extraGuestBindsProvider())
             add("--cwd=/root")
             add("--kill-on-exit")
             // Guest entry: the rootfs's own bash instead of the host
@@ -1207,6 +1211,21 @@ class DefaultSandboxManager(
     }
 
     /**
+     * 构造网页端 DSH 与 guest 命令的 guest PATH。
+     *
+     * 能力模块追加的目录在最前（能力命令优先命中）；
+     * CLI 包装脚本目录其后（`dsh` 等命令由此命中）。
+     */
+    private fun buildGuestPathForDsh(): String {
+        val head = "${Constants.DSHBOX_ASSETS_GUEST_DIR}/bin"
+        val extra = config.extraPathEntriesProvider().filter { it.isNotBlank() }
+        val tail = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        // CLI 包装脚本目录保持首位（android-root 等 shim 在此，不被能力目录遮蔽），
+        // 能力模块追加的目录其后。
+        return (listOf(head) + extra).joinToString(":") + ":" + tail
+    }
+
+    /**
      * Assembles the host-process env for a proot role by sourcing the layered
      * `.dshbox/env.d/<layer>.sh` fragments in profile assembly order (L0 base ->
      * L1 node -> L3 android-side) and substituting the runtime path placeholders.
@@ -1231,7 +1250,7 @@ class DefaultSandboxManager(
             "@PROOT_TMP_DIR@" to tmpDir.absolutePath,
             "@HOME@" to "/root",
             "@TERM@" to "xterm-256color",
-            "@PATH@" to "${Constants.DSHBOX_ASSETS_GUEST_DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "@PATH@" to buildGuestPathForDsh(),
             "@NODE_BIN@" to "/usr/local/bin/node",
             "@DSH_PERMISSION_MODE@" to "danger-full-access",
             "@DSH_BIN@" to "/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
@@ -1256,6 +1275,13 @@ class DefaultSandboxManager(
             val resolved = substitutionExports(src, substitutions)
             parseEnvExports(resolved).forEach { (k, v) -> base[k] = v }
         }
+        // 宿主进程的 TMPDIR 指向 Android 缓存目录，该路径在 guest 内不存在：
+        // DSH 的 dsh-spill-local 会在启动时 mkdtemp(TMPDIR) 失败；adb 客户端也会把
+        // server 日志写到 `$TMPDIR/adb.<uid>.log`，写入失败会导致 server 无法启动
+        // （输出为 cannot connect to daemon）。统一指向 guest 的 /tmp，对所有角色生效。
+        base["TMPDIR"] = "/tmp"
+        base["TMP"] = "/tmp"
+        base["TEMP"] = "/tmp"
         // DSH (L2) is a separate product not present in runtime-profile.assembly;
         // set its guest env explicitly for the DSH PRoot role. DSH_HOME points at
         // the app-managed user data (bound at /root/projects) so the DSH web server
@@ -1263,13 +1289,29 @@ class DefaultSandboxManager(
         if (role == "dsh") {
             base["DSH_HOME"] = "/root/projects/.dsh"
             base["PORT"] = Constants.DSH_DEFAULT_PORT.toString()
-            // The node guest inherits TMPDIR from the Android app process (the
-            // app cache dir), which does not exist inside this PRoot rootfs; the
-            // DSH app's dsh-spill-local does mkdtemp(TMPDIR) on boot and aborts
-            // with ENOENT. Point the guest at /tmp so it succeeds.
-            base["TMPDIR"] = "/tmp"
-            base["TMP"] = "/tmp"
-            base["TEMP"] = "/tmp"
+            // xdg-open 垫片挂载在 /opt/dshbox（与硬链接垫片同目录）。DSH 的
+            // openNativeTextFile 按 PATH 查找 xdg-open，base 层没有它——把挂载点
+            // 放到 PATH 首位，垫片即可被找到；其余查找顺序保持 base 层默认。
+            // dsh 自身的子进程也要能找到我们的命令垫片（pnpm/dsh/pkg，见
+            // `stagedBinDir`，bootstrap 落在 `/root/projects/.dsh/dshbox/bin`）：
+            // 插件管理器 execa("pnpm") 只按 PATH 盲找，PATH 里没有它就是
+            // spawn ENOENT。挂次位既不放它压过 xdg-open，也不重建 base 层。
+            //
+            // 能力模块追加的目录（`/opt/elevation/bin`）必须**在此处**并入：base 层
+            // env 不提供 PATH（已在设备上确认），`@PATH@` 的替换值未被消费，本分支实际
+            // 走的是下面的兜底串。只改替换表（buildGuestPathForDsh）会让 DSH 里
+            // `command -v adb` 为空。
+            val extraPath = config.extraPathEntriesProvider().filter { it.isNotBlank() }
+            // CLI 包装脚本目录（pnpm/dsh/pkg）在能力目录之前：能力命令不遮蔽既有 shim。
+            val ambientPath = base["PATH"]?.takeIf { it.isNotBlank() }
+                ?: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            base["PATH"] = (listOf(
+                Constants.DSH_LINK_SHIM_GUEST_DIR,
+                "${Constants.DSHBOX_ASSETS_GUEST_DIR}/bin",
+            ) + extraPath + ambientPath.split(':'))
+                .filter { it.isNotBlank() }
+                .distinct()
+                .joinToString(":")
             // The guest /etc/passwd has no entry for the runtime uid (PRoot runs
             // as the Android app uid), so Node's os.userInfo() fails with ENOENT
             // from libuv getpwuid_r. The DSH web terminal resolves its shell via

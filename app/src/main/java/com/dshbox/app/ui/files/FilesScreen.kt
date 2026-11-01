@@ -97,6 +97,7 @@ import com.dshbox.app.common.UiText
 import com.dshbox.app.common.Constants
 import com.dshbox.app.sandbox.SandboxState
 import com.dshbox.app.ui.asString
+import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.runtime.DebUnpackInstaller
 import com.dshbox.app.util.ArchiveExtractor
 import com.dshbox.app.util.BackgroundOps
@@ -183,6 +184,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 
 // --- Design tokens 在 FilesCommon.kt（同包直接使用） ---
 
@@ -394,6 +396,7 @@ fun FilesScreen(
     onInboundShareConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
     val scope = rememberCoroutineScope()
     // Layered runtime: the L0 base layer is the sandbox rootfs (the terminal also
     // resolves it this way). A legacy single-bundle "debian" dir is only a
@@ -465,8 +468,8 @@ fun FilesScreen(
      * 应用是否处于前台（ON_RESUME 之后、ON_PAUSE 之前）。共享区列表轮询据此门控：
      * 退到后台时停止唤醒，回到前台由 effect 重启恢复轮询。
      */
-    val resumedAtComposition =
-        LocalLifecycleOwner.current.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val resumedAtComposition = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     var appResumed by remember { mutableStateOf(resumedAtComposition) }
 
     var currentDir by remember { mutableStateOf(root) }
@@ -731,7 +734,7 @@ fun FilesScreen(
     /** 清空共享区：只删内建 DSHBox 的内容，保留目录本身（命名空间条目不会短暂消失）。 */
     fun clearShareArea() {
         scope.launch {
-            showProgress(UiText.raw(context.getString(R.string.files_progress_deleting)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_deleting)))
             try {
                 withContext(Dispatchers.IO) {
                     shareRoot.listFiles()
@@ -1038,7 +1041,7 @@ fun FilesScreen(
             }
             target.mkdirs()
         }
-        created.onFailure { showError(it.message ?: context.getString(R.string.files_create_failed)) }
+        created.onFailure { showError(it.message ?: resources.getString(R.string.files_create_failed)) }
         // mkdirs 失败返回 false 而不抛异常（如目标不可写）：补一条与异常同口径的提示。
         if (created.getOrNull() == false) showToastRes(R.string.files_create_failed)
         newFolderName = ""
@@ -1078,7 +1081,7 @@ fun FilesScreen(
             }
             target.createNewFile()
         }
-        created.onFailure { showError(it.message ?: context.getString(R.string.files_create_failed)) }
+        created.onFailure { showError(it.message ?: resources.getString(R.string.files_create_failed)) }
         // createNewFile 失败返回 false 而不抛异常（如目标不可写）：补一条与异常同口径的提示。
         if (created.getOrNull() == false) showToastRes(R.string.files_create_failed)
         newFileName = ""
@@ -1106,7 +1109,7 @@ fun FilesScreen(
         val src = mapper.resolvePhysical(File(entry.logicalPath))
         val parent = src.parentFile
         if (parent == null) {
-            showError(context.getString(R.string.files_rename_failed, context.getString(R.string.files_path_error)))
+            showError(resources.getString(R.string.files_rename_failed, resources.getString(R.string.files_path_error)))
             renameTarget = null
             renameName = ""
             showRenameDialog = false
@@ -1125,7 +1128,7 @@ fun FilesScreen(
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(UiText.raw(context.getString(R.string.files_progress_moving, entry.name)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_moving, entry.name)))
             try {
                 val result = withContext(Dispatchers.IO) {
                     MoveEngine.moveWithin(listOf(MoveTask(src, dest)), listener = null)
@@ -1136,15 +1139,15 @@ fun FilesScreen(
                 // 必须先判取消，否则取消会被误报为「重命名成功」
                 when {
                     result.cancelled -> showToastRes(R.string.files_progress_cancelled)
-                    failure != null -> showError(context.getString(R.string.files_rename_failed, failure.message.asString(context)))
-                    else -> showToast(context.getString(R.string.files_rename_done, entry.name, safeNewName))
+                    failure != null -> showError(resources.getString(R.string.files_rename_failed, failure.message.asString(context)))
+                    else -> showToast(resources.getString(R.string.files_rename_done, entry.name, safeNewName))
                 }
             } catch (e: CancellationException) {
                 clearProgress()
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 clearProgress()
-                showError(context.getString(R.string.files_rename_failed, e.message ?: context.getString(R.string.error_unknown)))
+                showError(resources.getString(R.string.files_rename_failed, e.message ?: resources.getString(R.string.error_unknown)))
             } finally {
                 renameTarget = null
                 renameName = ""
@@ -1186,7 +1189,7 @@ fun FilesScreen(
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(UiText.raw(context.getString(R.string.files_progress_deleting)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_deleting)))
             try {
                 withContext(Dispatchers.IO) {
                     fileTargets.forEach { t ->
@@ -1215,7 +1218,7 @@ fun FilesScreen(
                 } else {
                     e.message
                 }
-                showError(detail ?: context.getString(R.string.files_delete_failed))
+                showError(detail ?: resources.getString(R.string.files_delete_failed))
             }
         }
     }
@@ -1228,7 +1231,7 @@ fun FilesScreen(
             val self = currentCoroutineContext()[Job]
             val physicalTarget = mapper.resolvePhysical(targetDir)
             val finalName = resolveConflictName(physicalTarget, baseName, mode)
-            showProgress(UiText.raw(context.getString(R.string.files_progress_importing, baseName)), 0, -1)
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_importing, baseName)), 0, -1)
             try {
                 if (finalName == null) {
                     clearProgress()
@@ -1240,13 +1243,13 @@ fun FilesScreen(
                     FileOps.importFromUri(
                         context, uri, physicalTarget, finalName,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_importing, finalName)), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(resources.getString(R.string.files_progress_importing, finalName)), done, total))
                         },
                     )
                 }
                 clearProgress()
                 refreshEntries()
-                showToast(context.getString(R.string.files_import_done_name, finalName))
+                showToast(resources.getString(R.string.files_import_done_name, finalName))
                 importBatchDone?.complete(true)
             } catch (e: CancellationException) {
                 // S1: 取消时清理半成品文件；取消=中止整个批
@@ -1257,7 +1260,7 @@ fun FilesScreen(
             } catch (e: Exception) {
                 FileOps.deleteQuietly(File(physicalTarget, finalName ?: baseName))
                 clearProgress()
-                showError(context.getString(R.string.files_import_failed, e.message ?: context.getString(R.string.error_unknown)))
+                showError(resources.getString(R.string.files_import_failed, e.message ?: resources.getString(R.string.error_unknown)))
                 importBatchDone?.complete(false)
             }
         }
@@ -1279,7 +1282,7 @@ fun FilesScreen(
             // 合并期间 extractedDir 仍在 cacheDir，登记后台操作
             // 阻止设置页清理并发删除它。begin→end 跨越整个协程（含取消路径）。
             BackgroundOps.begin()
-            showProgress(UiText.raw(context.getString(R.string.files_progress_merging)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_merging)))
             val self = currentCoroutineContext()[Job]
             try {
                 val physicalTarget = mapper.resolvePhysical(targetDir)
@@ -1301,7 +1304,7 @@ fun FilesScreen(
             } catch (e: Exception) {
                 FileOps.deleteQuietly(extractedDir)
                 clearProgress()
-                showError(context.getString(R.string.files_merge_failed, e.message ?: context.getString(R.string.error_unknown)))
+                showError(resources.getString(R.string.files_merge_failed, e.message ?: resources.getString(R.string.error_unknown)))
                 importBatchDone?.complete(false)
             } finally {
                 BackgroundOps.end()
@@ -1320,7 +1323,7 @@ fun FilesScreen(
             val physicalTarget = mapper.resolvePhysical(targetDir)
             var tmpArchive: File? = null
             var tmpExtract: File? = null
-            showProgress(UiText.raw(context.getString(R.string.files_progress_prepare)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_prepare)))
             try {
                 tmpArchive = File(context.cacheDir, "import_${System.currentTimeMillis()}")
                 withContext(Dispatchers.IO) {
@@ -1349,7 +1352,7 @@ fun FilesScreen(
                     }
                     tmpArchive = null
                     refreshEntries()
-                    showToast(context.getString(R.string.files_import_done_name, safeName))
+                    showToast(resources.getString(R.string.files_import_done_name, safeName))
                     importBatchDone?.complete(true)
                     return@launch
                 }
@@ -1358,7 +1361,7 @@ fun FilesScreen(
                     ArchiveExtractor.extract(
                         tmpArchive!!, tmpExtract!!,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_extracting)), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(resources.getString(R.string.files_progress_extracting)), done, total))
                         },
                     )
                 }
@@ -1411,7 +1414,7 @@ fun FilesScreen(
                 FileOps.deleteQuietly(tmpArchive)
                 FileOps.deleteQuietly(tmpExtract)
                 clearProgress()
-                showError(context.getString(R.string.files_extract_failed, e.message ?: context.getString(R.string.error_unknown)))
+                showError(resources.getString(R.string.files_extract_failed, e.message ?: resources.getString(R.string.error_unknown)))
                 importBatchDone?.complete(false)
             } finally {
                 BackgroundOps.end()
@@ -1430,13 +1433,13 @@ fun FilesScreen(
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(UiText.raw(context.getString(R.string.files_progress_exporting)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_exporting)))
             try {
                 val count = withContext(Dispatchers.IO) {
                     FileOps.exportToTree(
                         context, treeUri, physicalSelected,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_exporting)), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(resources.getString(R.string.files_progress_exporting)), done, total))
                         },
                     )
                 }
@@ -1449,7 +1452,7 @@ fun FilesScreen(
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 clearProgress()
-                showError(context.getString(R.string.files_export_failed, e.message ?: context.getString(R.string.error_unknown)))
+                showError(resources.getString(R.string.files_export_failed, e.message ?: resources.getString(R.string.error_unknown)))
             }
         }
     }
@@ -1463,13 +1466,13 @@ fun FilesScreen(
         cancelProgressJob()
         progressJob = scope.launch {
             val self = currentCoroutineContext()[Job]
-            showProgress(UiText.raw(context.getString(R.string.files_progress_zipping)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_zipping)))
             try {
                 val count = withContext(Dispatchers.IO) {
                     FileOps.exportToZip(
                         context, zipUri, physicalSelected,
                         listener = ProgressListener { done, total, _ ->
-                            setProgress(ProgressUi(true, UiText.raw(context.getString(R.string.files_progress_zipping)), done, total))
+                            setProgress(ProgressUi(true, UiText.raw(resources.getString(R.string.files_progress_zipping)), done, total))
                         },
                     )
                 }
@@ -1482,7 +1485,7 @@ fun FilesScreen(
                 if (progressJob == self) showToastRes(R.string.files_progress_cancelled)
             } catch (e: Exception) {
                 clearProgress()
-                showError(context.getString(R.string.files_export_failed, e.message ?: context.getString(R.string.error_unknown)))
+                showError(resources.getString(R.string.files_export_failed, e.message ?: resources.getString(R.string.error_unknown)))
             }
         }
     }
@@ -1660,7 +1663,7 @@ fun FilesScreen(
             showToastRes(R.string.files_exit_no_app)
             return
         }
-        val chooser = ExternalOpener.chooserExcludingSelf(context, send, context.getString(R.string.files_share))
+        val chooser = ExternalOpener.chooserExcludingSelf(context, send, resources.getString(R.string.files_share))
         val opened = runCatching { context.startActivity(chooser) }.isSuccess
         if (!opened) showToastRes(R.string.files_share_unavailable)
     }
@@ -1722,7 +1725,7 @@ fun FilesScreen(
             var ok = 0
             var failed = 0
             BackgroundOps.begin()
-            showProgress(UiText.raw(context.getString(R.string.files_progress_prepare)))
+            showProgress(UiText.raw(resources.getString(R.string.files_progress_prepare)))
             try {
                 withContext(Dispatchers.IO) {
                     items.forEachIndexed { index, item ->
@@ -1750,7 +1753,7 @@ fun FilesScreen(
                         setProgress(
                             ProgressUi(
                                 true,
-                                UiText.raw(context.getString(R.string.files_progress_importing, finalName)),
+                                UiText.raw(resources.getString(R.string.files_progress_importing, finalName)),
                                 index.toLong(),
                                 items.size.toLong(),
                             ),
@@ -1764,7 +1767,7 @@ fun FilesScreen(
                                             ProgressUi(
                                                 true,
                                                 UiText.raw(
-                                                    context.getString(
+                                                    resources.getString(
                                                         R.string.files_progress_importing,
                                                         finalName,
                                                     ),

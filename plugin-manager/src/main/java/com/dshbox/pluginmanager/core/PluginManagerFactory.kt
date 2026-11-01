@@ -3,9 +3,12 @@ package com.dshbox.pluginmanager.core
 import android.content.Context
 import java.io.File
 import com.dshbox.app.sandbox.SandboxManager
+import com.dshbox.pluginmanager.contract.HostContract
 import com.dshbox.pluginmanager.layer.PluginLayer
 import com.dshbox.pluginmanager.market.MarketRepository
 import com.dshbox.pluginmanager.market.data.DefaultMarketRepository
+import com.dshbox.pluginmanager.market.data.PnpmRegistry
+import com.dshbox.pluginmanager.core.HostCapabilityProbe
 import com.dshbox.pluginmanager.safemode.AbsoluteSafeMode
 import com.dshbox.pluginmanager.safemode.AbsoluteTargetsCache
 import com.dshbox.pluginmanager.safety.GuardStore
@@ -98,6 +101,11 @@ object PluginManagerFactory {
         // 用模块自有的 observerScope，而不是调用方（界面）的 scope，原因见其声明。
         // 安全模式封存期间不启动观察：见 [PluginSafetySeal]。
         if (!PluginSafetySeal.SEALED) safety.startLifecycleObserver(observerScope)
+        // 宿主能力探测一次；依据全部是本地痕迹，与宿主版本无关。
+        val capabilities = HostCapabilityProbe(paths).detect()
+        // 判定面的 registry 基址：与 App 侧写入的镜像覆盖文件同源，缺席回退官方。
+        // 装配时快照一次（与能力探测同语义），进程存活期间手改文件需下次启动生效。
+        val registryBase = PnpmRegistry.readBase(paths.pnpmRegistryFile) ?: HostContract.DEFAULT_REGISTRY_BASE
         return PluginManagerComponents(
             paths = paths,
             marketOverlayLayer = marketOverlayLayer,
@@ -120,6 +128,8 @@ object PluginManagerFactory {
                 paths = paths,
                 layer = marketOverlayLayer,
                 guest = guest,
+                capabilities = capabilities,
+                registryBase = registryBase,
                 // 市场启停与安全模式的隔离清单必须同步：用户亲手改过状态的条目，
                 // 我们不能再把它列成"被跳过"，否则两处显示打架、对齐逻辑还会
                 // 把用户刚启用的插件又翻回停用。

@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 面板 -->
+    <string name="dev_intro">Device-level debugging for developers. Takes effect immediately once enabled; no per-call confirmation.</string>
+    <string name="dev_hint_dismiss">Dismiss</string>
+
+    <!-- ADB 通道 -->
+    <string name="dev_adb_title">ADB access</string>
+    <string name="dev_adb_subtitle">Full ADB client inside the sandbox (shell privileges, can drive external devices)</string>
+    <string name="dev_adb_subtitle_no_dev_options">USB debugging is off. Open Settings → Developer options and enable it, then turn this channel on.</string>
+    <string name="dev_adb_auth_note">The first connection must be confirmed on the phone ("Allow debugging"). That grant is stored by the phone OS (Developer options → Revoke USB debugging authorizations clears it); turning this switch off only disconnects DSHBox and does not delete the grant.</string>
+
+    <!-- Root 通道 -->
+    <string name="dev_root_title">Root access</string>
+    <string name="dev_root_locked_out">The access code is locked after too many failed attempts. Regenerate it below to allow connections again.</string>
+    <string name="dev_root_subtitle">Run commands as root (uid 0)</string>
+    <string name="dev_root_subtitle_unrooted">This device is not rooted; this channel is unavailable.</string>
+    <string name="dev_root_guidance_unrooted">No executable su found on this device. The root channel needs a rooted device (Magisk / KernelSU / APatch and similar) whose root manager does not hide su from this app (for example Magisk’s DenyList or Hide app). Without root or authorization the switch stays disabled and the executor never starts; the settings below can still be viewed and pre-set.</string>
+
+    <!-- 连接方式 -->
+    <string name="dev_section_transport">Connection</string>
+    <string name="dev_transport_unix">Unix socket (this app and the sandbox only)</string>
+    <string name="dev_transport_tcp_local">TCP · localhost only (localhost:%1$d)</string>
+    <string name="dev_transport_tcp_lan">TCP · local network (all interfaces, port %1$d)</string>
+    <string name="dev_transport_custom">Custom</string>
+    <string name="dev_transport_lan_warning_adb">Once enabled, any device on the same network can connect to this phone\'s ADB service and obtain the device shell (uid 2000) — installing apps, reading files, running commands. Use only on a trusted network.</string>
+    <string name="dev_transport_local_warning_root">Once enabled, any app on this device that obtains the access code can run commands as root on this device. Enable only when an external tool needs to connect.</string>
+    <string name="dev_transport_lan_warning_root">Once enabled, any device on the same network that obtains the access code can run commands as root on this device. Traffic is unencrypted, so others on the network may see command content and output. Use only on a fully trusted network and make sure the access code has not leaked.</string>
+
+    <!-- 端口 -->
+    <string name="dev_port_label">Port</string>
+    <string name="dev_port_free">free</string>
+    <string name="dev_port_occupied">in use</string>
+    <string name="dev_port_unknown">not probed</string>
+    <string name="dev_port_occupied_hint">This port is already in use, possibly by an adb you installed yourself or another program. Choose a custom port or stop that program (this app never terminates other processes).</string>
+    <string name="dev_custom_hint">tcp:localhost:5037</string>
+    <string name="dev_apply">Apply</string>
+    <string name="dev_spec_dirty">Unapplied changes; the running configuration is still %1$s</string>
+    <string name="dev_spec_reload">Reload config</string>
+
+    <!-- 配对 -->
+    <string name="dev_pairing_section">Pair a device</string>
+    <string name="dev_pairing_group_section">Device pairing</string>
+    <string name="dev_pairing_code_label">Pair code</string>
+    <string name="dev_pairing_start">Start pairing (Wireless debugging)</string>
+    <string name="dev_pairing_collapse">Hide pairing</string>
+    <string name="dev_pairing_needs_sandbox">This feature requires the sandbox to be running</string>
+    <string name="dev_pairing_needs_adb">Turn on ADB access first</string>
+    <string name="dev_pairing_needs_adb_hint">Pairing needs the ADB channel: turn on ADB access above first (that switch creates the key and the adb entry point).</string>
+    <string name="dev_sandbox_not_running">Sandbox not running</string>
+    <string name="dev_pairing_step">Step %1$d/3</string>
+    <string name="dev_pairing_connect_title">Enter the connection address</string>
+    <string name="dev_pairing_connect_hint">The Wireless debugging screen shows IP address and port; copy it here (e.g. 192.168.1.5:37123).</string>
+    <string name="dev_pairing_connect_action">Connect</string>
+    <string name="dev_pairing_intro">① Open Settings → Developer options → Wireless debugging on the phone and stay on that page (leaving it refreshes the pairing code).</string>
+    <string name="dev_pairing_found">Pairing service found: %1$s</string>
+    <string name="dev_pairing_auto_hint">Next step shows the 6-digit code field; if auto-discovery fails you can type the pairing address yourself.</string>
+    <string name="dev_pairing_searching">Searching…</string>
+    <string name="dev_pairing_next">It\'s on, next</string>
+    <string name="dev_pairing_code_step">② In Wireless debugging, tap "Pair device with pairing code"; a 6-digit code appears.</string>
+    <string name="dev_pairing_split_hint">Use split screen (phone settings on one side, stay on that page; DSHBox on the other) or put DSHBox in a floating window. Leaving the Wireless debugging page refreshes the code.</string>
+    <string name="dev_pairing_address">Pairing address: %1$s</string>
+    <string name="dev_pairing_code_step2">③ Enter the 6-digit code below (pairing starts as soon as it is complete):</string>
+    <string name="dev_pairing_busy">Pairing…</string>
+    <string name="dev_pairing_restart">Get a new pairing code</string>
+    <string name="dev_pairing_done_title">✅ Paired and connected</string>
+    <string name="dev_pairing_done_body">This device is now in "Paired devices". Future connections will not ask for authorization again.</string>
+    <string name="dev_pairing_connected">Connected: %1$s</string>
+    <string name="dev_pairing_copy_note">The pairing code only exists in the phone settings; the connection address above is what can be copied here.</string>
+    <string name="dev_pairing_done_action">Done</string>
+    <string name="dev_direct_status_connecting">Connecting…</string>
+    <string name="dev_msg_direct_addr_invalid">Address must be ip:port, e.g. 192.168.1.5:5555</string>
+    <string name="dev_pairing_pair_address_label">Pairing address (ip:port)</string>
+    <string name="dev_pairing_pair_address_hint">Shown in the "Pair device with pairing code" dialog</string>
+    <string name="dev_direct_section">Direct connect (system prompt)</string>
+    <string name="dev_direct_note">Runs adb connect; on first connection the device shows the standard \"Allow debugging\" dialog. No pairing code needed — use it for devices already authorized, or with a fixed tcpip port.</string>
+    <string name="dev_direct_hint">Enter the IP address and port shown in Wireless debugging</string>
+    <string name="dev_msg_direct_connected">Connected: %1$s</string>
+    <string name="dev_msg_direct_auth_needed">The device has not authorized this computer yet. Allow the debugging prompt on the device, then tap Connect again.</string>
+    <string name="dev_msg_direct_unreachable">Cannot reach that address: check the IP/port and that TCP debugging is enabled on the device.</string>
+    <string name="dev_msg_direct_failed">Connect failed.</string>
+
+    <!-- 访问码 -->
+    <string name="dev_access_code">Access code</string>
+    <string name="dev_access_code_scan_hint">Scan the QR code with the external tool, or copy the code</string>
+    <string name="dev_access_code_copy">Copy</string>
+    <string name="dev_access_code_regen">Regenerate</string>
+    <string name="dev_access_code_regen_note">Regenerating invalidates the previous access code immediately; external tools already configured must be updated.</string>
+
+    <!-- 设备授权 -->
+    <string name="dev_keys_section">Device authorization records</string>
+    <string name="dev_keys_desc">Local identity and paired devices; the key is what DSH and external tools use to reach devices.</string>
+    <string name="dev_keys_local">Local keys</string>
+    <string name="dev_keys_none">No keys yet. One is generated automatically on the first device connection.</string>
+    <string name="dev_key_primary">Primary key</string>
+    <string name="dev_key_identity">identity</string>
+    <string name="dev_key_fingerprint_na">fingerprint unavailable</string>
+    <string name="dev_key_created">Created %1$s</string>
+    <string name="dev_key_time_unknown">unknown</string>
+    <string name="dev_key_delete">Delete</string>
+    <string name="dev_key_generate">Generate new key</string>
+    <string name="dev_paired_section">Paired devices</string>
+    <string name="dev_paired_none">No paired devices yet. They appear here after you pair one.</string>
+    <string name="dev_paired_unreadable">Pairing records exist but contain no readable device identifier.</string>
+    <string name="dev_paired_clear">Clear pairing records</string>
+    <string name="dev_paired_note">Pairing records contain device identifiers only; the adb file provides no pairing time or method.</string>
+    <string name="dev_devices_section">Online devices</string>
+    <string name="dev_devices_view">View device list</string>
+    <string name="dev_devices_disconnect">Disconnect all</string>
+    <string name="dev_devices_none">No device is currently connected.</string>
+    <string name="dev_devices_busy">Querying…</string>
+    <string name="dev_devices_hint">Read from the sandbox with adb devices — the same server DSH uses.</string>
+    <string name="dev_keys_warning">⚠ Deleting the local key makes every device need re-pairing; the phone\'s "authorized computers" records remain.</string>
+
+    <!-- 操作反馈（Controller 产出，界面解析） -->
+    <string name="dev_msg_adb_enable_failed">Could not enable ADB: runtime assets are missing or extraction failed.</string>
+    <string name="dev_msg_adb_enabled_no_dev_options">ADB is installed, but USB debugging is off on the phone. Open Settings → Developer options and enable USB debugging; otherwise no device can be connected.</string>
+    <string name="dev_msg_adb_enabled_sandbox_down">ADB is installed. The server starts with the sandbox; once it runs you can use adb directly in the terminal.</string>
+    <string name="dev_msg_adb_disabled">Disconnected. The phone still keeps the "Allow debugging" grant; to clear it, open Settings → Developer options → Revoke USB debugging authorizations.</string>
+    <string name="dev_msg_spec_applied">Applied: %1$s</string>
+    <string name="dev_msg_spec_applied_restarted">Applied: %1$s (stopped %2$d old server(s); the next call rebuilds it)</string>
+    <string name="dev_msg_root_applied_restarted">Applied and restarted the root executor</string>
+    <string name="dev_msg_root_applied">Applied (root channel is off, nothing to restart)</string>
+    <string name="dev_msg_root_restart_failed">Configuration applied, but the executor could not start on the new setting: socket or port in use.</string>
+    <string name="dev_msg_root_provision_failed">Root executor started, but android-root could not be installed (the CLI directory is read-only). Turn the switch off and on again.</string>
+    <string name="dev_msg_key_delete_failed">Delete failed: the file may be in use.</string>
+    <string name="dev_msg_key_deleted_primary">Local key deleted. Every device must be paired again; the phone\'s "authorized computers" records remain — open Settings → Developer options → Revoke USB debugging authorizations to clear them.</string>
+    <string name="dev_msg_key_deleted_other">Key deleted; the matching device must be paired again.</string>
+    <string name="dev_msg_key_generated">New key generated</string>
+    <string name="dev_msg_key_generate_failed">Generation failed: the ADB channel must be on and the sandbox running.</string>
+    <string name="dev_msg_pair_cleared">Pairing records cleared. The local identity is kept, so reconnecting will not ask for authorization.</string>
+    <string name="dev_msg_devices_failed">Could not run adb devices.</string>
+    <string name="dev_msg_devices_disconnected">All wireless connections disconnected.</string>
+    <string name="dev_msg_devices_disconnect_failed">Disconnect failed.</string>
+    <string name="dev_msg_root_not_authorized">su exists but authorization was not granted (or the prompt timed out). Allow DSHBox in your root manager and try again.</string>
+    <string name="dev_msg_clear_failed">Failed to clear</string>
+    <string name="dev_msg_pairing_not_found">No wireless-debugging pairing service found. Make sure Wireless debugging is on and stay on that page, then retry.</string>
+    <string name="dev_msg_pairing_connect_manual">Paired, but the automatic connection failed. Read the IP and port on the phone Wireless debugging screen and enter them below.</string>
+    <string name="dev_msg_connect_address_invalid">The connection address must look like ip:port.</string>
+    <string name="dev_msg_pairing_bad_code">Wrong or expired pairing code. Please get a new one.</string>
+    <string name="dev_msg_pairing_unreachable">Cannot reach that address: check that both devices are on the same network and Wireless debugging is on.</string>
+    <string name="dev_msg_pairing_generic_failed">Pairing failed</string>
+    <string name="dev_msg_pairing_failed_detail">Pairing failed: %1$s</string>
+    <string name="dev_msg_pairing_address_required">Enter the pairing address and port first.</string>
+    <string name="dev_msg_no_root">This device is not rooted; the root channel cannot be enabled.</string>
+    <string name="dev_msg_root_start_failed">Root executor failed to start: socket or port in use.</string>
+    <string name="dev_msg_code_regenerated">Access code updated; external tools already configured must be updated.</string>
+    <string name="dev_paired_refresh">Refresh list</string>
+    <string name="dev_access_address">Access address: %1$s</string>
+    <string name="dev_adb_disable_notice_title">Notice</string>
+    <string name="dev_adb_disable_notice_body">The phone keeps the "Allow debugging" grant. Turning this switch off only disconnects DSHBox; to clear the grant, open Settings → Developer options → Revoke USB debugging authorizations.</string>
+    <string name="dev_help_action">Feature guide</string>
+    <string name="dev_help_title">About developer mode</string>
+    <string name="dev_help_lead">ADB and Root here are full-capability channels: turning a switch on is the authorization. They do not go through the assistant channel’s safety gate (per-call approval, capability table, quotas, audit). The two channels are independent and keep working even when the assistant channel is fully off.</string>
+    <string name="dev_help_adb_title">ADB access</string>
+    <string name="dev_help_adb_switch">When enabled, a complete adb is installed inside the sandbox (/opt/elevation/bin/adb); when disabled it is removed, and both the command and its connections stop working.</string>
+    <string name="dev_help_adb_shared">The panel and DSH use the same file (/opt/elevation/server.conf): a change on either side applies to both, and Apply stops the old server and restarts it with the new settings.</string>
+    <string name="dev_help_adb_pair">Pairing code: in Developer options → Wireless debugging → Pair device with pairing code, read the IP:port and the 6-digit code. That screen expires once you leave it, so keep it visible in split screen or a floating window.</string>
+    <string name="dev_help_adb_direct">Direct connect: for a device already paired or authorized, just enter IP:port. The first connection may still need &quot;Allow debugging&quot; on that device.</string>
+    <string name="dev_help_adb_scope">This is a complete adb client inside the sandbox, not a restricted proxy: it can debug this phone (wireless debugging must be on) and other devices on your LAN; other apps or tools on this phone can also gain ADB access through this server.</string>
+    <string name="dev_help_adb_caution">Cautions: LAN mode is plaintext, so content is visible on the same network; keys and authorizations live in the app’s private storage, so uninstalling or clearing data loses them and you must pair again.</string>
+    <string name="dev_help_root_title">Root access</string>
+    <string name="dev_help_root_switch">When enabled, android-root &lt;command&gt; runs as Android root inside the sandbox (the device must be rooted and must grant access). When disabled the executor stops and the command disappears.</string>
+    <string name="dev_help_root_shared">Root settings live only in the app’s private storage: the sandbox and DSH cannot read or change them. DSH can only run commands (through root.sock); transport, port and access code are yours to view and change here.</string>
+    <string name="dev_help_root_caution">Cautions: the access code is root access itself - leaking it hands over the device, never share it, and regenerate it immediately if you suspect a leak. Repeated failures lock the channel; regenerating the code unlocks it. LAN mode is plaintext as well.</string>
+    <string name="dev_help_root_unrooted">A device without root cannot enable this channel: the switch stays disabled, but the settings below can still be viewed and pre-set.</string>
+    <string name="dev_help_close">Got it</string>
+    <string name="dev_msg_port_out_of_range">Enter a port between 1 and 65535.</string>
+    <string name="dev_msg_port_reset">The saved port (%1$s) was invalid and has been reset to the default 5037.</string>
+    <string name="dev_pairing_redetect">Detect address</string>
+</resources>

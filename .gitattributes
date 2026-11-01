@@ -1,0 +1,23 @@
+# 说明：本机 core.autocrlf=true 会在 checkout 时把 LF 转成 CRLF，脚本类文件
+# 进 guest 被 bash 解析时 \r 视为命令字符（set: invalid option / syntax error
+# near unexpected token '$\r''），guest 装配报 guest command exit=2。以下类型
+# 必须保持仓库行尾（LF）落地，禁止行尾自动转换。
+*.sh text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# APK assets 里的 vi 本/配置一律按 LF 落地：这些文件会被原样打进运行环境
+# （ca-certificates.conf、passwd、locale.gen、dpkg 模板、索引表等）。行尾一旦
+# 被转成 CRLF，guest 内按行解析时路径尾会多出 \r，例如
+# update-ca-certificates 认不出证书文件、passwd/group 解析异常，进而在运行
+# 环境自检处失败。整目录强制 LF，避免逐类型漏配。
+app/src/main/assets/** text eol=lf
+
+# 全仓默认：文本文件按 LF 落地。worktree checkout 在 core.autocrlf=true 下
+# 会把 LF 转 CRLF，已造成过一次运行环境自检失败事故（见 docs 内的事故记录），
+# 故用 text=auto 兜底：二进制由 git 自动识别，文本一律 LF。
+* text=auto eol=lf

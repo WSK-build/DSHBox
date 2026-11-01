@@ -26,6 +26,17 @@ object ServiceLocator {
             // 共享区绑定清单（内建 DSHBox + 用户挂载，guest `/root/share/<别名>`）：
             // 每次起会话现取，用户新授权或新增挂载无需重建配置。
             shareBindsProvider = { shareBinds(context) },
+            // 开发者模式的 PRoot 绑定与 guest PATH：由能力模块给出唯一出处，
+            // 三处 PRoot 启动与两处 PATH 构造共用同一组值。
+            extraGuestBindsProvider = {
+                developer.access.DeveloperAccessWiring.guestBinds(
+                    context.filesDir,
+                    java.io.File(context.filesDir, "runtime/runtime-current/base"),
+                )
+            },
+            extraPathEntriesProvider = {
+                developer.access.DeveloperAccessWiring.guestPathEntries()
+            },
         )
         // 设备交互状态（唤醒且亮屏）交给健康循环：休眠期间 guest 会被整体冻结，
         // 端口在听但 HTTP 不应答，此时的探测失败是暂时状态，不该判为 DSH 宕机。
@@ -113,6 +124,11 @@ object ServiceLocator {
                     appFilesDir = sandboxConfig.appFilesDir,
                     nativeLibraryDir = sandboxConfig.nativeLibraryDir,
                     shareBinds = shareBinds(context),
+                    extraGuestBinds = developer.access.DeveloperAccessWiring.guestBinds(
+                        sandboxConfig.appFilesDir,
+                        java.io.File(sandboxConfig.runtimeDir, "runtime-current/base"),
+                    ),
+                    extraPathEntries = developer.access.DeveloperAccessWiring.guestPathEntries(),
                 )
             },
             overlayInstaller = overlayInstaller,

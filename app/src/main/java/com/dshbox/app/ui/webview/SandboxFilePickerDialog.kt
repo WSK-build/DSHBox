@@ -51,7 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
+import com.dshbox.dsh.renderer.api.DshSelectedFile
 import com.dshbox.app.R
+import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.common.Constants
 import com.dshbox.app.ui.files.Breadcrumb
 import com.dshbox.app.ui.files.DividerColor
@@ -139,9 +141,10 @@ internal fun SandboxFilePickerDialog(
     multiple: Boolean,
     backEnabled: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (Array<Uri>) -> Unit,
+    onConfirm: (List<DshSelectedFile>) -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
     // 工作区逻辑根 = guest /root/projects。物理位置就是 filesDir/user-data ——
     // 也正是 FileProvider 已授权的 user_data 根，两者必须是同一个 File 实例。
     val workspaceRoot = remember { File(context.filesDir, "user-data") }
@@ -461,7 +464,7 @@ internal fun SandboxFilePickerDialog(
                                     // 全部失败（文件被删 / 越出授权根）：明确告知而非静默无反应
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.webview_upload_failed),
+                                        resources.getString(R.string.webview_upload_failed),
                                         Toast.LENGTH_SHORT,
                                     ).show()
                                     onDismiss()
@@ -471,17 +474,17 @@ internal fun SandboxFilePickerDialog(
                                     // 部分失败：不能静默少交——用户会以为全都上传了。
                                     Toast.makeText(
                                         context,
-                                        context.getString(
+                                        resources.getString(
                                             R.string.webview_upload_partial_failed,
                                             skipped,
                                             selected.size,
                                         ),
                                         Toast.LENGTH_LONG,
                                     ).show()
-                                    onConfirm(uris.toTypedArray())
+                                    onConfirm(uris)
                                 }
 
-                                else -> onConfirm(uris.toTypedArray())
+                                else -> onConfirm(uris)
                             }
                         },
                         enabled = selected.isNotEmpty(),
@@ -541,11 +544,11 @@ private fun upTargetOf(
  * 这里没有 Intent 可挂 flag，因此直接对目标包授权——与既有范式对齐，
  * 不依赖「同 UID 应该能读」这一未定义的 ROM 行为。
  */
-private fun mintUris(context: android.content.Context, files: List<File>): List<Uri> {
+private fun mintUris(context: android.content.Context, files: List<File>): List<DshSelectedFile> {
     val authority = ExternalOpener.FILE_PROVIDER_AUTHORITY
     return files.mapNotNull { file ->
         runCatching {
-            FileProvider.getUriForFile(context, authority, file).also { uri ->
+            val uri = FileProvider.getUriForFile(context, authority, file).also { uri ->
                 runCatching {
                     context.grantUriPermission(
                         context.packageName,
@@ -554,6 +557,7 @@ private fun mintUris(context: android.content.Context, files: List<File>): List<
                     )
                 }
             }
+            DshSelectedFile(uri = uri, displayName = file.name, localFile = file)
         }.getOrNull()
     }
 }

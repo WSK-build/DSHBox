@@ -6,8 +6,8 @@
 #   2. 官网资源版本号（?v= 与 versionName 一致，防「新 HTML + 旧 JS」）
 #   3. 个人数据泄露审查（本机路径、用户名、凭据文件、设备号样式）
 #   4. 全量 JVM 单测
-#   5. 完整 Android Lint（lintDebug，与 GitHub CI 一致）
-#   6. release 构建（含 lintVital）
+#   5. 两个 release 变体的完整 Android Lint
+#   6. 两个 release 变体的构建（含 lintVital）
 #
 # 为什么把审计放进门禁：构建文档里曾带着开发机的
 # JDK 绝对路径并随仓库公开。这类内容不会被编译器、单测或 lint 发现，
@@ -27,6 +27,13 @@ cd "$ROOT_DIR"
 
 SKIP_BUILD=0
 [ "${1:-}" = "--skip-build" ] && SKIP_BUILD=1
+GRADLE_ARGS=(
+    --console=plain
+    --no-daemon
+    --max-workers=2
+    -Dorg.gradle.jvmargs=-Xmx3584m
+    -Pkotlin.compiler.execution.strategy=in-process
+)
 
 # python 可执行名在各平台不同（Windows 多为 python，Linux/CI 多为 python3）
 PY=""
@@ -84,24 +91,40 @@ fi
 
 if [ "$SKIP_BUILD" = "0" ]; then
     step "[4/6] 全量 JVM 单测"
-    if ./gradlew testDebugUnitTest --console=plain; then
+    NODE_MAJOR=""
+    if command -v node >/dev/null 2>&1; then
+        NODE_MAJOR=$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)
+    fi
+    if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 24 ]; then
+        fail "JavaScript 兼容测试需要 Node.js 24+；当前版本：$(node --version 2>/dev/null || echo 未安装)"
+    elif ./gradlew testDebugUnitTest "${GRADLE_ARGS[@]}"; then
         echo "[ok] 单测通过"
     else
         fail "单测失败"
     fi
 
-    step "[5/6] 完整 Android Lint"
-    if ./gradlew lintDebug --console=plain; then
-        echo "[ok] Lint 通过"
+    step "[5/6] 完整 Android Lint（System WebView + Gecko，分变体执行）"
+    if ./gradlew :app:lintSystemWebViewDebug "${GRADLE_ARGS[@]}"; then
+        echo "[ok] System WebView 变体 Lint 通过"
     else
-        fail "Lint 失败"
+        fail "System WebView 变体 Lint 失败"
+    fi
+    if ./gradlew :app:lintGeckoDebug "${GRADLE_ARGS[@]}"; then
+        echo "[ok] Gecko 变体 Lint 通过"
+    else
+        fail "Gecko 变体 Lint 失败"
     fi
 
-    step "[6/6] release 构建（含 lintVital）"
-    if ./gradlew :app:assembleRelease --console=plain; then
-        echo "[ok] 构建通过"
+    step "[6/6] 两个 release 变体构建（含 lintVital，分变体执行）"
+    if ./gradlew :app:assembleSystemWebViewRelease "${GRADLE_ARGS[@]}"; then
+        echo "[ok] System WebView Release 构建通过"
     else
-        fail "构建失败"
+        fail "System WebView Release 构建失败"
+    fi
+    if ./gradlew :app:assembleGeckoRelease "${GRADLE_ARGS[@]}"; then
+        echo "[ok] Gecko Release 构建通过"
+    else
+        fail "Gecko Release 构建失败"
     fi
 else
     echo

@@ -1,5 +1,6 @@
 package com.dshbox.app.sandbox
 
+import com.dshbox.app.common.Constants
 import java.io.File
 
 data class SandboxConfig(
@@ -37,6 +38,19 @@ data class SandboxConfig(
      * 调用侧按存在性跳过，会话照常启动。
      */
     val shareBindsProvider: () -> List<Pair<String, File>> = { emptyList() },
+    /**
+     * 追加的 PRoot 绑定参数（完整 `--bind=宿主路径[:guest路径]` 形式）。
+     *
+     * 由 app 层按启用中的能力注入，本模块不解释其语义；网页端 DSH 与 guest 命令
+     * 共用同一组追加项。宿主目录须由注入方先建好——PRoot 对不存在的绑定目标会报错。
+     */
+    val extraGuestBindsProvider: () -> List<String> = { emptyList() },
+    /**
+     * 追加到 guest PATH 的目录（位于 CLI 包装脚本目录之后、系统路径之前）。
+     *
+     * 与 [extraGuestBindsProvider] 配套：绑定提供目录，此处让该目录出现在 PATH 上。
+     */
+    val extraPathEntriesProvider: () -> List<String> = { emptyList() },
 ) {
     val runtimeDir: File = File(appFilesDir, "runtime")
     val sandboxDir: File = File(appFilesDir, "sandbox")
@@ -54,8 +68,8 @@ data class SandboxConfig(
     val npmCacheDir: File = File(appCacheDir ?: appFilesDir, "npm-cache")
 
     /**
-     * guest 侧「工具链缓存」挂载点的宿主目录（pnpm 的 store 与 corepack 缓存），
-     * 绑定到 guest 的 `/opt/dshbox-cache`。
+     * guest 侧「工具链缓存」挂载点的宿主目录（pnpm 的 store、corepack 缓存、
+     * pnpm 镜像源覆盖文件），绑定到 guest 的 `/opt/dshbox-cache`。
      *
      * 放在 appFilesDir 下而非 `user-data`：与 [dshShimDir] 同理 —— 不进用户可见的工作区、
      * 不进备份范围。这个挂载点解决两处落盘问题：
@@ -64,7 +78,7 @@ data class SandboxConfig(
      *    既不在 Files 页可见，也不在清理规则覆盖范围内（与当年 npm 缓存膨胀 446MB 同类）。
      * 终端与 guest 命令都会绑它；宿主目录在绑定时 mkdirs 创建。
      */
-    val guestCacheDir: File = File(appFilesDir, "guest-cache")
+    val guestCacheDir: File = File(appFilesDir, Constants.GUEST_CACHE_DIR_LEAF)
 
     /**
      * 宿主侧存放「Android 硬链接兼容垫片」的目录，启动 DSH 时 bind 到 guest 的

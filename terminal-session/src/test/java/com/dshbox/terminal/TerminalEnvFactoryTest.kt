@@ -42,6 +42,8 @@ class TerminalEnvFactoryTest {
         // DSH CLI：包装脚本目录必须在 PATH **头部**（`dsh` / `pnpm` 靠它找到），
         // 且 profile 相关的三个变量与 app 启动网页端时同值。
         assertTrue(env["PATH"]!!.startsWith("/root/projects/.dsh/dshbox/bin:"))
+        // 登录 shell 跳过了 /etc/profile，提示符必须由 env 提供（否则变成 bash-5.x#）。
+        assertEquals("\\u@\\h:\\w\\$ ", env["PS1"])
         assertEquals("/root/projects/.dsh", env["DSH_HOME"])
         assertEquals(
             "/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",

@@ -51,8 +51,12 @@ internal object OwnPluginProbe {
      * 探测结果 → 动作。
      *
      * **只有 [MARKER_NEEDS_INSTALL] 会走安装**：其余一切（未就绪、已最新、以及"没拿到标记"）
-     * 都必须放过用户 profile —— 其中"没拿到标记"覆盖 proot spawn 失败、guest 异常、
-     * 脚本被中断等情况，信息不足时宁可下次启动再试。
+     * 都返回 [SKIP] —— 其中"没拿到标记"覆盖 proot spawn 失败、guest 异常、脚本被中断等
+     * 情况，信息不足时宁可下次启动再试。
+     *
+     * [SKIP] 的语义是"本探测器没有理由要求重装"，不排斥调用方叠加自己的判据：例如
+     * 随包插件除指纹外还必须确认 profile 已把它声明为依赖，否则任何一次 pnpm 安装都会
+     * 把它当游离包清掉（见调用方 `ensureOwnPlugin`）。
      */
     fun actionFor(marker: String?): Action = when (marker) {
         MARKER_NEEDS_INSTALL -> Action.ENSURE_INSTALL

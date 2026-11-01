@@ -298,4 +298,59 @@ class UpdateDetectorTest {
         assertEquals("file", kindOfSpec("file:/tmp/foo"))
         assertEquals("github", kindOfSpec("github:owner/repo"))
     }
+    // ───────────────── 更新门控：这个包该不该由市场更新 ─────────────────
+    //
+    // 对齐上游 isUpdatablePlugin。重点是**不能误伤插件**，也不能放过普通库：
+    // 对普通库执行 add <name>@latest 会静默改写 profile 的依赖版本而不动 bundles。
+
+    @Test
+    fun `包目录没有清单时允许更新`() {
+        // 没装全的包允许"更新"把它补齐。
+        assertTrue(
+            isUpdatablePackage("x", hasManifest = false, hasDshField = false, inBundles = false, userPatchNames = emptySet()),
+        )
+    }
+
+    @Test
+    fun `声明了 dsh 字段的包允许更新`() {
+        assertTrue(
+            isUpdatablePackage("x", hasManifest = true, hasDshField = true, inBundles = false, userPatchNames = emptySet()),
+        )
+    }
+
+    @Test
+    fun `在 bundles 里的包允许更新`() {
+        assertTrue(
+            isUpdatablePackage("x", hasManifest = true, hasDshField = false, inBundles = true, userPatchNames = emptySet()),
+        )
+    }
+
+    @Test
+    fun `用户补丁层按名引用了它也允许更新`() {
+        assertTrue(
+            isUpdatablePackage("x", hasManifest = true, hasDshField = false, inBundles = false, userPatchNames = setOf("x")),
+        )
+    }
+
+    @Test
+    fun `补丁层引用的是别的包时不放行`() {
+        // 判据必须按包名逐条比对：只看"补丁层有无引用"会把所有普通库都放行。
+        assertFalse(
+            isUpdatablePackage("x", hasManifest = true, hasDshField = false, inBundles = false, userPatchNames = setOf("other")),
+        )
+    }
+
+    @Test
+    fun `补丁层读不出时保守放行`() {
+        assertTrue(
+            isUpdatablePackage("x", hasManifest = true, hasDshField = false, inBundles = false, userPatchNames = null),
+        )
+    }
+
+    @Test
+    fun `普通库依赖不放行`() {
+        assertFalse(
+            isUpdatablePackage("x", hasManifest = true, hasDshField = false, inBundles = false, userPatchNames = emptySet()),
+        )
+    }
 }

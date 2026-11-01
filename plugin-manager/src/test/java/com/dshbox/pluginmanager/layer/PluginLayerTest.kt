@@ -120,6 +120,17 @@ class PluginLayerTest {
     }
 
     @Test
+    fun `子条目 id 带冒号也能写入并读回`() {
+        // 冒号在 YAML 里裸写会被当成映射；写入侧必须加引号，读回必须还原。
+        val (layer, file) = tempLayer()
+        assertTrue(layer.setDisabled("dsh-plugin-x:side-panel", true))
+        assertTrue(file.readText(Charsets.UTF_8).contains("- id: 'dsh-plugin-x:side-panel'"))
+        assertEquals(setOf("dsh-plugin-x:side-panel"), layer.disabledIds())
+        assertTrue(layer.removePatchEntry("dsh-plugin-x:side-panel"))
+        assertTrue(layer.disabledIds().isEmpty())
+    }
+
+    @Test
     fun `插入块之后的停用行不会被吞掉`() {
         val (layer, _) = tempLayer()
         val insert = LayerInsertEntry(

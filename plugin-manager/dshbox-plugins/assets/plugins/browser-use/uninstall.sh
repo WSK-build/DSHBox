@@ -101,6 +101,12 @@ const data = JSON.parse(fs.readFileSync(file, 'utf8'))
 const bundles = data?.dsh?.profile?.bundles
 if (!Array.isArray(bundles)) process.exit(1)
 data.dsh.profile.bundles = bundles.filter((bundle) => bundle !== name)
+// 同时摘掉依赖声明：装着时 install.sh 写了 dependencies[<pkg>] = file:<暂存目录>。
+// 只删目录不摘声明的话，下一次任何 pnpm 安装都会按 manifest 把它重新装回来
+// （磁盘上复活、但不在 bundles 所以不加载），与"已卸载"自相矛盾。
+if (data.dependencies && typeof data.dependencies === 'object') {
+  delete data.dependencies[name]
+}
 const tmp = path.join(path.dirname(file), `.browser-use-package-json.${process.pid}.${Date.now()}`)
 try {
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', { flag: 'wx', mode: st.mode })

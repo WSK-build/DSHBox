@@ -32,84 +32,6 @@ window.__ModuleLoader__.load({
     }
 
     // =====================================================================
-    // 0) WebView 兼容补丁：非标准 scheme 的 URL host 解析
-    // =====================================================================
-    // 背景：dsh 的 `dsh-client-resources` 用
-    //   `protocolOf(address)` 从资源地址取协议名，实现依赖 `URL.hostname`：
-    //     const u = new URL('dsh-resource://file/session/<id>/<path>');
-    //     if (u.protocol !== 'dsh-resource:') return undefined;
-    //     return u.hostname === '' ? undefined : u.hostname.toLowerCase();
-    //   旧内核（如 WebView 126）对**非特殊 scheme** 不解析 authority：
-    //     hostname === ''            pathname === '//file/session/…'
-    //   → 取不到 'file' → provider 匹配失败 → 右栏预览显示「文件资源服务不可用」。
-    //   新内核（WebView 138）按标准解析：hostname === 'file'，一切正常。
-    //
-    // 做法：**运行期修正 URL 解析行为**，不改 dsh 源码（与硬链接垫片同一哲学）。
-    //   仅当探测确认内核有此缺陷时才安装；修正范围严格限定为
-    //   「hostname 为空**且** pathname 以 `//` 开头」的地址——即缺陷表现本身。
-    //   特殊 scheme（http/https/…）与无 authority 的 scheme（mailto: 等）原样放行。
-    // 整个垫片包置于 try/catch 内：抛异常会杀死工厂求值 = 全插件消失。
-    try { (function installUrlHostCompat() {
-      var NativeURL = window.URL;
-      if (typeof NativeURL !== 'function') return;
-
-      // 特性探测：内核若能正确解析，则**完全不介入**（新内核零改动）。
-      try {
-        if (new NativeURL('dsh-resource://file/x').hostname === 'file') return;
-      } catch (e) {
-        return; // 连构造都抛异常的内核不在此补丁的职责范围
-      }
-
-      /**
-       * 把「authority 被并入 pathname」的解析结果还原为标准形态。
-       * 返回修正后的 URL 对象；地址不符合该缺陷特征时原样返回。
-       *
-       * 注意：**必须从传入实例读 pathname**（而不是内部再 new 一个），
-       * 否则读到的是底层原生结果而非该内核对外暴露的视图——
-       * 缺陷恰恰体现在「对外视图」上，从内部读会让修复逻辑完全不生效。
-       */
-      function repair(orig) {
-        var pn;
-        try { pn = orig.pathname; } catch (e) { return orig; }
-        if (typeof pn !== 'string' || pn.slice(0, 2) !== '//') return orig;
-        var rest = pn.slice(2);
-        var slash = rest.indexOf('/');
-        var authority = slash < 0 ? rest : rest.slice(0, slash);
-        if (authority === '') return orig;
-        var fixedPath = slash < 0 ? '/' : rest.slice(slash);
-        // 用 Proxy 覆盖三个受影响的只读属性，其余（协议、查询、方法…）原样透传。
-        // 函数属性需绑定到原生对象，否则 brand check 会失败（URL 方法要求 this 是真 URL）。
-        var overrides = {
-          hostname: authority,
-          host: (orig.port ? authority + ':' + orig.port : authority),
-          pathname: fixedPath,
-        };
-        return new Proxy(orig, {
-          get: function (t, p) {
-            if (Object.prototype.hasOwnProperty.call(overrides, p)) return overrides[p];
-            var v = t[p];
-            return typeof v === 'function' ? v.bind(t) : v;
-          },
-        });
-      }
-
-      function CompatURL(input, base) {
-        var orig = arguments.length > 1 ? new NativeURL(input, base) : new NativeURL(input);
-        return repair(orig);
-      }
-      // 静态成员（createObjectURL / revokeObjectURL / canParse / parse …）原样继承。
-      Object.getOwnPropertyNames(NativeURL).forEach(function (k) {
-        if (k === 'prototype' || k === 'length' || k === 'name') return;
-        try { CompatURL[k] = NativeURL[k]; } catch (e) { /* 只读属性忽略 */ }
-      });
-      CompatURL.prototype = NativeURL.prototype; // 保证 instanceof 语义不变
-      window.URL = CompatURL;
-      try {
-        console.warn('[DSHBox] URL host compat shim installed (legacy WebView detected)');
-      } catch (e) { /* noop */ }
-    })(); } catch (e) { bootLog('url-shim:' + (e && e.message || e)); }
-
-    // =====================================================================
     // 0b) 键盘抑制：只在用户点输入区时才弹软键盘（多路分层 + 观测自适应）
     // =====================================================================
     // 现象：新建对话、从侧栏切会话、点「+」、点模型选择，都会误弹软键盘。
@@ -734,6 +656,294 @@ window.__ModuleLoader__.load({
       '}',
     ].join('\n');
 
+    // =====================================================================
+    // 0a) Gecko 键盘顶栏钉住（仅 Gecko；System WebView 行为已正常，零动作）。
+    // =====================================================================
+    // 背景（见 docs/DSH-GeckoView双APK架构方案.md 待办项）：Gecko 把软键盘当布局
+    //   视口变化（reflow + dvh），会把 DSH 会话顶栏（"对话/轨迹"横幅）整体顶出屏幕；
+    //   System WebView（固定 Chrome/128 UA）只缩 visual viewport，顶栏正常。宿主侧
+    //   四条方案（视图收缩 / 仅 clipping / maxHeight 只增不减 / maxHeight 跟随归零）
+    //   已全部真机证伪，根治点只能在页面运行时。
+    // 约束：
+    //   ① 严格按 UA 判定仅 Gecko 启用；System WebView 分支零 DOM 写入、零监听。
+    //   ② 插件开关（enabled）关闭时一并失效并还原顶栏。
+    //   ③ 幂等：重复执行不叠加 visualViewport/window 监听。
+    //   ④ 与既有 composer 上移逻辑（installKeyboardFix）共存、互不触碰对方 DOM。
+    //   ⑤ 钉住前保存顶栏内联样式原值，键盘收起/开关关闭时精确还原，不硬编码覆盖
+    //      DSH 自身样式；顶栏被 React 重建（元素换掉）时先还原旧元素再钉新元素。
+    /** 是否 Gecko 内核（GeckoView 内置固定 Release）。
+     *   判定用 UA 里的 Firefox/ 构建标识：GeckoView 的 UA 形如
+     *   "... rv:158.0) Gecko/158.0 Firefox/158.0"，必含 Firefox/；而 System WebView
+     *   固定为 Chromium UA（"... (KHTML, like Gecko) Chrome/128.0.0.0 ..."），只含
+     *   无害的 "like Gecko" 字样、绝无 Firefox/，故返回 false → 后续零动作。
+     *   注意：不能用裸 "Gecko" 匹配，否则会把 Chromium UA 里的 "like Gecko" 误判为 Gecko。 */
+    function isGecko() {
+      try { return /Firefox\//i.test(navigator.userAgent || ''); } catch (e) { return false; }
+    }
+    /** 定位 DSH 会话顶栏（"对话/轨迹"横幅所在元素）。
+     *   不用哈希类名（CSS Modules 每次构建都变），只用结构：centerCol 内的 <header>
+     *   后代。找不到 <header> 时返回 null（静默不钉）；不做 firstElementChild
+     *   兜底——centerCol 首位子元素可能是消息列表，误钉会把整个会话区变成 fixed。 */
+    function findTopBar() {
+      var col = document.querySelector('[class*="centerCol"]');
+      if (!col) return null;
+      return col.querySelector('header') || null;
+    }
+    /** Reserve keyboard space without displacing a pinned header.  Gecko leaves
+     *   the layout viewport static while shrinking visualViewport; translating
+     *   the header then overlaps scrolled text, so add transparent padding to the
+     *   actual conversation scroller. */
+    function pinSpace(height) {
+      var scroller = document.querySelector('[class*="scrollBody"]');
+      if (!scroller) return;
+      if (height > 0) {
+        scroller.style.boxSizing = 'border-box';
+        scroller.style.paddingBottom = Math.max(0, Math.round(height)) + 'px';
+      } else {
+        scroller.style.paddingBottom = '';
+        scroller.style.boxSizing = '';
+      }
+    }
+    /** Return only the visual viewport area not already represented by its pan.
+     *   Gecko may resize the layout viewport, pan the visual viewport, or do both.
+     *   Adding the full height difference in the pan case reserves the keyboard
+     *   twice and creates a trailing blank area. */
+    function keyboardReservedPadding(innerHeight, visualHeight, visualOffsetTop) {
+      var viewportHeight = Number(innerHeight);
+      var visibleHeight = Number(visualHeight);
+      var panOffset = Number(visualOffsetTop);
+      if (!isFinite(viewportHeight) || !isFinite(visibleHeight) ||
+          !isFinite(panOffset) || viewportHeight <= 0 || visibleHeight <= 0) {
+        return 0;
+      }
+      var layoutShrink = Math.max(0, viewportHeight - visibleHeight);
+      return Math.max(0, Math.round(layoutShrink - Math.max(0, panOffset)));
+    }
+    /** Gecko 下把顶栏钉在 visualViewport 顶部。getEnabled 取实时开关态（apply 传入
+     *   function(){ return enabled; }），便于开关关闭时即时还原。 */
+    function installGeckoTopBarPin(getEnabled) {
+      // 幂等闸：本次页面生命周期只装一次，重复求值/重试不叠加监听。
+      if (window.__dshGeckoTopBarPin === true) return;
+      window.__dshGeckoTopBarPin = true;
+      // System WebView：严格零动作（不挂监听、不写 DOM）。函数直接返回，但保留幂等
+      // 标记避免后续 Gecko 场景在「同 UA 不变」的前提下重复进入。
+      if (!isGecko()) return;
+
+      var vv = window.visualViewport;
+      var bar = null;     // 当前被钉住的顶栏元素
+      var saved = null;   // 钉住前的内联样式快照
+      var PINNED = false;
+      var composerFocusActive = false;
+      var scheduled = false;
+      var headerObserver = null;
+      var observedHeaderParent = null;
+
+      function saveOriginal(el) {
+        return {
+          position: el.style.position || '',
+          top: el.style.top || '',
+          left: el.style.left || '',
+          right: el.style.right || '',
+          bottom: el.style.bottom || '',
+          zIndex: el.style.zIndex || '',
+          width: el.style.width || '',
+          maxWidth: el.style.maxWidth || '',
+          backgroundColor: el.style.backgroundColor || '',
+          backdropFilter: el.style.backdropFilter || '',
+          transform: el.style.transform || '',
+          willChange: el.style.willChange || '',
+        };
+      }
+      // fixed 会把顶栏从原层叠父容器里摘出来：父级/backdrop 提供的背景随之消失，
+      // 下方滚动内容就会透过来（Gecko 特有观感）。解析一个不透明底色补上：
+      // 先看顶栏自身，再沿祖先链找第一个不透明背景，最后回落到根/body。
+      function parseAlpha(color) {
+        var m = /^rgba?\(([^)]+)\)$/i.exec(color || '');
+        if (!m) return 1;
+        var parts = m[1].split(',');
+        if (parts.length < 4) return 1;
+        var a = parseFloat(parts[3]);
+        return isFinite(a) ? a : 1;
+      }
+      function resolveOpaqueBackground(el) {
+        var gcs = function (node) {
+          try {
+            return window.getComputedStyle ? window.getComputedStyle(node) : null;
+          } catch (e) { return null; }
+        };
+        var node = el;
+        while (node && node !== document.documentElement) {
+          var st = gcs(node);
+          var bg = (st && st.backgroundColor) || '';
+          if (bg && bg !== 'transparent' && parseAlpha(bg) >= 1) return bg;
+          node = node.parentElement;
+        }
+        var rootStyle = gcs(document.documentElement);
+        var rootBg = (rootStyle && rootStyle.backgroundColor) || '';
+        if (rootBg && rootBg !== 'transparent' && parseAlpha(rootBg) >= 1) return rootBg;
+        if (document.body) {
+          var bodyBg = (gcs(document.body) && gcs(document.body).backgroundColor) || '';
+          if (bodyBg && bodyBg !== 'transparent' && parseAlpha(bodyBg) >= 1) return bodyBg;
+        }
+        return '#ffffff';
+      }
+      function currentTranslateY(el) {
+        var m = /translateY\((-?[\d.]+)px\)/.exec(el.style.transform || '');
+        return m ? parseFloat(m[1]) : 0;
+      }
+      // 键盘弹起后顶栏随页面 reflow 被滚出：用 transform 把它视觉上平移回
+      // 可视区顶部。不脱离文档流、不改 position/z-index、不强制合成层
+      // （fixed+translateZ+will-change 在 Gecko/TextureView 下会引出侧栏
+      // 状态不一致与页面卡死）。rect.top 已含当前 transform，需先扣掉。
+      function applyPinPosition(el) {
+        var ty = currentTranslateY(el);
+        var naturalTop = el.getBoundingClientRect().top - ty;
+        var target = naturalTop < 0 ? -naturalTop : 0;
+        if (target === 0 && vv) {
+          var visualOffset = typeof vv.offsetTop === 'number' ? vv.offsetTop : 0;
+          if (visualOffset > naturalTop) target = visualOffset - naturalTop;
+        }
+        var next = target > 0 ? ('translateY(' + target + 'px)') : '';
+        if ((el.style.transform || '') !== next) el.style.transform = next;
+      }
+      function pin(el) {
+        saved = saveOriginal(el);
+        // 顶栏平移后下方内容会滚到其视觉区域下层，补一个从原样式链解析出的
+        // 不透明底色，避免透字。
+        el.style.backgroundColor = resolveOpaqueBackground(el);
+        applyPinPosition(el);
+        PINNED = true;
+        bar = el;
+        window.__dsh_kb_topbar = el;
+      }
+      function restore() {
+        pinSpace(0);
+        if (headerObserver) {
+          try { headerObserver.disconnect(); } catch (e) {}
+          headerObserver = null;
+          observedHeaderParent = null;
+        }
+        if (!bar || !saved) { PINNED = false; bar = null; return; }
+        var el = bar;
+        el.style.position = saved.position;
+        el.style.top = saved.top;
+        el.style.left = saved.left;
+        el.style.right = saved.right;
+        el.style.bottom = saved.bottom;
+        el.style.zIndex = saved.zIndex;
+        el.style.width = saved.width;
+        el.style.maxWidth = saved.maxWidth;
+        el.style.backgroundColor = saved.backgroundColor;
+        el.style.backdropFilter = saved.backdropFilter;
+        el.style.transform = saved.transform;
+        el.style.willChange = saved.willChange;
+        bar = null; saved = null; PINNED = false;
+        window.__dsh_kb_topbar = null;
+      }
+      // 暴露给 setEnabled：开关关闭时即时还原顶栏（即便键盘此刻正弹起）。
+      window.__dsh_kb_topbar_restore = restore;
+
+      function composerFocused() {
+        try {
+          var el = document.activeElement;
+          return !!(el && typeof el.closest === 'function' &&
+            el.closest('[data-composer-input], [data-composer-card]'));
+        } catch (e) { return false; }
+      }
+
+      function scheduleApply() {
+        if (scheduled) return;
+        scheduled = true;
+        var run = function () {
+          scheduled = false;
+          apply();
+        };
+        if (typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(run);
+        } else {
+          setTimeout(run, 0);
+        }
+      }
+
+      function observeHeaderParent(el) {
+        if (typeof window.MutationObserver !== 'function') return;
+        var parent = el.parentElement || null;
+        if (parent === observedHeaderParent && headerObserver) return;
+        if (headerObserver) {
+          try { headerObserver.disconnect(); } catch (e) {}
+          headerObserver = null;
+        }
+        observedHeaderParent = parent;
+        if (!parent) return;
+        try {
+          headerObserver = new window.MutationObserver(scheduleApply);
+          headerObserver.observe(parent, { childList: true });
+          window.__dsh_gecko_topbar_observer = headerObserver;
+        } catch (e) {
+          headerObserver = null;
+          observedHeaderParent = null;
+        }
+      }
+
+      function apply() {
+        // 开关关闭：逻辑失效并还原（零 DOM 残留）。
+        if (!getEnabled || !getEnabled()) { if (PINNED) restore(); return; }
+        var el = findTopBar();
+        if (!el) { if (PINNED) restore(); return; }
+        observeHeaderParent(el);
+        var vvH = (vv && vv.height) || 0;
+        var innerHeight = window.innerHeight || 0;
+        var visualOffsetTop = (vv && vv.offsetTop) || 0;
+        var keyboardHeight = Math.max(0, Math.round(innerHeight - vvH));
+        var viewportKeyboard = vvH > 0 && keyboardHeight > 1;
+        var shouldPin = composerFocusActive || composerFocused() || viewportKeyboard;
+        pinSpace(shouldPin
+          ? keyboardReservedPadding(innerHeight, vvH, visualOffsetTop)
+          : 0);
+        if (shouldPin) {
+          if (PINNED && bar === el) {
+            // 已钉在当前顶栏：随可视视口变化重新计算位移。
+            applyPinPosition(el);
+          } else {
+            if (PINNED && bar !== el) restore(); // 顶栏被 React 换掉，先还原旧元素
+            pin(el);
+          }
+        } else if (PINNED) {
+          restore(); // 键盘收起：还原为 DSH 原始样式
+        }
+      }
+
+      if (vv) {
+        vv.addEventListener('resize', scheduleApply);
+        vv.addEventListener('scroll', scheduleApply);
+      }
+      // 兜底：部分内核 layout 视口 resize 与 vv 事件顺序不一致时仍触发一次。
+      window.addEventListener('resize', scheduleApply);
+      window.addEventListener('scroll', scheduleApply, true);
+      document.addEventListener('scroll', scheduleApply, true);
+      document.addEventListener('focusin', function () {
+        composerFocusActive = composerFocused();
+        scheduleApply();
+      }, true);
+      document.addEventListener('focusout', function () {
+        setTimeout(function () {
+          composerFocusActive = composerFocused();
+          scheduleApply();
+        }, 0);
+      }, true);
+      // 挂载后跑一次（键盘已在弹起状态时也能立即钉住）。
+      composerFocusActive = composerFocused();
+      setTimeout(scheduleApply, 0);
+    }
+    // 暴露内部实现给 standalone 测试（载入即执行、不影响插件正常加载路径）。
+    exports.__test = {
+      isGecko: isGecko,
+      findTopBar: findTopBar,
+      installGeckoTopBarPin: installGeckoTopBarPin,
+      pinSpace: pinSpace,
+      keyboardReservedPadding: keyboardReservedPadding,
+    };
+
     exports.apply = function apply(ctx) {
       if (!ctx || !ctx.layout) return;
 
@@ -914,6 +1124,10 @@ window.__ModuleLoader__.load({
         if (backdrop) backdrop.style.display = 'none';
         // 键盘修复的 transform 清理
         if (window.__dsh_kb_lift) { window.__dsh_kb_lift.style.transform = ''; window.__dsh_kb_lift = null; }
+        // Gecko 顶栏钉住清理：开关关闭时还原顶栏（即便键盘此刻正弹起）。
+        if (typeof window.__dsh_kb_topbar_restore === 'function') {
+          try { window.__dsh_kb_topbar_restore(); } catch (e) { /* noop */ }
+        }
         // brand 文本随模式切换
         applyBrand();
         // 已注入的 chip 全部刷新（可能同时存在多实例：重开面板未卸载时）
@@ -1488,6 +1702,13 @@ window.__ModuleLoader__.load({
       // 本段停用后该字段不会再被写入，清理分支自然不生效，无副作用。
       // try { installKeyboardFix(); } catch (e) { bootLog('kb-fail:' + (e && e.message || e)); }
 
+      // 9b) Gecko 键盘顶栏钉住（仅 Gecko；System WebView 零动作）。
+      //     与 composer 上移逻辑（installKeyboardFix）共存：本段只处理顶栏、不碰 composer 卡片。
+      //     开关关闭或 System WebView 下此处不进入安装路径（installGeckoTopBarPin 内部再二次守门）。
+      try {
+        if (enabled && isGecko()) installGeckoTopBarPin(function () { return enabled; });
+      } catch (e) { bootLog('gecko-topbar-fail:' + (e && e.message || e)); }
+
       // 10) Brand: 【已停用 —— 实现整体注释保留，便于回退】
       //
       // 停用理由：web profile 启用上游 `ui-brand-official` 条目，它通过
@@ -1557,61 +1778,6 @@ window.__ModuleLoader__.load({
           if (backdrop && !backdrop.isConnected) document.body.appendChild(backdrop);
         } catch (e) { /* noop */ }
       }, 1000);
-
-      // =====================================================================
-      // 13) 「打开配置文件」接管
-      // =====================================================================
-      // 背景：设置面板顶部的「打开配置文件」按钮
-      // （dsh-client-ui-settings-general，仅 loopback 时出现 —— 手机上 127.0.0.1
-      //  直连也算 loopback，所以按钮**会**出现）调用
-      //   ctx.remote.settings.openSettingsDocument()
-      // 宿主端用 OS 默认应用打开 `<DSH_HOME>/settings.yaml`；
-      // 而宿主跑在 PRoot 沙箱里 —— 没有 xdg-open、没有「默认应用」，
-      // 结果必然是 UI 弹「无法打开配置文件」。
-      //
-      // 处置：接管该按钮 —— 拦截点击后让页面导航到内部 scheme
-      //   dshbox://open-settings-document
-      // 由原生 WebViewClient.shouldOverrideUrlLoading 消费，再用 app 内置
-      // 文件查看器打开（自带 YAML 高亮，不依赖任何外部编辑器/查看器）。
-      // 路径由原生侧按 DSH_HOME=/root/projects/.dsh 解析到 user-data/.dsh/。
-      //
-      // 按钮识别：dsh 此命名空间只注册了 zh/en 两套字典
-      // （源码 ctx.locale.register(NS, { zh, en })），直接按可显示文本精确匹配，
-      // 比猜哈希类名/结构稳；其余语言未安装该文案时 dsh 回落英文。
-      var OPEN_DOC_LABELS = [
-        '打开配置文件',             // zh
-        'Open configuration file',  // en
-      ];
-
-      function isOpenDocButton(btn) {
-        if (!btn) return false;
-        var label = (btn.textContent || '').replace(/\s+/g, ' ').trim();
-        return OPEN_DOC_LABELS.indexOf(label) >= 0;
-      }
-
-      try { (function installOpenDocumentShim() {
-        document.addEventListener('pointerdown', function (ev) {
-          if (!(ev.target instanceof Node)) return;
-          var btn = ev.target.closest ? ev.target.closest('button') : null;
-          if (!isOpenDocButton(btn)) return;
-          ev.preventDefault();
-          ev.stopPropagation();
-          ev.stopImmediatePropagation();
-          // 主框架导航一定经过原生 shouldOverrideUrlLoading；返回 true 即被消费，
-          // 页面不会被真正跳走（即便万一未被消费也只是 ERR_UNKNOWN_URL_SCHEME，刷新可恢复）。
-          try {
-            window.location.href = 'dshbox://open-settings-document';
-          } catch (e) { /* noop */ }
-        }, true);
-        document.addEventListener('click', function (ev) {
-          if (!(ev.target instanceof Node)) return;
-          var btn = ev.target.closest ? ev.target.closest('button') : null;
-          if (!isOpenDocButton(btn)) return;
-          ev.preventDefault();
-          ev.stopPropagation();
-          ev.stopImmediatePropagation();
-        }, true);
-      })(); } catch (e) { bootLog('open-doc-fail:' + (e && e.message || e)); }
 
       // =====================================================================
       // 14) 附件直达按钮（工具行「+」右侧）

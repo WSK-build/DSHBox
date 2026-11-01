@@ -76,6 +76,9 @@ object TerminalCommandFactory {
         // Shadow kernel-restricted /proc files (Android 16 SELinux denies
         // /proc/stat etc. to untrusted_app) with readable fabricated sources.
         addAll(extraBinds)
+        // 能力模块追加的绑定（宿主侧注入，本模块不解释语义）；与网页端 DSH、
+        // guest 命令三处 PRoot 启动共用同一组追加项。
+        addAll(paths.extraGuestBinds)
         // Bind the Android linker config tree when the host provides it
         // (Android 11+). The guest entry is the rootfs's own bash and no
         // longer boots a host binary, so the original "silence the host
@@ -93,12 +96,23 @@ object TerminalCommandFactory {
             // snippet is Debian-side provisioning, so bash runs it natively.
             add("/usr/bin/bash")
             add("-c")
-            add("${initSnippet.trimEnd()} exec /usr/bin/bash --login")
+            add("${initSnippet.trimEnd()} exec /usr/bin/bash ${LOGIN_FLAGS.joinToString(" ")}")
         } else {
             add("/usr/bin/bash")
-            add("--login")
+            addAll(LOGIN_FLAGS)
         }
     }
+
+    /**
+     * 登录 shell 的启动参数。
+     *
+     * **必须带 `--noprofile`**：基础镜像的 `/etc/profile` 里有一行
+     * `PATH="/usr/local/sbin:…"` 后 `export PATH`，会把调用方注入的 PATH 整段覆盖——
+     * 能力的 `/opt/elevation/bin`（以及 `/system/bin`）就是在这里被冲掉的（该行为已在
+     * 设备上验证：`printenv PATH` 只剩 shim 与 Debian 默认值）。基础镜像属独立发包层、
+     * 不可修改，故由调用侧跳过 profile；PATH 与提示符改由 env 提供（见 TerminalEnvFactory）。
+     */
+    private val LOGIN_FLAGS = listOf("--noprofile", "--login")
 
     /** Minimal Android shell used when the sandbox is unavailable. */
     fun failsafeShell(): List<String> = listOf(

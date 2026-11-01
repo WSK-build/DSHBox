@@ -3,7 +3,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -14,9 +13,13 @@ if (hasReleaseKeystore) {
     FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
 }
 
-android {
+extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
     namespace = "com.dshbox.app"
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     signingConfigs {
         create("release") {
@@ -37,11 +40,25 @@ android {
         minSdk = 29
         targetSdk = 36
         // 多语言版本：联合国六语 + 语言选择器 + 硬编码清零 + 布局恒 LTR + i18n 门禁。
-        versionCode = 9
-        versionName = "1.5.0"
+        versionCode = 10
+        versionName = "1.5.1"
+        buildConfigField("String", "DSH_GECKOVIEW_VERSION", "\"${libs.versions.geckoview.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+    }
+
+    flavorDimensions += "dshRenderer"
+    productFlavors {
+        create("systemWebView") {
+            dimension = "dshRenderer"
+        }
+        create("gecko") {
+            dimension = "dshRenderer"
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
+        }
     }
 
     buildTypes {
@@ -61,9 +78,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -73,7 +87,7 @@ android {
             // 运行环境大层（base/node/android-side/dsh）不进入源码仓库，单独放在发布目录
             // runtime/android-assets（runtime/ 与 dsh/ 子目录），保证打包后仍是 assets/runtime/*
             // 与 assets/dsh/* 路径。仓库单独 clone 时请先获取 runtime/。
-            assets.srcDirs("../../runtime/android-assets")
+            assets.directories.add("../../runtime/android-assets")
         }
     }
     packaging {
@@ -87,7 +101,15 @@ android {
     }
 }
 
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+
 dependencies {
+    // DSH 渲染器按 flavor 选择具体引擎，共享协议始终可用。
+    add("systemWebViewImplementation", project(":dsh-renderer:api"))
+    add("systemWebViewImplementation", project(":dsh-renderer:system"))
+    add("geckoImplementation", project(":dsh-renderer:api"))
+    add("geckoImplementation", project(":dsh-renderer:gecko"))
+
     implementation(project(":common"))
     implementation(project(":browser:browser-api"))
     implementation(project(":browser:browser-runtime"))
@@ -141,5 +163,11 @@ dependencies {
 
 apply(from = "license-assets.gradle")
 
-// 注：`:pilot` 摘除后，ABI 过滤脚本（原 pilot/gradle/pilot-abi.gradle，动机来自 OpenCV/ML Kit 的
-// 冗余 ABI）一并移除，恢复 AGP 默认全 ABI 打包。若将来重新引入多 ABI 依赖，按需再挂。
+// Preserve the existing CI/release entry point after introducing renderer flavors.
+// Without this aggregate, an unqualified testDebugUnitTest would omit app tests.
+tasks.register("testDebugUnitTest") {
+    group = "verification"
+    description = "Run both DSH renderer app variants and compatibility semantics"
+    dependsOn("testSystemWebViewDebugUnitTest", "testGeckoDebugUnitTest",
+        ":dsh-renderer:system:testCompatibilityJavaScript")
+}

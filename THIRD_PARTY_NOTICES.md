@@ -17,12 +17,14 @@
 | Bouncy Castle（`org.bouncycastle:bcpg-jdk18on` 1.78.1，传递 `bcprov-jdk18on`/`bcutil-jdk18on`） | Debian `Release.gpg` OpenPGP 验签（在线导入 Linux 层的信任链锚点） | MIT（Bouncy Castle Licence；bcprov 内部分组件为 Apache-2.0，POM 双许可声明） | Gradle 依赖；随 APK 分发；预埋公钥取自 ftp-master.debian.org/keys（Debian 官方归档钥，非第三方许可物）；上游 https://www.bouncycastle.org/java.html |
 | interlock-relay-core（`pilot/interlock-relay-core/`） | 手机助手平台层：通道与协议、审批闸门、三个执行后端、存储与配额、审计日志、宿主扩展点 | Apache-2.0 | 上游 https://github.com/WSK-build/interlock-relay ；版本 0.1.0；版权 Copyright 2026 WSK-build；以源码形式随本仓库分发；许可原文与依赖清单见 `pilot/interlock-relay-core/{LICENSE,NOTICE}`；在本应用内随整体以 GPL-3.0 分发，单独取用时适用 Apache-2.0 |
 | Shizuku API（`dev.rikka.shizuku:api` / `:provider` 13.1.5，传递 `:aidl` / `:shared`） | shell 身份执行通路（手机助手核心层经 Shizuku 以 shell 权限调用系统能力） | MIT | Gradle 依赖；随 APK 分发；坐标未进版本目录，由手机助手核心层直接声明；`provider` 声明的组件已随清单合并生效、无额外运行时下载；上游 https://github.com/RikkaApps/Shizuku ，许可原文 https://github.com/RikkaApps/Shizuku-API/blob/master/LICENSE |
+| ZXing Core（`com.google.zxing:core` 3.5.3） | 开发者模式面板的二维码编解码（访问码二维码生成；core 一件覆盖生成与解码两侧，不含 Android 取景管线） | Apache-2.0 | Gradle 依赖；随 APK 分发；上游 https://github.com/zxing/zxing ；许可原文 https://github.com/zxing/zxing/blob/master/LICENSE
 | AndroidX / Jetpack（含 androidx.appcompat:appcompat 1.7.0，1.2.1 起用于应用内语言切换） | Android 兼容层 | Apache-2.0 | Gradle 依赖 |
 | AndroidX WebKit（`androidx.webkit:webkit` 1.12.1） | Browser WebView 主题与能力兼容检测 | Apache-2.0 | Gradle 依赖；随 APK 分发；上游 https://android.googlesource.com/platform/frameworks/support/+/androidx-main/webkit/ |
+| GeckoView（`org.mozilla.geckoview:geckoview-arm64-v8a` 158.0.20261021001945） | 仅Gecko变体的DSH内置渲染引擎 | MPL-2.0及内含第三方组件各自许可 | 未修改上游AAR；System变体不包含；发行时必须保留AAR及omni.ja内许可文本，并提供精确版本对应源码获取方式，不能以仅附MPL文本代替源码可获取义务；上游 https://firefox-source-docs.mozilla.org/mobile/android/geckoview/ |
 | AndroidX Test JUnit / Runner（`androidx.test.ext:junit` 1.2.1、`androidx.test:runner` 1.6.2） | Browser SQLite 设备仪器测试 | Apache-2.0 | 仅测试期，不随正式 APK 分发；上游 https://github.com/android/android-test |
 | Jetpack Compose / Material3 / material-icons | UI 框架与图标 | Apache-2.0 | Gradle 依赖 |
 | Tabler Icons outline | common 导航及 Browser 描边图标 | MIT | Copyright (c) 2020-2026 Paweł Kuna；上游 https://github.com/tabler/tabler-icons ；许可副本见 `common/LICENSE-TABLER.txt`；SVG 路径转换为 Android vector drawable |
-| Kotlin stdlib / Coroutines | 语言运行时与异步 | Apache-2.0 | Gradle 依赖 |
+| Kotlin stdlib / Coroutines | 语言运行时与异步 | Apache-2.0 | Kotlin编译插件2.4.20，源码语言/API级别2.2；stdlib按实际变体解析与APK内DEPENDENCIES.txt记录，Coroutines声明1.9.0；Gradle依赖 |
 | dshmarket（插件市场，npm 包 `dshmarket`） | 插件市场的设计参照：本项目以 Kotlin **重写**其数据层与界面（非逐字复制，未随包分发其代码与资源） | MIT（Copyright (c) 2026 fkysly and dsh-market contributors） | 上游 https://github.com/dsh-market/dsh-market ；MIT 要求保留版权与许可声明，本清单即该声明 |
 | Termux terminal-emulator（`terminal-emulator/` 模块） | 终端模拟器（VT100/xterm 解析 + pty JNI） | Apache-2.0 | 源码取自 termux/termux-app v0.118.0，未修改；源自 jackpal/Android-Terminal-Emulator |
 | Termux terminal-view（`terminal-view/` 模块） | 终端视图渲染与输入 | Apache-2.0 | 源码取自 termux/termux-app v0.118.0，未修改 |

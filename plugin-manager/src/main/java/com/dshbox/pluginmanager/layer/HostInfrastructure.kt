@@ -23,10 +23,15 @@ object HostInfrastructure {
     fun isProtected(id: String, name: String?, installed: Set<String>): Boolean {
         if (name.isNullOrBlank()) return true
         if (id.isBlank()) return true
+        // 我方随包资产由装配链管理，自动隔离一旦写了停用行就无法还原。
+        if (name.startsWith(LOCAL_NAMESPACE)) return true
         return HostPackages.isHostPackage(name, installed)
     }
 
     /** 是否属于第三方（= 明确不是宿主自带，且不是我方 `@local/` 资产）。 */
     fun isThirdParty(name: String?, installed: Set<String>): Boolean =
         HostPackages.isThirdParty(name, installed)
+
+    /** 我方随包资产的命名空间前缀，定义在契约层。 */
+    const val LOCAL_NAMESPACE = com.dshbox.pluginmanager.contract.HostContract.LOCAL_NAMESPACE
 }

@@ -13,4 +13,9 @@
     <issue id="UnusedResources">
         <ignore path="src/main/res/values/strings.xml" />
     </issue>
+    <!-- local.properties is a gitignored machine-specific Android SDK path.
+         It is not packaged and must not block source-tree lint on Windows. -->
+    <issue id="PropertyEscape">
+        <ignore path="../local.properties" />
+    </issue>
 </lint>

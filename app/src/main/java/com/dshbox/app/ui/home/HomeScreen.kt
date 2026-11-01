@@ -1,6 +1,7 @@
 package com.dshbox.app.ui.home
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,9 +48,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,6 +78,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dshbox.app.R
 import com.dshbox.app.common.Constants
 import com.dshbox.app.service.SandboxService
+import com.dshbox.app.common.R as CommonR
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -130,6 +134,8 @@ fun HomeScreen(
      * cookie 交换与注入通道），这正是该入口"点开不可用"的原因。
      */
     onOpenInBrowser: () -> Unit,
+    /** 首页 DSH 卡片的浏览器说明、完整地址与默认浏览器设置入口。 */
+    dshLaunchToken: String?,
     /**
      * 沙箱与 DSH 进程树当前的累计 CPU 时间（毫秒），由宿主注入给控制页的监控卡：
      * 沙箱是应用内部的东西，统计时并入「本应用」一档，不单列条目。未运行时返回 null。
@@ -152,12 +158,26 @@ fun HomeScreen(
         onBackToControl: () -> Unit,
         onSubPageVisible: (Boolean) -> Unit,
     ) -> Unit,
+    /** DSH 访问设置是否提升为整屏子页；宿主据此隐藏底部导航。 */
+    onSubPageVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showSandboxStopDialog by remember { mutableStateOf(false) }
     var showDshStopDialog by remember { mutableStateOf(false) }
+    var showAccessSettings by rememberSaveable { mutableStateOf(false) }
     var dshNeedsSandboxToast by remember { mutableStateOf(false) }
+    var dshElapsedSeconds by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(dshReady) {
+        dshElapsedSeconds = 0L
+        if (dshReady) {
+            while (true) {
+                delay(1_000)
+                dshElapsedSeconds += 1L
+            }
+        }
+    }
 
     if (dshNeedsSandboxToast) {
         LaunchedEffect(Unit) {
@@ -168,6 +188,24 @@ fun HomeScreen(
             ).show()
             dshNeedsSandboxToast = false
         }
+    }
+
+    LaunchedEffect(showAccessSettings, isActive) {
+        onSubPageVisibilityChanged(showAccessSettings && isActive)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onSubPageVisibilityChanged(false) }
+    }
+
+    if (showAccessSettings) {
+        BackHandler(enabled = isActive) { showAccessSettings = false }
+        DshAccessSettingsScreen(
+            launchToken = dshLaunchToken,
+            uptime = formatDshUptime(dshElapsedSeconds),
+            onBack = { showAccessSettings = false },
+            modifier = modifier,
+        )
+        return
     }
 
     // 三页签外壳：选中态由 Pager 持有（rememberPagerState 内部经 rememberSaveable
@@ -375,6 +413,7 @@ fun HomeScreen(
                         dshError = dshError,
                         dshUnresponsive = dshUnresponsive,
                         sandboxRunning = sandboxRunning,
+                        uptime = formatDshUptime(dshElapsedSeconds),
                         onStart = {
                             if (sandboxRunning) {
                                 SandboxService.startDsh(context)
@@ -385,6 +424,7 @@ fun HomeScreen(
                         onStop = { showDshStopDialog = true },
                         onRestart = { SandboxService.restartDsh(context) },
                         onOpenInBrowser = onOpenInBrowser,
+                        onOpenBrowserMore = { showAccessSettings = true },
                     )
 
                     // 系统状态：整机 CPU 占用、温度、内存、存储四项。采样只在「本页
@@ -466,6 +506,7 @@ fun HomeScreen(
             },
         )
     }
+
 }
 
 /**
@@ -674,6 +715,13 @@ internal fun dshStatusTextRes(
     else -> R.string.home_dsh_stopped
 }
 
+private fun formatDshUptime(elapsedSeconds: Long): String {
+    val hours = elapsedSeconds / 3600
+    val minutes = (elapsedSeconds % 3600) / 60
+    val seconds = elapsedSeconds % 60
+    return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+}
+
 @Composable
 private fun DshStatusCard(
     dshReady: Boolean,
@@ -681,27 +729,13 @@ private fun DshStatusCard(
     dshError: Boolean,
     dshUnresponsive: Boolean,
     sandboxRunning: Boolean,
+    uptime: String,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRestart: () -> Unit,
     onOpenInBrowser: () -> Unit,
+    onOpenBrowserMore: () -> Unit,
 ) {
-    var elapsedSeconds by remember { mutableStateOf(0L) }
-    LaunchedEffect(dshReady) {
-        elapsedSeconds = 0L
-        if (dshReady) {
-            while (true) {
-                delay(1_000)
-                elapsedSeconds += 1
-            }
-        }
-    }
-    val uptime = remember(elapsedSeconds) {
-        val hours = elapsedSeconds / 3600
-        val minutes = (elapsedSeconds % 3600) / 60
-        val seconds = elapsedSeconds % 60
-        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
-    }
     val statusText = stringResource(dshStatusTextRes(dshReady, dshError, dshUnresponsive, dshStarting))
     // 配色只随 异常 / 无响应 / 就绪 三档走；「启动中」只改文案，圆点与底色同「已停止」。
     val statusColor = when {
@@ -758,40 +792,70 @@ private fun DshStatusCard(
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier.height(28.dp),
                     ) {
-                        Icon(
-                            // 刻意保留的实心地球：与其它入口区分，不参与描边统一。
-                            imageVector = Icons.Filled.Public,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = stringResource(R.string.home_browser),
-                            style = MaterialTheme.typography.labelLarge,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
+                            Icon(
+                                // 刻意保留的实心地球：与其它入口区分，不参与描边统一。
+                                imageVector = Icons.Filled.Public,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.home_browser),
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                     }
                 }
-                // 地址 / 运行时长：左缘对齐状态文字（圆点 8dp + 间距 12dp = 20dp）。
-                // 地址单行不折行：窄屏（320dp）或未来换成更长的地址时，宁可省略号也不要
-                // 折行把卡片顶高（本卡刚按"更紧凑"调过）。
-                Column(modifier = Modifier.padding(start = 20.dp)) {
-                    Text(
-                        text = Constants.DSH_BASE_URL,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = stringResource(R.string.home_uptime_format, uptime),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                    )
+                // 地址 / 运行时长与「更多」并排：两行信息占左侧，入口固定在右侧。
+                // 两个入口共享同一外框规格；内部左对齐使图标和文字落在同一列。
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = Constants.DSH_BASE_URL,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = stringResource(R.string.home_uptime_format, uptime),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    OutlinedButton(
+                        shape = MaterialTheme.shapes.medium,
+                        onClick = onOpenBrowserMore,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp),
+                    ) {
+                            Icon(
+                                imageVector = ImageVector.vectorResource(
+                                    CommonR.drawable.ic_adjustments_horizontal,
+                                ),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.home_browser_more),
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                    }
                 }
             }
             Row(

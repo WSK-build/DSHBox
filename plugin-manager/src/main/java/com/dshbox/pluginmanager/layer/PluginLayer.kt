@@ -1,5 +1,6 @@
 package com.dshbox.pluginmanager.layer
 
+import com.dshbox.pluginmanager.contract.PatchSyntax
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -66,40 +67,25 @@ class PluginLayer(private val file: File) {
         /** 空层正文（禁用本层的合法写法）。 */
         const val EMPTY = "[]\n"
 
-        /** 可安全写入的 id 字符集：不含空格、引号、冒号、换行，避免改变 YAML 结构。 */
-        private val ID_RE = Regex("^[A-Za-z0-9_./@+-]{1,200}$")
+        // 补丁方言的行语法与可写形态全部取自 PatchSyntax：写入方与读取方必须用
+        // 同一套语法，任何一份漂移都会造成「写得进、读不出」。
+        private val INSERT_HEAD_RE = PatchSyntax.INSERT_HEAD
+        private val TOP_ENTRY_RE = PatchSyntax.TOP_ENTRY
+        private val INSERT_ITEM_RE = PatchSyntax.INSERT_ITEM
+        private val NAME_RE = PatchSyntax.FIELD_NAME
+        private val DISABLED_RE = PatchSyntax.FIELD_DISABLED
 
-        /** 裸标量形态（不需要引号）。 */
-        private val PLAIN_ID_RE = Regex("^[A-Za-z0-9_.-]+$")
-
-        private val INSERT_HEAD_RE = Regex("^- insert: *(.*)$")
-        private val TOP_ENTRY_RE = Regex("^- id: *(.+?) *$")
-        private val INSERT_ITEM_RE = Regex("^ {4}- id: *(.+?) *$")
-        private val NAME_RE = Regex("^ {2}name: *(.*?) *$")
-        private val DISABLED_RE = Regex("^ {2}disabled: *(true|false) *$")
-
-        /** 我们能安全写入的 id 形态。 */
-        fun isValidId(id: String): Boolean = ID_RE.matches(id)
+        /** 是否可安全写入的 id 形态。 */
+        fun isValidId(id: String): Boolean = PatchSyntax.isValidId(id)
 
         /** 按需加引号：非裸标量形态一律单引号包裹。 */
-        fun renderId(id: String): String = if (PLAIN_ID_RE.matches(id)) id else "'$id'"
+        fun renderId(id: String): String = PatchSyntax.renderId(id)
 
         /** YAML 单引号标量里的 `'` 要写成 `''`，否则会破坏整份文档。 */
-        fun escapeSingleQuoted(value: String): String = value.replace("'", "''")
+        fun escapeSingleQuoted(value: String): String = PatchSyntax.escapeSingleQuoted(value)
 
-        /** 去掉 YAML 引号（单/双），用于把读到的值还原成裸串。 */
-        fun unquote(value: String): String {
-            val trimmed = value.trim()
-            if (trimmed.length >= 2) {
-                if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-                    return trimmed.substring(1, trimmed.length - 1).replace("''", "'")
-                }
-                if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-                    return trimmed.substring(1, trimmed.length - 1)
-                }
-            }
-            return trimmed
-        }
+        /** 去掉 YAML 引号（单或双），把读到的值还原成裸串。 */
+        fun unquote(value: String): String = PatchSyntax.unquote(value)
     }
 
     private val writeLock = Any()
@@ -418,4 +404,8 @@ class PluginLayer(private val file: File) {
     /** 当前被本层停用的 id 集合。 */
     fun disabledIds(): Set<String> =
         read().patches.filter { it.disabled == true }.map { it.id }.toSet()
+
+    /** 当前被本层强制启用的 id 集合（`disabled: false` 行）。 */
+    fun forcedIds(): Set<String> =
+        read().patches.filter { it.disabled == false }.map { it.id }.toSet()
 }

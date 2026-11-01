@@ -11,7 +11,7 @@ import com.dshbox.pluginmanager.market.model.UpdateStatus
 /**
  * 一次页面加载的结果。
  *
- * ## 为什么失败要带出来而不是折叠成空
+ * ## 失败必须带出而不是折叠成空的原因
  *
  * 三个加载项都可能失败，而**失败与"确实没有"在界面上完全不同**：
  * `loadInstalled` 失败时如果折叠成空列表，界面会显示"尚未安装社区插件"——
@@ -39,32 +39,41 @@ internal data class MarketLoadSnapshot(
 )
 
 /**
- * 拉一次页面需要的三份数据。
+ * 只读本地已装清单：不请求目录、不跑更新检测。
  *
- * @param force 显式刷新：目录绕过内存副本、更新检测绕过 TTL 缓存。本地操作
- *   （启停、备注）必须传 false，否则每拨一次开关都要重下几 MB 的目录并重新
- *   查一遍 npm。
- * @param reuseUpdates 纯本地重载（不可能改变任何插件版本的操作用，如启停、
- *   写备注）时传入上一份更新结果：**跳过更新检测**，直接复用。更新检测即使
- *   有缓存也要逐个读本地版本、逐行重算，还会在查询失败时留下"检测中"的空窗；
- *   这些本地操作根本不会改变版本，重算没有意义。装/卸/更新结束后的重载**不该**
- *   走这条路：那时版本可能真的变了，复用会显示过期的"有更新"。
+ * 已装清单是磁盘事实，毫秒级；把它和目录、更新检测串在一起，弱网时本地操作
+ * （启停、备注）会被目录重试拖住，清单也出不来。
  */
-internal suspend fun loadMarket(
-    repository: MarketRepository,
-    force: Boolean,
-    reuseUpdates: Map<String, UpdateStatus>? = null,
-): MarketLoadSnapshot {
-    val registryResult = repository.loadRegistry(force = force)
+internal suspend fun loadInstalledPart(repository: MarketRepository): MarketLoadSnapshot {
     val installedResult = repository.loadInstalled()
-    val reused = reuseUpdates?.takeIf { !force }
-    val updatesResult = if (reused == null) repository.checkUpdates(force = force) else null
     return MarketLoadSnapshot(
-        registry = (registryResult as? AppResult.Success)?.value,
+        registry = null,
         registryFailure = repository.registryFailure.value,
         installed = (installedResult as? AppResult.Success)?.value.orEmpty(),
         installedFailure = (installedResult as? AppResult.Failure)?.error,
-        updates = reused ?: (updatesResult as? AppResult.Success)?.value.orEmpty(),
+        updates = emptyMap(),
+        updatesFailure = null,
+    )
+}
+
+/**
+ * 目录与更新检测：不读已装清单。
+ *
+ * @param force 显式刷新才传 true（绕过目录内存副本与更新检测 TTL）；装/卸/更新、
+ *   切源这类重载传 false——它们要的是"重来一遍"，不是"强制联网"。
+ */
+internal suspend fun loadCatalogPart(
+    repository: MarketRepository,
+    force: Boolean,
+): MarketLoadSnapshot {
+    val registryResult = repository.loadRegistry(force = force)
+    val updatesResult = repository.checkUpdates(force = force)
+    return MarketLoadSnapshot(
+        registry = (registryResult as? AppResult.Success)?.value,
+        registryFailure = repository.registryFailure.value,
+        installed = emptyList(),
+        installedFailure = null,
+        updates = (updatesResult as? AppResult.Success)?.value.orEmpty(),
         updatesFailure = (updatesResult as? AppResult.Failure)?.error,
     )
 }

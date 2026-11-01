@@ -31,11 +31,16 @@ PATTERNS = [
     ("Windows 用户目录", re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9_.\-]+"), "本机绝对路径"),
     ("Windows 盘符路径", re.compile(r"(?<![A-Za-z0-9_])[A-Za-z]:[\\/]{1,2}(?!Users)[A-Za-z0-9_.\-]+"), "本机绝对路径"),
     ("macOS 家目录", re.compile(r"/Users/[A-Za-z0-9_.\-]+"), "本机绝对路径"),
-    ("Linux 家目录", re.compile(r"/home/[A-Za-z0-9_.\-]+"), "本机绝对路径"),
+    # 实际用户家目录的下一段不会以 "." 开头；排除 /home/.android 一类 guest 路径。
+    ("Linux 家目录", re.compile(r"/home/(?!\.)[A-Za-z0-9_.\-]+"), "本机绝对路径"),
     ("临时目录", re.compile(r"/tmp/[A-Za-z0-9_.\-]+"), "可能含本机痕迹"),
     ("邮箱地址", re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"), "个人信息"),
     ("私网/代理地址", re.compile(r"\b(?:10|172|192\.168)\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"), "网络地址"),
-    ("设备序列号样式", re.compile(r"\b[0-9A-Z]{14,16}\b"), "设备标识"),
+    # Device serial candidates contain both letters and digits. Requiring both
+    # avoids treating version components and uppercase enum names as identifiers.
+    ("设备序列号样式", re.compile(
+        r"\b(?=[A-Z]*\d)(?=[0-9]*[A-Z])[0-9A-Z]{14,16}\b"
+    ), "设备标识"),
     ("API 令牌样式", re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9][A-Za-z0-9_-]{19,}(?![A-Za-z0-9])"), "疑似凭据"),
     ("Google API 密钥样式", re.compile(r"(?<![A-Za-z0-9])AIza[A-Za-z0-9_-]{30,}(?![A-Za-z0-9])"), "疑似凭据"),
     ("私钥头", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE " r"KEY-----"), "疑似凭据"),
@@ -53,9 +58,11 @@ ALLOW = [
     re.compile(r"0\.0\.0\.0"),
     re.compile(r"\blocalhost\b"),
     re.compile(r"example\.com"),
+    re.compile(r"git@github\.com"),                  # Git over SSH 的固定主机标识，非邮箱信息
     re.compile(r"noreply\.github\.com"),           # GitHub 保密邮箱
     re.compile(r"users\.noreply\.github\.com"),
     re.compile(r"10\.255\.255\.254"),               # WSL 默认 DNS，非个人网络
+    re.compile(r"dshbox-status-bridge@dshbox\.invalid"),  # 固定扩展ID，保留域不可投递
 
     # —— guest（沙箱内）路径：这些是发给 Debian 沙箱的路径，不是本机路径 ——
     re.compile(r"/tmp/\.dshbox"),                   # guest 内工作临时目录
@@ -80,12 +87,13 @@ ALLOW = [
     re.compile(r"[A-Za-z]:[\\/]Users[\\/]\.\.\."),
 
     # —— 单测夹具：测试自己造的 /tmp 路径，与本机无关（同上方「单测夹具虚构路径」口径）——
-    re.compile(r"/tmp/(a\.deb|a|it|foo|bar|tool\.deb)\b"),   # DebUnpackInstaller / SandboxFiles / UpdateDetector 夹具
+    re.compile(r"/tmp/([ab]\.deb|a|it|foo|bar|tool\.deb)\b"),   # DebUnpackInstaller / SandboxFiles / UpdateDetector 夹具
     re.compile(r"/tmp/(pilot-(snapshot-x|full-1)\.json|clip\.mp4|stub-artifact\.png|abs\.png|a\.png)"),  # mobile-pilot 单测夹具
 
     # 拆分字面量，避免规则定义被自身扫描命中。
     re.compile(r"/tmp/" r"dpkg-deb\."),                      # dpkg 临时目录名（单测夹具）
     re.compile(r"C:" r"/\.\.\."),                            # 注释里说明「盘符式写法」的举例，非本机路径
+    re.compile(r"(?i)h:[\\/]{1,2}w"),                       # Bash PS1 的 \h:\w 占位符，非 Windows 盘符
     re.compile("ESO" "CKETTIMEDOUT"),                        # 上游 pnpm 错误码，被「设备序列号」正则误匹配
 
     # —— Debian 包元数据里的维护者字段（公开信息，与开发者无关；单测夹具）——
@@ -114,6 +122,11 @@ def is_allowed(hit: str, line: str = "", rel: str = "", label: str = "") -> bool
             if hit[5:] in {"junitXXX", "site", "private", "elsewhere.png", "secret.zip", "body-1.bin"}:
                 return True
         if label == "Windows 盘符路径" and hit.replace("\\", "/") == "C:" + "/secret.txt":
+            return True
+        if label == "私网/代理地址" and hit == ".".join(("10", "0", "0", "1")):
+            return True
+        if label == "私网/代理地址" and hit in {".".join(("10", "0", "0", "2")),
+                                                  ".".join(("10", "0", "0", "5"))}:
             return True
         if label == "邮箱地址":
             local, _, domain = hit.rpartition("@")

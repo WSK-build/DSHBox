@@ -11,7 +11,7 @@ import kotlinx.coroutines.withContext
  * 安装 spec → 来源种类。
  *
  * 与上游的 `kind` 取值保持一致（`npm` / `linked` / `file` / `github`），
- * 因为 [UpdateStatus.kind] 会被 UI 用来解释"为什么没检测"。
+ * 因为 [UpdateStatus.kind] 会被 UI 用来解释"未检测的原因"。
  */
 internal fun kindOfSpec(spec: String?): String = when {
     spec == null -> KIND_NPM
@@ -61,16 +61,38 @@ internal fun updateTargetFor(name: String, spec: String?): UpdateTarget =
     if (kindOfSpec(spec) == KIND_NPM) UpdateTarget.Npm(npmNameOf(name, spec)) else UpdateTarget.Unsupported
 
 /**
+ * 这个包是否该由市场更新。
+ *
+ * 已装清单里混着插件带进来的普通库；对它们执行 `add <name>@latest` 会改写 profile
+ * 的依赖版本而不动 bundles，用户看到"更新成功"却可能破坏依赖它的插件。
+ *
+ * 任一成立即可更新：目录里没有清单、自身声明 dsh 字段、在 bundles 里、
+ * 用户补丁层按名引用了它。[userPatchNames] 为 null（读不出）时保守放行。
+ */
+internal fun isUpdatablePackage(
+    name: String,
+    hasManifest: Boolean,
+    hasDshField: Boolean,
+    inBundles: Boolean,
+    userPatchNames: Set<String>?,
+): Boolean = when {
+    !hasManifest -> true
+    hasDshField -> true
+    inBundles -> true
+    else -> userPatchNames == null || name in userPatchNames
+}
+
+/**
  * 更新检测。
  *
- * ## 为什么 `checked` 是核心字段
+ * ## `checked` 是核心字段的原因
  *
  * "没查到"和"已是最新"是两件完全不同的事。这一层只回答"我到底比过没有"：
  * 拿到对端版本、且本地版本可比，才算真的比过（[UpdateStatus.checked] = true）。
  * 非 npm 来源、registry 查询失败、本地版本读不出来，都只是"没查到"。
  * UI 据此三分支渲染，绝不能把后者显示成「已是最新」。
  *
- * ## 为什么缓存的是"对端版本"而不是"整份结论"
+ * ## 缓存"对端版本"而非"整份结论"的原因
  *
  * 缓存整份 `name → UpdateStatus` 会在**插件刚更新完**的那一刻骗人：本地版本
  * 变了，缓存里的旧结论还在说"有更新"。所以这里只缓存最贵的那一步（npm 查询
@@ -83,7 +105,7 @@ internal fun updateTargetFor(name: String, spec: String?): UpdateTarget =
  * 但只记 [negativeTtlMs]（默认 2 分钟）：期内不重试，过期后自动重试。用户
  * 显式刷新（`force = true`）绕过正负两种缓存。
  *
- * ## 为什么 `checked` 只在两端都能解析时才置位
+ * ## `checked` 只在两端都可解析时置位的原因
  *
  * `Semver.compare` 在解析失败时按字典序兜底（保证排序有全序），但**字典序不是
  * 版本序**：`0.9` vs `0.10.0` 会被判成"不更新"，UI 于是显示「已是最新」，
@@ -100,12 +122,17 @@ class UpdateDetector(
     private val clock: () -> Long = System::currentTimeMillis,
     /** 失败查询的负缓存 TTL：期内不重试，过期后自动重试。默认 2 分钟。 */
     private val negativeTtlMs: Long = DEFAULT_NEGATIVE_TTL_MS,
+    /** dist-tag 查询；默认不查（返回 null），未接线时行为与以前一致。 */
+    private val tagLookup: TagVersionLookup = TagVersionLookup { _, _ -> null },
 ) {
 
     companion object {
         const val DEFAULT_TTL_MS = 10 * 60 * 1000L
         const val DEFAULT_NEGATIVE_TTL_MS = 2 * 60 * 1000L
         const val DEFAULT_CONCURRENCY = 4
+
+        /** 会去查的 dist-tag；与上游取值一致，不含 rc。 */
+        val PRERELEASE_TAGS = listOf("next", "alpha", "beta", "canary")
     }
 
     /** [version] 为 null 表示一次失败的查询（负缓存条目）。 */
@@ -113,6 +140,9 @@ class UpdateDetector(
 
     // 四路并发协程会同时读写这份缓存，裸 HashMap 会丢更新甚至死循环。
     private val cache = java.util.concurrent.ConcurrentHashMap<String, Cached>()
+
+    /** dist-tag 查询缓存，键是 `包名@tag`，TTL 语义与主缓存一致。 */
+    private val tagCache = java.util.concurrent.ConcurrentHashMap<String, Cached>()
 
     /** 单包判定：不做网络以外的任何猜测。 */
     fun detect(name: String, spec: String?, current: String?): UpdateStatus {
@@ -136,6 +166,7 @@ class UpdateDetector(
             latest = latest,
             kind = kind,
             checked = true,
+            newerPrerelease = newerPrereleaseFor(npmNameOf(name, spec), current, latest, newer),
         )
     }
 
@@ -188,6 +219,9 @@ class UpdateDetector(
                             latest = latestVersion,
                             kind = kind,
                             checked = true,
+                            newerPrerelease = newerPrereleaseFor(
+                                npmNameOf(name, spec), current, latestVersion, newer,
+                            ),
                         )
                     }
                 }
@@ -199,12 +233,60 @@ class UpdateDetector(
     /** 丢弃进程内缓存。 */
     fun invalidate() {
         cache.clear()
+        tagCache.clear()
+    }
+
+    /**
+     * 用户跟的那条线上是否有更新的构建。
+     *
+     * 纯事实，不参与 [UpdateStatus.updateAvailable]。只在两种情况下查：当前版本自带
+     * 预发布标记，或当前版本并不比 latest 旧却又与它不同（latest 指向更老的一条线）。
+     */
+    private fun newerPrereleaseFor(
+        npmName: String,
+        current: String?,
+        latest: String?,
+        updateAvailable: Boolean,
+    ): String? {
+        if (updateAvailable) return null
+        if (current.isNullOrBlank()) return null
+        if (Semver.parse(current) == null) return null
+        val followsAnotherLine = current.contains('-') ||
+            (
+                latest != null &&
+                    latest != current &&
+                    Semver.parse(latest) != null &&
+                    Semver.compare(latest, current) <= 0
+                )
+        if (!followsAnotherLine) return null
+
+        var best: String? = null
+        for (tag in PRERELEASE_TAGS) {
+            val version = lookupTag(npmName, tag) ?: continue
+            if (Semver.parse(version) == null) continue
+            if (Semver.compare(version, current) <= 0) continue
+            if (best == null || Semver.compare(version, best) > 0) best = version
+        }
+        return best
+    }
+
+    /** 带缓存的 dist-tag 查询；失败进负缓存，与主查询同一套纪律。 */
+    private fun lookupTag(npmName: String, tag: String): String? {
+        val key = "$npmName@$tag"
+        val now = clock()
+        tagCache[key]?.let { cached ->
+            val ttl = if (cached.version != null) ttlMs else negativeTtlMs
+            if (now - cached.at < ttl) return cached.version
+        }
+        val version = runCatching { tagLookup.lookup(npmName, tag) }.getOrNull()
+        tagCache[key] = Cached(version, now)
+        return version
     }
 
     /**
      * 只有在两端都能解析成 semver 时才给出"是否有更新"；否则返回 null。
      *
-     * null 的含义是"我们没比过"，由调用方表达成 `checked = false`——绝不能
+     * null 的含义是"未比较"，由调用方表达成 `checked = false`——绝不能
      * 让 `Semver.compare` 的字典序兜底把 `0.9` vs `0.10.0` 说成"已是最新"。
      */
     private fun updateAvailable(latest: String, current: String?): Boolean? {

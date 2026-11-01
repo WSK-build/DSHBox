@@ -50,5 +50,31 @@ if pkg not in bundles:
 print('   bundles =', bundles)
 EOF
 
+# --- 3) 声明为依赖：让 pnpm 把它当依赖图成员 ---
+# 只写 bundles 不够：pnpm 每次装/删插件都会按「manifest + lockfile」重建
+# node_modules，未在 dependencies 里声明的目录属于游离包，会被清理；而 bundles
+# 里的条目会被当作模板条目保留，于是启动时解析不到包（报
+# cannot resolve profile bundle，侧边栏显示异常/未安装）。补上 file: 声明即可
+# 纳入依赖图；源是本地目录，不需要联网。
+echo "==> 声明依赖: $PKG"
+python3 - "$PKGJSON" "$PKG" "$SRC" << 'EOF'
+import json, os, sys, tempfile
+try: sys.stdout.reconfigure(encoding="utf-8")
+except Exception: pass
+path, pkg, src = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding="utf-8") as handle:
+    d = json.load(handle)
+deps = d.setdefault("dependencies", {})
+spec = "file:" + src
+if deps.get(pkg) != spec:
+    deps[pkg] = spec
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".")
+    with os.fdopen(fd, "w", encoding="utf-8") as out:
+        json.dump(d, out, ensure_ascii=False, indent=2)
+        out.write("\n")
+    os.replace(tmp, path)
+print("   dependencies[%s] = %s" % (pkg, spec))
+EOF
+
 echo
 echo "+ dsh-mobile-adapt 装配完成。请重启 dsh 生效。"

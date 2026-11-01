@@ -2,6 +2,7 @@ package com.dshbox.pluginmanager.market.data
 
 import com.dshbox.app.common.AppResult
 import java.io.IOException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -27,11 +28,15 @@ class RegistrySourceTest {
             urls += url
             return when (val step = script.removeFirstOrNull()) {
                 is Int -> RegistryFetch(step, null)
+                is String -> RegistryFetch(200, step)
                 is Throwable -> throw step
                 else -> RegistryFetch(500, null)
             }
         }
     }
+
+    /** 一份能被 parse 接受的最小目录正文。 */
+    private val CATALOG = """{"updated":"x","count":1,"plugins":[{"name":"p","owner":"o","url":"https://example.com/p","category":["tools"]}]}"""
 
     private fun source(script: List<Any>, sources: List<String> = listOf("https://a.invalid/plugins.json")) =
         RegistrySource(
@@ -66,7 +71,7 @@ class RegistrySourceTest {
      * 尝试顺序：A、B、A、B —— 而不是 A、A、B、B。
      *
      * 后者会让一个黑洞型地址（连不上、又不立刻报错）先吃掉 2 × 超时，
-     * 本来能用的第二个地址要等满两轮才被轮到。总次数不变（4 次），
+     * 可用的第二个地址要等满两轮才被轮到。总次数不变（4 次），
      * 变的是"谁先被试"——这正是"坏地址不饿死好地址"的实现形态。
      */
     @Test
@@ -146,6 +151,82 @@ class RegistrySourceTest {
             ),
             fetcher.urls,
         )
+    }
+
+    @Test
+    fun setSourcesKeepsTheCacheWhenTheAddressListIsUnchanged() = runBlocking {
+        // 调用方每次重载都会走一遍 setSources；地址没变就丢副本的话，
+        // "非强制重载"会退化成整份重新下载。
+        val fetcher = FakeFetcher(mutableListOf(CATALOG, CATALOG))
+        val subject = RegistrySource(
+            sources = listOf("https://a.invalid/plugins.json"),
+            fetcher = fetcher,
+            timeoutMs = 1_000,
+        )
+        assertTrue(subject.load(force = false) is AppResult.Success)
+        val afterFirst = fetcher.urls.size
+        subject.setSources(listOf("https://a.invalid/plugins.json"))
+        assertTrue(subject.load(force = false) is AppResult.Success)
+        assertEquals("地址未变不应再联网", afterFirst, fetcher.urls.size)
+    }
+
+    @Test
+    fun setSourcesDropsTheCacheWhenTheAddressListChanges() = runBlocking {
+        val fetcher = FakeFetcher(mutableListOf(CATALOG, CATALOG))
+        val subject = RegistrySource(
+            sources = listOf("https://a.invalid/plugins.json"),
+            fetcher = fetcher,
+            timeoutMs = 1_000,
+        )
+        assertTrue(subject.load(force = false) is AppResult.Success)
+        val afterFirst = fetcher.urls.size
+        subject.setSources(listOf("https://b.invalid/plugins.json"))
+        assertTrue(subject.load(force = false) is AppResult.Success)
+        assertEquals("换源必须重新取数", afterFirst + 1, fetcher.urls.size)
+    }
+
+    @Test
+    fun cancelledLoadLeavesNoFailureBanner() = runBlocking {
+        // 阻塞取数期间观察不到取消；若不主动检查，被取消的加载会跑完整轮重试，
+        // 再把失败横幅写在之后成功的那次加载上、并抹掉新副本。
+        lateinit var job: kotlinx.coroutines.Job
+        val subject = RegistrySource(
+            sources = listOf("https://a.invalid/plugins.json"),
+            fetcher = object : RegistryFetcher {
+                override fun get(url: String, timeoutMs: Int): RegistryFetch {
+                    job.cancel()
+                    return RegistryFetch(500, null)
+                }
+            },
+            timeoutMs = 1_000,
+        )
+        job = launch { runCatching { subject.load(force = false) } }
+        job.join()
+        assertNull("被取消的加载不得留下失败横幅", subject.failure.value)
+    }
+
+    @Test
+    fun cancelledSuccessfulFetchDoesNotWriteTheCache() = runBlocking {
+        // 阻塞取数不会被取消打断：若成功分支不观察取消，被取消的一轮仍会把目录
+        // 写进副本（切源时可能是上一个源的内容）。
+        var calls = 0
+        lateinit var job: kotlinx.coroutines.Job
+        val subject = RegistrySource(
+            sources = listOf("https://a.invalid/plugins.json"),
+            fetcher = object : RegistryFetcher {
+                override fun get(url: String, timeoutMs: Int): RegistryFetch {
+                    calls += 1
+                    if (calls == 1) job.cancel()
+                    return RegistryFetch(200, CATALOG)
+                }
+            },
+            timeoutMs = 1_000,
+        )
+        job = launch { runCatching { subject.load(force = false) } }
+        job.join()
+        assertEquals("被取消的成功取数不得写副本", 1, calls)
+        assertTrue(subject.load(force = false) is AppResult.Success)
+        assertEquals("副本没写住，下一次必须重新取数", 2, calls)
     }
 }
 
@@ -256,5 +337,65 @@ class RegistryParseTest {
         assertNull("缺失表示没有 npm 包，不是 0", registry.plugins.single().downloads)
         assertNull(registry.plugins.single().stars)
         assertNull(registry.plugins.single().version)
+    }
+
+    @Test
+    fun catalogScreenshotsKeptOnlyWithinImageTrustBoundary() {
+        fun entryWithScreenshots(vararg urls: String): String {
+            val list = urls.joinToString(",") { "\"$it\"" }
+            return """{"name":"ss","owner":"owner","url":"https://example.com/ss","category":["tools"],"screenshots":[$list]}"""
+        }
+        val good = { n: Int -> "https://raw.githubusercontent.com/o/r/$n.png" }
+        val registry = parse(
+            catalog(
+                entryWithScreenshots(
+                    good(1),
+                    "http://raw.githubusercontent.com/o/r/2.png",
+                    good(3),
+                    "https://evil.example.com/4.png",
+                    good(5),
+                    "https://raw.githubusercontent.com/o/r/6.svg",
+                    good(7),
+                    "https://raw.githubusercontent.com/o/r/8.svg?raw=1",
+                    good(9),
+                    good(10),
+                    good(11),
+                    good(12),
+                    good(13),
+                ),
+            ),
+        )
+        // 非 https、白名单外、svg（含查询串变形）全部丢弃；URL 原样保留；
+        // 有效图超出 MAX_SCREENSHOTS 时按目录顺序截断。
+        assertEquals(
+            listOf(good(1), good(3), good(5), good(7), good(9), good(10)),
+            registry.plugins.single().screenshots,
+        )
+    }
+
+    @Test
+    fun catalogIconKeptOnlyWithinImageTrustBoundary() {
+        fun entryWithIcon(icon: String?): String {
+            val field = icon?.let { ",\"icon\":\"$it\"" } ?: ""
+            return """{"name":"ic","owner":"owner","url":"https://example.com/ic","category":["tools"]$field}"""
+        }
+        val good = "https://raw.githubusercontent.com/owner/repo/main/icon.png"
+        assertEquals(
+            good,
+            parse(catalog(entryWithIcon(good))).plugins.single().icon,
+        )
+        // 目录是外部输入，图标地址直接进网络请求：非 https 与白名单外一律丢弃。
+        assertNull(parse(catalog(entryWithIcon("http://raw.githubusercontent.com/o/r/i.png"))).plugins.single().icon)
+        assertNull(parse(catalog(entryWithIcon("https://evil.example.com/i.png"))).plugins.single().icon)
+        // SVG 是文档不是图，上游客户端同样拒收；判定只看路径段（? 与 # 之前）。
+        assertNull(parse(catalog(entryWithIcon("https://raw.githubusercontent.com/o/r/i.svg"))).plugins.single().icon)
+        assertNull(parse(catalog(entryWithIcon("https://raw.githubusercontent.com/o/r/i.SVG"))).plugins.single().icon)
+        assertNull(parse(catalog(entryWithIcon("https://raw.githubusercontent.com/o/r/i.svg?raw=1"))).plugins.single().icon)
+        // 带查询串但路径不是 svg：放行，且 URL 原样保留（校验器不改写地址）。
+        assertEquals(
+            "https://raw.githubusercontent.com/o/r/i.png?x=.svg",
+            parse(catalog(entryWithIcon("https://raw.githubusercontent.com/o/r/i.png?x=.svg"))).plugins.single().icon,
+        )
+        assertNull(parse(catalog(entryWithIcon(null))).plugins.single().icon)
     }
 }

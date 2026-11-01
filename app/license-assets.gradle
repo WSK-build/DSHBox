@@ -86,6 +86,62 @@ androidComponents.onVariants(androidComponents.selector().all()) { variant ->
                                     }
                                 }
                             }
+                            // Optimized omni.ja has a four-byte prefix, central directory,
+                            // and an early EOCD before its standard local ZIP records.
+                            if (!entry.directory && id.startsWith('org.mozilla.geckoview:') &&
+                                    entry.name.endsWith('omni.ja')) {
+                                temporaryDir.mkdirs()
+                                File archive = File.createTempFile('gecko-omni-', '.zip', temporaryDir)
+                                try {
+                                    archive.withOutputStream { output ->
+                                        zip.getInputStream(entry).withCloseable { input -> input.transferTo(output) }
+                                    }
+                                    long localStart = 0
+                                    new RandomAccessFile(archive, 'r').withCloseable { reader ->
+                                        if (Integer.reverseBytes(reader.readInt()) != 0x04034b50) {
+                                            long offset = 4
+                                            while (true) {
+                                                if (offset + 22 > reader.length()) throw new GradleException('Invalid Gecko archive directory')
+                                                reader.seek(offset)
+                                                int signature = Integer.reverseBytes(reader.readInt())
+                                                if (signature == 0x06054b50) {
+                                                    reader.seek(offset + 20)
+                                                    localStart = offset + 22 + Short.toUnsignedInt(Short.reverseBytes(reader.readShort()))
+                                                    break
+                                                }
+                                                if (signature != 0x02014b50 || offset + 46 > reader.length()) {
+                                                    throw new GradleException('Invalid Gecko archive record')
+                                                }
+                                                reader.seek(offset + 28)
+                                                int nameLength = Short.toUnsignedInt(Short.reverseBytes(reader.readShort()))
+                                                int extraLength = Short.toUnsignedInt(Short.reverseBytes(reader.readShort()))
+                                                int commentLength = Short.toUnsignedInt(Short.reverseBytes(reader.readShort()))
+                                                offset += 46L + nameLength + extraLength + commentLength
+                                            }
+                                            if (localStart + 4 > reader.length()) throw new GradleException('Missing Gecko local records')
+                                            reader.seek(localStart)
+                                            if (Integer.reverseBytes(reader.readInt()) != 0x04034b50) {
+                                                throw new GradleException('Invalid Gecko local records')
+                                            }
+                                        }
+                                    }
+                                    archive.withInputStream { input ->
+                                        input.skipNBytes(localStart)
+                                        new ZipInputStream(input).withCloseable { omni ->
+                                            def child
+                                            while ((child = omni.nextEntry) != null) {
+                                                if (!child.directory && isLegal(child.name)) {
+                                                    write("dependencies/${key}/${entry.name}/${child.name}", omni.readAllBytes())
+                                                }
+                                            }
+                                        }
+                                    }
+                                } finally {
+                                    if (!archive.delete() && archive.exists()) {
+                                        throw new GradleException('Cannot remove temporary Gecko license archive')
+                                    }
+                                }
+                            }
                         }
                     }
                 }
