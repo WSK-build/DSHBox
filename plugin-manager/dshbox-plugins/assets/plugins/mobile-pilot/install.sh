@@ -258,22 +258,37 @@ if not payload['entryPresent']:
     print('   ⚠ 此刻没有', os.path.join(home, 'bin', 'pilot'), '—— 装配可以排在它之前，宿主铺好信箱后这条路径就会亮')
 EOF
 
-# --- 5) 注册进 profile bundles ---
-echo "==> 注册 bundle: $PKG"
-"$PY" - "$PKGJSON" "$PKG" << 'EOF'
+# --- 5) 注册进 profile bundles，并声明为依赖 ---
+# 只写 bundles 不足以让 pnpm 认它：pnpm 每次装/删插件都按「manifest + lockfile」
+# 重建 node_modules，未声明为依赖的目录属于游离包会被清理，而 bundles 里的条目
+# 会被视为模板条目保留，于是启动时解析不到该包（cannot resolve profile bundle，
+# 侧边栏显示异常/未安装）。file: 声明纳入依赖图，源是本地目录、不需要联网。
+echo "==> 注册 bundle 与依赖: $PKG"
+"$PY" - "$PKGJSON" "$PKG" "$SRC" << 'EOF'
 import json, os, sys, tempfile
 try: sys.stdout.reconfigure(encoding="utf-8")
 except Exception: pass
-path, pkg = sys.argv[1], sys.argv[2]
-d = json.load(open(path))
+path, pkg, src = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding="utf-8") as handle:
+    d = json.load(handle)
 bundles = d['dsh']['profile']['bundles']
+deps = d.setdefault('dependencies', {})
+spec = 'file:' + src
+changed = False
 if pkg not in bundles:
     bundles.append(pkg)
+    changed = True
+if deps.get(pkg) != spec:
+    deps[pkg] = spec
+    changed = True
+if changed:
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or '.')
-    with os.fdopen(fd, 'w') as handle:
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
         json.dump(d, handle, ensure_ascii=False, indent=2)
+        handle.write('\n')
     os.replace(tmp, path)
 print('   bundles =', bundles)
+print('   dependencies[%s] = %s' % (pkg, spec))
 EOF
 
 # --- 6) 命令链接 ---

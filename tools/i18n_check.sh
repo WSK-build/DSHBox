@@ -16,6 +16,7 @@
 # 用法：bash tools/i18n_check.sh   （退出码 0 = 通过）
 # =============================================================================
 set -u
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAIL=0
 

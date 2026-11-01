@@ -16,6 +16,10 @@ object TerminalPathsResolver {
         nativeLibraryDir: String?,
         /** 共享区绑定清单（内建 DSHBox + 用户挂载）；不可由 filesDir 推导，由 app 层注入。 */
         shareBinds: List<Pair<String, File>> = emptyList(),
+        /** 追加的 PRoot 绑定参数；由 app 层按启用中的能力注入。 */
+        extraGuestBinds: List<String> = emptyList(),
+        /** 追加到 guest PATH 的目录；与 [extraGuestBinds] 配套。 */
+        extraPathEntries: List<String> = emptyList(),
     ): TerminalPaths? {
         val runtimeCurrent = File(File(appFilesDir, "runtime"), "runtime-current")
         // Layered layout: base is the L0 rootfs (Node is a separate L1 layer
@@ -72,6 +76,8 @@ object TerminalPathsResolver {
             failsafeTmpDir = failsafeTmpDir,
             browserDir = File(appFilesDir, "browser-tools"),
             shareBinds = shareBinds,
+            extraGuestBinds = extraGuestBinds,
+            extraPathEntries = extraPathEntries,
         )
     }
 }

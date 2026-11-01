@@ -45,6 +45,15 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
+import com.github.luben.zstd.ZstdInputStream
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -245,12 +254,30 @@ class SandboxService : Service() {
             }
             provisionDshLinkShim()
             provisionDshCliShim()
+            provisionXdgOpenShim()
+            provisionCorepackCache()
         } finally {
             hardenDshboxAssets()
         }
+        provisionPnpmRegistryProbe()
         removeLegacyAssetDirs()
         removeRetiredPilotOverlay()
         migrateDshboxAssetLayout()
+        // 开发者模式：开关处于开启态时，运行环境层被替换后需按需补装 ADB 资产。
+        // 失败不阻断启动（附加能力，其资产缺失不应影响 DSH 与终端可用性）。
+        com.dshbox.app.runtime.DeveloperAccessBootstrap(
+            applicationContext,
+            sandboxManager,
+            ((application as DshApp).container.sandboxConfig).runtimeDir,
+        ).ensureAdbReady()
+        // 开发者模式面板的控制器装配（面板由手机助手界面导航进入）。
+        runCatching {
+            com.dshbox.app.runtime.DeveloperAccessBootstrap(
+                applicationContext,
+                sandboxManager,
+                ((application as DshApp).container.sandboxConfig).runtimeDir,
+            ).installController()
+        }.onFailure { Log.w(TAG, "developer access controller install failed", it) }
         val container = (application as DshApp).container
         when (val bundled = BundledRuntimeInstaller(applicationContext, container.sandboxConfig).installIfAbsent()) {
             is AppResult.Success -> if (bundled.value) Log.i(TAG, "bootstrap: bundled runtime installed")
@@ -508,7 +535,13 @@ class SandboxService : Service() {
             OwnPluginProbe.markerFrom(line)?.let { probeOutcome.set(it) }
         })
         val marker = probeOutcome.get()
-        if (OwnPluginProbe.actionFor(marker) == OwnPluginProbe.Action.SKIP) {
+        // 指纹只覆盖 `plugin/` 内容、不含 install.sh，所以老 profile 可能"看起来已装配"
+        // 却仍是游离包（只写了 bundles，没写 dependencies）。这种状态下任何一次 pnpm
+        // 安装都会把目录当孤儿清掉，随后启动解析失败。因此声明缺失时**不能 SKIP**，
+        // 要补一次装配让 install.sh 写入 file: 依赖。
+        if (OwnPluginProbe.actionFor(marker) == OwnPluginProbe.Action.SKIP &&
+            profileDeclaresBundleDependency(bundleId)
+        ) {
             Log.i(TAG, "bootstrap: $label not assembled (marker=${marker ?: "none"}); leaving profile untouched")
             if (label == "browser-use" && marker == OwnPluginProbe.MARKER_UP_TO_DATE) {
                 prefs.edit().remove(errorKey).apply()
@@ -532,6 +565,27 @@ class SandboxService : Service() {
                 prefs.edit().putString(errorKey, res.error.message.ifBlank { res.error.code }).apply()
             }
         }
+    }
+
+    /**
+     * profile 的 package.json 是否已把 [bundleId] 声明为 `file:` 依赖。
+     *
+     * 只写 `dsh.profile.bundles` 不足以让 pnpm 认它：pnpm 每次按「manifest +
+     * lockfile」重建 node_modules 时，未声明为依赖的目录属于游离包会被清理，而
+     * bundles 里的条目会被当作模板条目保留——结果就是"清单里还写着、磁盘上已经没了"，
+     * 启动时 `cannot resolve profile bundle`。
+     *
+     * 这里只做最轻的文本检查（不解析 JSON），仅用于决定是否需要补一次装配；真正
+     * 写入依赖声明的是插件包自己的 `install.sh`。
+     */
+    private fun profileDeclaresBundleDependency(bundleId: String): Boolean {
+        val config = (application as DshApp).container.sandboxConfig
+        val relative = Constants.DSH_WEB_PROFILE_GUEST_DIR
+            .removePrefix(Constants.SANDBOX_WORKSPACE)
+            .trimStart('/')
+        val manifest = File(config.userDataDir, "$relative/package.json")
+        val text = runCatching { manifest.readText() }.getOrNull() ?: return false
+        return Regex("\"${Regex.escape(bundleId)}\"\\s*:\\s*\"file:").containsMatchIn(text)
     }
 
     private fun readBrowserStageOwner(file: File): Boolean = runCatching {
@@ -665,6 +719,251 @@ class SandboxService : Service() {
             Log.w(TAG, "bootstrap: provision dsh CLI shim failed: ${t.message}")
         }
     }
+
+    /**
+     * Stage the **xdg-open shim** into [com.dshbox.app.common.Constants.DSH_LINK_SHIM_GUEST_DIR]
+     * (the same host dir bound at guest `/opt/dshbox`).
+     *
+     * DSH 的「打开配置文件」服务器端最终调用 `xdg-open <path>`（openNativeTextFile 的
+     * Linux 分支）。Android guest 没有桌面环境，base 层不含 xdg-open，原生 RPC 无法
+     * 完成。垫片把目标路径转写成请求文件交给宿主 APP，由内置查看器打开；不修改
+     * DSH 源码，System 与 Gecko 两种渲染器行为一致。
+     *
+     * 每次 bootstrap 覆写一次（与 link-shim 同策略）。失败不阻断 bootstrap：
+     * 最坏情况只是该功能回到「服务器报错」，不影响其它链路。
+     */
+    private suspend fun provisionXdgOpenShim() = withContext(Dispatchers.IO) {
+        val config = (application as DshApp).container.sandboxConfig
+        try {
+            config.dshShimDir.mkdirs()
+            val shim = File(config.dshShimDir, Constants.XDG_OPEN_SHIM_NAME)
+            applicationContext.assets.open("dshbox/xdg-open").use { input ->
+                shim.outputStream().use { output -> input.copyTo(output) }
+            }
+            shim.setExecutable(true, false)
+            Log.i(TAG, "bootstrap: xdg-open shim staged to ${shim.absolutePath}")
+        } catch (t: Throwable) {
+            Log.w(TAG, "bootstrap: provision xdg-open shim failed: ${t.message}")
+        }
+    }
+
+    /**
+     * 把 APK 内置的 corepack 缓存（离线可用的 pnpm）释放到「工具链缓存」挂载点。
+     *
+     * guest 里的 `pnpm` 命令是 Node 自带 corepack 的包装（见 [PNPM_CLI_SHIM]），
+     * corepack 在 `COREPACK_HOME` 下按 `v1/<name>/<version>` 组织缓存。随包只带
+     * corepack 本体、不带任何 pnpm 版本——首次执行 `corepack pnpm` 会联网下载，
+     * 受限网络下首装即失败。这里把构建期 `corepack prepare pnpm@11.1.2 --activate`
+     * 的产物（版本与本树 node 层 corepack 的 LKG 一致，零迁移）释放到位，离线即可命中。
+     *
+     * 幂等：就绪标记内容与资产 SHA-256 一致 → 跳过；缺失或不符 → 重建。
+     * 展开前先做**完整性预检**（资产 sha256 对账）并在全量展开**成功后**才写标记，
+     * 失败（解析错位、写盘中断）不留标记，下次启动自动重建——不存在"半成品被
+     * 标记锁死"的形态。失败只记录、不抛出——缓存缺席时 corepack 退回联网下载，
+     * 行为不劣于改造前。
+     */
+    private suspend fun provisionCorepackCache() = withContext(Dispatchers.IO) {
+        val config = (application as DshApp).container.sandboxConfig
+        val cacheDir = File(config.guestCacheDir, Constants.COREPACK_CACHE_DIR_LEAF)
+        val marker = File(cacheDir, Constants.COREPACK_CACHE_READY_MARKER)
+        try {
+            val expected = applicationContext.assets
+                .open(Constants.TOOLCHAIN_CACHE_ASSET_DIR + "/" +
+                    Constants.COREPACK_CACHE_ASSET_NAME + ".sha256")
+                .bufferedReader().use { it.readText().trim().substringBefore(' ') }
+            if (cacheDir.isDirectory && marker.isFile && marker.readText().trim() == expected) {
+                Log.i(TAG, "bootstrap: corepack cache up to date")
+                return@withContext
+            }
+            // 就绪标记是**写入时不变量**：写入成功 = 当时装入的内容与资产 sha256
+            // 一致。检查时只比对标记字符串，不重哈希目录现内容——guest 侧
+            // （可写 bind）事后篡改/删除 corepack 下文件不会被检测，属接受的
+            // 设计属性。改代码/换资产都会因
+            // 期望值变化而失效，绝不继承旧标记——坏状态不能跨版本固化。
+            cacheDir.deleteRecursively()
+            cacheDir.mkdirs()
+            val staged = File(config.guestCacheDir, "corepack-stage-" + System.currentTimeMillis())
+            // 暂存目录必须显式创建：FileOutputStream 不建父目录，父目录缺失会在
+            // 拷贝资产时抛 FileNotFoundException，整个释放路径静默失败（历史缺陷）。
+            check(staged.mkdirs() || staged.isDirectory) { "corepack stage dir unavailable" }
+            try {
+                val tarball = File(staged, Constants.COREPACK_CACHE_ASSET_NAME)
+                applicationContext.assets
+                    .open(Constants.TOOLCHAIN_CACHE_ASSET_DIR + "/" + Constants.COREPACK_CACHE_ASSET_NAME)
+                    .use { input -> tarball.outputStream().use { output -> input.copyTo(output) } }
+                // 完整性预检：落盘的 tarball 必须与登记 sha256 一致，否则不展开。
+                val actual = sha256Of(tarball)
+                if (actual != expected) {
+                    Log.w(TAG, "bootstrap: corepack cache asset sha256 mismatch; corepack will fetch on demand")
+                    return@withContext
+                }
+                if (!inflateTarZst(tarball, cacheDir)) {
+                    Log.w(TAG, "bootstrap: corepack cache inflate failed; corepack will fetch on demand")
+                    return@withContext
+                }
+                marker.writeText(expected)
+                Log.i(TAG, "bootstrap: corepack cache provisioned")
+            } finally {
+                staged.deleteRecursively()
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "bootstrap: provision corepack cache failed: ${t.message}")
+        }
+    }
+
+    /**
+     * pnpm 镜像源的启动期探测（只在覆盖文件缺失或为空时运行一次）。
+     *
+     * 双源竞速：官方 registry 与国内镜像同时请求 `pnpm/latest`，谁先返回**完整**
+     * 的 200 响应体（可解析出 "version"）谁胜——只看响应头会在 captive portal 的
+     * 半截响应上误选。超时或双败一律不写：缺席即官方直连，不把探测失败变成镜像钦定。
+     *
+     * 文件一经写入长期有效（镜像日后失效不会自动回退——自动覆盖会让"用户手改"
+     * 与"探测重写"打架；恢复手段是删除文件，删除即触发下次启动重新探测）。
+     * 已有内容时本函数整体跳过，绝不覆盖。
+     */
+    private suspend fun provisionPnpmRegistryProbe() = withContext(Dispatchers.IO) {
+        val config = (application as DshApp).container.sandboxConfig
+        val file = File(config.guestCacheDir, Constants.PNPM_REGISTRY_FILE_LEAF)
+        if (file.isFile && file.readText().trim().isNotEmpty()) return@withContext
+        try {
+            val winner = raceFirstComplete(
+                listOf(
+                    Constants.PNPM_OFFICIAL_REGISTRY_BASE to
+                        Constants.PNPM_OFFICIAL_REGISTRY_BASE + "/pnpm/latest",
+                    Constants.PNPM_CHINA_REGISTRY_BASE to
+                        Constants.PNPM_CHINA_REGISTRY_BASE + "/pnpm/latest",
+                ),
+            )
+            if (winner == null || winner == Constants.PNPM_OFFICIAL_REGISTRY_BASE) {
+                Log.i(TAG, "bootstrap: pnpm registry probe chose official (or none answered); no override")
+                return@withContext
+            }
+            config.guestCacheDir.mkdirs()
+            val tmp = File(config.guestCacheDir, Constants.PNPM_REGISTRY_FILE_LEAF + ".tmp")
+            tmp.writeText(winner + "\n")
+            if (tmp.renameTo(file)) {
+                Log.i(TAG, "bootstrap: pnpm registry probe recorded a mirror")
+            } else {
+                Log.w(TAG, "bootstrap: pnpm registry probe rename failed; official stays in effect")
+                tmp.delete()
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "bootstrap: pnpm registry probe failed: ${t.message}")
+        }
+    }
+
+    /**
+     * 并发请求多个 registry 基址的同一小文档，返回第一个完整成功者的基址。
+     *
+     * "完整" = HTTP 200 且响应体全部读毕且能解析出 "version" 字段。全员失败或
+     * 预算耗尽返回 null。响应体必须读完：镜像站可能先吐响应头再挂起，凭头判定
+     * 会把一次半途而废的请求当成可用源。
+     *
+     * ## 预算是"真总预算"
+     *
+     * [HttpURLConnection] 的 socket 读不可被协程取消抢占——结构化并发在超时后
+     * 仍要 join 阻塞的子协程，慢滴服务器可把 bootstrap 拖到无界。而看门狗若与
+     * `withTimeoutOrNull` 同用预算、同受其取消，它的触发点只会落在超时之后
+     * （死代码）。因此：
+     *  - **看门狗独立于超时作用域**：挂在不受取消的服务级 scope 上，落点严格
+     *    早于超时（预算减 250ms 余量），到点 `disconnect()` 全部在册连接——它
+     *    会使阻塞中的 socket 读立即抛出，阻塞的子协程随即收尾，`withTimeoutOrNull`
+     *    得以在其超时点附近真正返回；
+     *  - **胜者即断其余**：`winner.complete()` 后立刻断开其余在册连接，成功路径
+     *    不为落败源的超时付费；
+     *  - **残留清扫**：看门狗结束时顺带清理进程被杀留下的 `corepack-stage-*`
+     *    半成品目录（正常路径 stage 由 finally 即时删除）；
+     *  - 单源 `openConnection()` 抛异常也只削弱该源（在各自 try 内），不取消兄弟源。
+     */
+    private suspend fun raceFirstComplete(candidates: List<Pair<String, String>>): String? {
+        // 看门狗的宿主：独立于 withTimeoutOrNull 的取消作用域——超时取消只在
+        // 其自身块的 job 树内传播，触不到这里；看门狗与函数返回各走各的生命期，
+        // 三条返回路径（胜出/超时/异常）都以显式 cancel 收尾，无协程泄漏。
+        val watchdogScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val connections = java.util.concurrent.ConcurrentHashMap.newKeySet<HttpURLConnection>()
+        // 落点留 250ms 余量：严格早于 withTimeoutOrNull 的超时点，断开动作有
+        // 时间窗先把阻塞读解除，超时才不至于在 join 阻塞子协程上悬空。
+        val deadline = System.currentTimeMillis() +
+            Constants.PNPM_REGISTRY_PROBE_BUDGET_MS - Constants.PNPM_REGISTRY_WATCHDOG_LEAD_MS
+        val watchdog = watchdogScope.launch {
+            val remain = deadline - System.currentTimeMillis()
+            if (remain > 0) kotlinx.coroutines.delay(remain)
+            connections.forEach { runCatching { it.disconnect() } }
+            // 顺带清掉历史运行残留的暂存目录（进程被杀时拷贝中途会留下）。
+            val config = (application as DshApp).container.sandboxConfig
+            config.guestCacheDir.listFiles { f -> f.isDirectory && f.name.startsWith("corepack-stage-") }
+                ?.forEach { runCatching { it.deleteRecursively() } }
+        }
+        return try {
+            withTimeoutOrNull(Constants.PNPM_REGISTRY_PROBE_BUDGET_MS.toLong()) {
+                coroutineScope {
+                    val winner = CompletableDeferred<String>()
+                    for ((base, url) in candidates) {
+                        launch(Dispatchers.IO) {
+                            val conn = try {
+                                (URL(url).openConnection() as HttpURLConnection).also { connections += it }
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Throwable) {
+                                return@launch
+                            }
+                            try {
+                                conn.connectTimeout = Constants.PNPM_REGISTRY_PROBE_BUDGET_MS
+                                conn.readTimeout = Constants.PNPM_REGISTRY_PROBE_BUDGET_MS
+                                if (System.currentTimeMillis() >= deadline) return@launch
+                                if (conn.responseCode != 200) return@launch
+                                val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                                if (System.currentTimeMillis() >= deadline) return@launch
+                                if (JSONObject(body).optString("version").isNotBlank() && winner.complete(base)) {
+                                    // 胜者既定：断开其余连接，落败源不再拖住作用域收尾。
+                                    connections.forEach { runCatching { it.disconnect() } }
+                                }
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Throwable) {
+                                // 单源失败（含 disconnect 触发的中断）只削弱该源。
+                            } finally {
+                                connections -= conn
+                                conn.disconnect()
+                            }
+                        }
+                    }
+                    val result = winner.await()
+                    // 胜者既定后补一次清扫（防御：晚注册的连接不经过胜者 sweep）。
+                    connections.forEach { runCatching { it.disconnect() } }
+                    result
+                }
+            }.also {
+                // 胜出与超时两条路径都从这里离开：`.also` 对可空结果同样执行。
+                // 超时返回 null 时阻塞读已被看门狗先一步断开（落点严格早于
+                // 超时点），阻塞子协程随即收尾；这里显式停掉看门狗兜底止损。
+                watchdog.cancel()
+                watchdogScope.cancel()
+            }
+        } catch (t: Throwable) {
+            watchdog.cancel()
+            watchdogScope.cancel()
+            throw t
+        }
+    }
+
+    /** 计算文件 SHA-256（十六进制小写），失败返回 null。 */
+    private fun sha256Of(file: File): String? = runCatching {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                digest.update(buf, 0, n)
+            }
+        }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }.getOrNull()
+
+    private fun inflateTarZst(tarball: File, dest: File): Boolean =
+        CorepackCacheUnpacker.unpack(tarball, dest)
 
     /**
      * `apt` / `apt-get` / `dpkg` 的包装脚本正文（装到工作区 `.dsh/dshbox/bin`，PATH 首位）。
@@ -935,7 +1234,25 @@ class SandboxService : Service() {
         // 助手通道必须在 DSH 起来之前就绪：guest 侧把它当成 /opt/pilot，
         // 通道不在时每一次调用都会等到超时。
         RelayRuntime.start(applicationContext, dshboxRelayConfig(applicationContext))
+        ensureDeveloperAccessReady()
         sandboxManager.startSandbox()
+    }
+
+    /**
+     * 沙箱启动前的开发者模式复检。
+     *
+     * 运行环境层可能在开关开启之后被整体替换（在线获取/离线导入），换层会带走 adb 与
+     * 依赖，而开关状态（wrapper 在位）不变。复检只在开关开启时做实际工作：未开启直接返回，
+     * 已安装则是一次文件存在性检查，不产生 guest 进程。
+     */
+    private suspend fun ensureDeveloperAccessReady() {
+        runCatching {
+            com.dshbox.app.runtime.DeveloperAccessBootstrap(
+                applicationContext,
+                sandboxManager,
+                ((application as DshApp).container.sandboxConfig).runtimeDir,
+            ).ensureAdbReady()
+        }.onFailure { Log.w(TAG, "developer access recheck before sandbox start failed", it) }
     }
 
     private suspend fun stopSandbox() {
@@ -950,6 +1267,7 @@ class SandboxService : Service() {
         if (restartInProgress) return
         restartInProgress = true
         try {
+            ensureDeveloperAccessReady()
             sandboxManager.restartSandbox()
         } finally {
             restartInProgress = false
@@ -1177,33 +1495,90 @@ class SandboxService : Service() {
         """.trimIndent()
 
         /**
-         * `pnpm` 包装脚本。`dsh plugin …` 会把参数**转发给 pnpm**（在 profile 目录里装/删插件），
-         * 而设备上没有全局 pnpm —— 只有 Node 自带的 corepack。这里用 corepack 代跑。
+         * `pnpm` 包装脚本。`dsh plugin …` / 插件安装接口都把参数**转发给 pnpm**
+         * （在 profile 目录里装/删插件），而设备上没有全局 pnpm —— 只有 Node 自带的
+         * corepack。这里用 corepack 代跑，注入三件运行环境必需的东西；registry 刻意
+         * 不碰（原因见第 4 节）。
          *
-         * ## 缓存位置是刻意指定的
+         * ## 1. COREPACK_HOME → 内置缓存
          *
-         * pnpm 的 store 与 corepack 的缓存**默认都往 `$HOME` 写**，在 guest 里即 `/root`：
-         *  - corepack 缓存 → 会落进工作区（约 20 MB 量级，用户可见）；
-         *  - pnpm store（内容寻址，最大头）→ 会落进 **base 层**的 `/root/.local/share/pnpm`，
-         *    既不在 Files 页可见、也不在清理规则覆盖范围内（与 npm 缓存膨胀同类，可达数百 MB）。
-         * 因此两者都指到 `/opt/dshbox-cache` 挂载点（宿主 `filesDir/guest-cache`，不进用户数据）。
-         * 挂载点不存在时（例如只导入了 Linux 层）回落到工作区，保证脚本仍能跑。
+         * `bootstrap` 已把 pnpm 11.1.2 的 corepack 缓存释放到
+         * `/opt/dshbox-cache/corepack`（见 [provisionCorepackCache]）。指过去即
+         * **离线首装可用**，且**版本被钉死在 11.1.2**——不指的话 corepack 会按自己的
+         * LKG 去取，实测取到过 12.x，而 12 在 profile 固定的
+         * `autoInstallPeers: false` 配置下有内存暴涨问题，工作单明确排除。
+         *
+         * ## 2. store 位置：沿用 profile 现有记录，而不是强行换家
+         *
+         * pnpm 的一致性检查是**纯字符串比对**：`node_modules/.modules.yaml` 里记的
+         * `storeDir` 与本次解析出的 store 不同，`add`/`remove` 就直接抛
+         * `ERR_PNPM_UNEXPECTED_STORE`（`install` 动词例外，会自动重建）。因此对
+         * **存量 profile 不能硬切到新位置**，否则升级用户第一次装插件就失败。
+         * 这里读当前目录（DSH 调 pnpm 时 cwd 即 profile 目录）的 `.modules.yaml`：
+         *  - 记录存在且目录仍在 → 沿用该 store（剥掉 `/v11` 这类版本尾巴后回填）；
+         *  - 无记录（新 profile）/ 目录已不存在 → 用缓存挂载点（可被"清理缓存"回收）。
+         *
+         * 这样新老 profile 各自与自己的一致性记录对齐，不需要任何迁移动作。
+         *
+         * ## 3. 导入方式必须是 copy
+         *
+         * Android 上 pnpm 默认的 hardlink/clone 导入对本地目录依赖会报
+         * `Permission denied (os error 13)`（真机实证）。本地插件包以 `file:` 依赖
+         * 声明后，任何一次安装都会重新导入它们，所以 copy 必须全局生效。
+         *
+         * ## 4. 不注入 registry：源由 DSH 面板与市场判定面各自决定
+         *
+         * 这里**刻意不碰 registry**。原因是 DSH 的插件面板把「默认安装源」表示成
+         * `registry: null`（= pnpm 自己配置的源），只有用户显式选源时才传
+         * `--registry=<url>`；而 pnpm 在「源来自配置/环境变量」时请求的是**缩写
+         * 元数据**（`application/vnd.npm.install-v1+json`），该格式裁掉自定义字段，
+         * 安装前 `pnpm view <包> … dsh` 因此取不到 `dsh.bundle`，DSH 会判"这个包
+         * 没有声明组合包"（真机实测：同包同源，`--registry=` 参数形式能拿到 `dsh`，
+         * 环境变量形式拿不到；缩写响应 12~13 个 key，完整响应 33 个 key）。
+         *
+         * 更重要的是：垫片若在底下换源，面板上显示"npm 官方源"的那一项实际会去
+         * 访问别的源，标签与实际不符。因此源的选择完全交回使用者可见的入口：
+         *  - DSH 插件面板：官方源 / 中国大陆镜像源 / 自定义地址；
+         *  - 本应用插件市场：自行读 `pnpm-registry` 覆盖文件后**直连 HTTP**
+         *    （`Accept: application/json`，拿完整元数据），与 pnpm 无关。
          */
         private val PNPM_CLI_SHIM = """
             #!/bin/sh
             # DSHBox: `pnpm` via Node's bundled corepack (no global pnpm on device).
             #
-            # 只做一件事：把 pnpm 的 store 指到缓存挂载点。
-            # **不动 COREPACK_HOME** —— 运行时自带的 corepack 缓存里可能已经预激活了 pnpm
-            # （离线/内网场景靠它），覆盖成新目录会必然 miss、被迫重新联网下载。
-            # 缓存挂载点不存在时（理论上绑定时就 mkdirs 了，属兜底）回落到工作区。
+            # 1) COREPACK_HOME → 内置 pnpm（离线可用 + 锁 11.1.2）
+            # 2) store 沿用 profile 现有记录（存量零冲突），无记录才用缓存挂载点
+            # 3) 导入方式 copy（Android 上 hardlink/clone 会 EACCES）
+            # 4) 不注入 registry：源由 DSH 面板与市场判定面各自决定（见 KDoc）
             if [ -d /opt/dshbox-cache ]; then
-              STORE=/opt/dshbox-cache/pnpm-store
-            else
-              STORE=/root/projects/.dsh/pnpm-store
+              export COREPACK_HOME=/opt/dshbox-cache/corepack
             fi
-            mkdir -p "${'$'}STORE"
-            exec /usr/local/bin/corepack pnpm --store-dir="${'$'}STORE" "${'$'}@"
+
+            STORE=""
+            if [ -f ./.modules.yaml ]; then
+              RECORDED=$(sed -n 's/.*"storeDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' ./.modules.yaml 2>/dev/null | head -n 1)
+              if [ -z "${'$'}RECORDED" ]; then
+                RECORDED=$(sed -n 's/^storeDir:[[:space:]]*//p' ./.modules.yaml 2>/dev/null | head -n 1)
+              fi
+              if [ -n "${'$'}RECORDED" ] && [ -d "${'$'}RECORDED" ]; then
+                case "${'$'}RECORDED" in
+                  */v[0-9]*) STORE=${'$'}{RECORDED%/*} ;;
+                  *) STORE="${'$'}RECORDED" ;;
+                esac
+              fi
+            fi
+            if [ -z "${'$'}STORE" ]; then
+              if [ -d /opt/dshbox-cache ]; then
+                STORE=/opt/dshbox-cache/pnpm-store
+              else
+                STORE=/root/projects/.dsh/pnpm-store
+              fi
+            fi
+            export pnpm_config_store_dir="${'$'}STORE"
+            export pnpm_config_package_import_method=copy
+            mkdir -p "${'$'}STORE" 2>/dev/null || true
+
+            exec /usr/local/bin/corepack pnpm "${'$'}@"
         """.trimIndent()
 
         /**

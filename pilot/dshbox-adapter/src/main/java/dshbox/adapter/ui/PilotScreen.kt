@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -60,6 +61,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import interlock.relay.core.runtime.monotonicNow
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,6 +111,7 @@ sealed class PilotDestination {
     data object Surface : PilotDestination()
     data object Accessibility : PilotDestination()
     data object Privileged : PilotDestination()
+    data object DeveloperMode : PilotDestination()
     data object Permissions : PilotDestination()
     data object Overlay : PilotDestination()
     data object Logs : PilotDestination()
@@ -191,6 +194,13 @@ fun PilotScreen(
                         titleRes = destinationTitleRes(stack.last()),
                         onBack = { if (stack.size > 1) navigateTo(stack.dropLast(1)) else onBack() },
                         embedded = embedded,
+                        actions = {
+                            // 开发者模式是本页唯一需要"能力定位说明"的子页：入口放在顶栏右侧，
+                            // 用户不必先进设置就能读到它是什么、有哪些注意事项。
+                            if (stack.last() == PilotDestination.DeveloperMode) {
+                                developer.access.ui.DeveloperAccessHelpButton()
+                            }
+                        },
                     )
                 }
             },
@@ -276,6 +286,7 @@ fun PilotScreen(
                     )
 
                     PilotDestination.Privileged -> PrivilegedGuidePage(container = container, state = state)
+                    PilotDestination.DeveloperMode -> DeveloperModePage()
                     PilotDestination.Overlay -> OverlayGuidePage(
                         container = container,
                         granted = state.overlayGranted,
@@ -325,7 +336,18 @@ fun PilotScreen(
  * 这里不再重复让位；独立入口（PilotActivity）自行让位。
  */
 @Composable
-private fun PilotTopBar(titleRes: Int, onBack: () -> Unit, embedded: Boolean) {
+private fun PilotTopBar(
+    titleRes: Int,
+    onBack: () -> Unit,
+    embedded: Boolean,
+    /**
+     * 顶栏右侧动作区。
+     *
+     * 只有需要就地说明的子页（开发者模式）会传入；其余子页留空，
+     * 布局与原先完全一致（标题占满剩余宽度）。
+     */
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     Surface(color = MaterialTheme.colorScheme.background) {
         Row(
             modifier = Modifier
@@ -354,8 +376,11 @@ private fun PilotTopBar(titleRes: Int, onBack: () -> Unit, embedded: Boolean) {
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 4.dp),
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .weight(1f),
             )
+            actions()
         }
     }
 }
@@ -366,6 +391,7 @@ private fun destinationTitleRes(destination: PilotDestination): Int = when (dest
     PilotDestination.Surface -> R.string.pilot_page_surface
     PilotDestination.Accessibility -> R.string.pilot_page_accessibility
     PilotDestination.Privileged -> R.string.pilot_page_privileged
+    PilotDestination.DeveloperMode -> R.string.pilot_page_developer_mode
     PilotDestination.Permissions -> R.string.pilot_page_permissions
     PilotDestination.Overlay -> R.string.pilot_page_overlay
     PilotDestination.Logs -> R.string.pilot_page_logs
@@ -464,6 +490,11 @@ private fun OverviewPage(
         PilotActionRow(
             title = stringResource(R.string.pilot_page_privileged),
             onClick = { open(PilotDestination.Privileged) },
+        )
+        PilotDivider()
+        PilotActionRow(
+            title = stringResource(R.string.pilot_page_developer_mode),
+            onClick = { open(PilotDestination.DeveloperMode) },
         )
         PilotDivider()
         PilotActionRow(
@@ -1652,4 +1683,28 @@ private fun permissionLabelRes(permission: String): Int = when (permission) {
     Manifest.permission.READ_MEDIA_AUDIO -> R.string.pilot_perm_media_audio
     Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED -> R.string.pilot_perm_media_selected
     else -> R.string.pilot_perm_media
+}
+
+/**
+ * 开发者模式面板的宿主挂载点。
+ *
+ * 面板本体在能力模块内（含自建主题），此处只做主题套用与未初始化兜底——
+ * 保持助手界面与本能力的实现解耦。
+ */
+@Composable
+private fun DeveloperModePage() {
+    // 控制器在沙箱服务启动后才装配；订阅而非单次读取，装配完成时本页自动切换为真实面板。
+    val controller by developer.access.DeveloperAccessEntry.controller.collectAsState()
+    if (controller == null) {
+        PilotSection(title = stringResource(R.string.pilot_page_developer_mode)) {
+            PilotRow(
+                title = stringResource(R.string.pilot_devmode_unavailable),
+                value = "",
+            )
+        }
+        return
+    }
+    developer.access.ui.theme.DeveloperAccessTheme {
+        developer.access.ui.DeveloperAccessPage(controller = controller!!)
+    }
 }

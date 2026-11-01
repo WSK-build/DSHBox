@@ -132,12 +132,13 @@
     <!-- Mercado · instalados -->
     <string name="pm_market_installed_empty">Aún no hay plugins de la comunidad instalados</string>
     <string name="pm_market_installed_empty_hint">Explora la pestaña Descubrir para encontrar alguno.</string>
-    <string name="pm_market_state_live">Activo</string>
+    <string name="pm_market_state_live">Instalado — activo</string>
     <string name="pm_market_state_restart">Instalado, se aplica al reiniciar</string>
     <string name="pm_market_state_inert">Instalado, sin usar</string>
     <string name="pm_market_state_broken">Instalado, no superó la validación</string>
     <string name="pm_market_state_missing">En la lista, pero faltan los archivos</string>
     <string name="pm_market_state_disabled">Desactivado</string>
+    <string name="pm_market_state_disabled_pending">Desactivado — se aplica tras reiniciar DSH</string>
     <string name="pm_market_act_why">Detalles</string>
     <string name="pm_market_act_why_empty">No se registró ningún diagnóstico para este estado.</string>
     <string name="pm_market_toggle_on">Activado</string>
@@ -239,4 +240,13 @@
 El catálogo recién creado por DSHBox, para ampliar más fácilmente la cobertura móvil. ¡Las pull requests y las ideas son bienvenidas!</string>
     <string name="pm_market_source_official_desc">La mayor selección de plugins de DeepSeek Harness, pero está pensada para ordenador: algunos plugins tienen problemas de diseño o compatibilidad en móvil.</string>
     <string name="pm_market_source_open_failed">Ninguna aplicación puede abrir este enlace</string>
+    <string name="pm_market_state_denied">Rechazado por el host</string>
+    <string name="pm_market_stale_rows_title">Filas de desactivación obsoletas</string>
+    <string name="pm_market_stale_rows_message">%1$d filas de desactivación ya no coinciden con ningún complemento instalado; cada arranque registra una advertencia por ellas:</string>
+    <string name="pm_market_stale_rows_clean">Eliminar filas obsoletas</string>
+    <string name="pm_market_stale_rows_cleaned">Filas obsoletas eliminadas</string>
+    <string name="pm_market_state_incompatible">Instalado — incompatible con este dsh</string>
+    <string name="pm_market_state_library">Biblioteca</string>
+    <string name="pm_market_update_not_a_plugin">Existe una versión más reciente (%1$s), pero es una dependencia de biblioteca, no un complemento: actualizarla aquí reescribiría la versión de dependencia del perfil</string>
+    <string name="pm_market_update_newer_prerelease">Existe una compilación más reciente (%1$s) en otro canal; es un dato, no una actualización que ofrezca el mercado</string>
 </resources>

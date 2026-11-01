@@ -41,7 +41,7 @@ import com.dshbox.pluginmanager.R
  * 这里。这样「安装/卸载/更新正在进行」这件事在界面上永远有落点，用户切页
  * 签、离开列表都不会丢掉进度。
  *
- * 记录是**不可持久化**的：进程重启后正在进行的操作本来就没有意义。
+ * 记录是**不可持久化**的：进程重启后正在进行的操作没有意义。
  */
 
 /** 操作种类。取值与上游 `opKind_*` 三档一致。 */
@@ -85,7 +85,7 @@ internal class MarketOperation(
         val trimmed = line.trimEnd()
         if (trimmed.isEmpty()) return
         lines.add(trimmed)
-        // 只保留最近 MAX_LINES 行：面板本来就只展示尾部若干行，但底层的
+        // 只保留最近 MAX_LINES 行：面板只展示尾部若干行，但底层的
         // 记录若无限增长，长安装（pnpm 输出上千行）会持续占内存。
         if (lines.size > MAX_LINES) {
             lines.removeRange(0, lines.size - MAX_LINES)
@@ -210,7 +210,7 @@ internal fun MarketTaskPanel(
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 // 必须传 progress：不传就是**不确定态**（无限动画），任务做完之后
-                // 进度条还在转，看起来像永远没结束（真机上就是这样）。
+                // 进度条还在转，看起来像永远没结束（实测即如此）。
                 LinearProgressIndicator(
                     progress = {
                         if (operations.isEmpty()) {

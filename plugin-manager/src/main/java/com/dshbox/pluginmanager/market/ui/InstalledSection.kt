@@ -53,9 +53,10 @@ import com.dshbox.app.common.R as CommonR
  * 折叠、启停开关、更新、卸载。
  *
  * 三条刻意为之的取舍：
- * 1. **只有可拨的状态才给开关**。`MISSING`（文件都不在）与 `BROKEN`（校验没过）
- *    拨开关没有意义，给了反而误导用户以为拨一下就能修好——所以那两态不渲染
- *    开关，只显示状态徽章。
+ * 1. **能不能拨由数据层决定**：条目 id 可解析、不属于宿主基础设施、不是市场
+ *    自身、且宿主没有在启动期拒绝它（`DENIED`）。其余状态都给开关——包括校验
+ *    未通过的 `BROKEN`，用户至少能把它关掉；声明的库（`LIBRARY`）除外，它没有
+ *    可拨的东西。
  * 2. **启停不谎报生效**。数据层只写层、不热重载，所以拨动后如实提示"下次启动
  *    生效"，而不是假装已经生效。
  * 3. **读不出来 ≠ 没有**。已装清单读失败时显示原因 + 重试，不显示"尚未安装
@@ -65,20 +66,6 @@ import com.dshbox.app.common.R as CommonR
 /** 备注字数上限。与上游 `state.json` 的 200 字限制一致。 */
 private const val NOTE_MAX_LENGTH = 200
 
-/**
- * 哪些激活态允许启停。
- *
- * `BROKEN` 也允许：这个状态下插件"装上了但加载不了"，而"停用它"正是最合理的
- * 处置动作（停用后 loader 不会再尝试加载它）。禁用它反而会让用户只能卸载。
- * `LIVE` 不允许是因为它已经生效，改天再说；`MISSING` 没有东西可加载。
- */
-private fun ActivationState.isToggleable(): Boolean = when (this) {
-    ActivationState.RESTART, ActivationState.DISABLED, ActivationState.INERT,
-    ActivationState.BROKEN,
-    -> true
-
-    ActivationState.LIVE, ActivationState.MISSING -> false
-}
 
 @Composable
 internal fun InstalledSection(
@@ -137,7 +124,7 @@ internal fun InstalledSection(
         // "正在加载插件目录…"）看的是 `loading`，而 LOADING 只是 `loading` 的一个子集
         // （`loading && 列表为空 && 未失败`），所以这里再画一条必然与它同屏出现两条
         // 进度条（用户实测：发现页一条、已安装页两条）。
-        // 这条分区进度条是历史遗留：全局横幅原先还要求 `registry == null &&
+        // 这条分区进度条是旧版遗留：全局横幅原先还要求 `registry == null &&
         // installed.isEmpty()`，那时"只重载已装列表"没有全局反馈，才需要它兜底
         // （见 MarketScreen 里那段注释）；横幅条件放宽成只看 loading 后它就完全冗余了。
         // 提前返回必须保留：加载中不能落到空态，否则等于把"还没读完"说成"尚未安装"。
@@ -330,21 +317,19 @@ private fun InstalledPluginCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 8.dp),
             ) {
-                if (plugin.activation.isToggleable()) {
+                if (plugin.toggleable) {
+                    val switchOn = plugin.activation != ActivationState.DISABLED &&
+                        plugin.activation != ActivationState.DISABLED_PENDING
                     Text(
                         text = stringResource(
-                            if (plugin.activation == ActivationState.DISABLED) {
-                                R.string.pm_market_toggle_off
-                            } else {
-                                R.string.pm_market_toggle_on
-                            },
+                            if (switchOn) R.string.pm_market_toggle_on else R.string.pm_market_toggle_off,
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.width(6.dp))
                     Switch(
-                        checked = plugin.activation != ActivationState.DISABLED,
+                        checked = switchOn,
                         enabled = !busy,
                         onCheckedChange = onSetEnabled,
                     )
@@ -436,9 +421,24 @@ private fun UpdateRow(
     }
     if (update == null) return
     val channelSwitch = update.channelSwitch?.takeIf { it.isNotBlank() }
+    val newerPrerelease = update.newerPrerelease?.takeIf { it.isNotBlank() }
     when {
         channelSwitch != null -> Text(
             text = stringResource(R.string.pm_market_update_channel_switch, channelSwitch),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        // 普通库依赖：有更新但不给入口，只说明事实。
+        update.notAPlugin -> Text(
+            text = stringResource(R.string.pm_market_update_not_a_plugin, update.latest.orEmpty()),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        // 用户跟的另一条通道上有更新的构建；只陈述事实，不出现更新按钮。
+        newerPrerelease != null -> Text(
+            text = stringResource(R.string.pm_market_update_newer_prerelease, newerPrerelease),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
@@ -541,7 +541,7 @@ private fun NoteRow(
     }
 }
 
-/** 激活状态徽章。六态各有自己的文案，颜色按"好 / 待重启 / 中性 / 坏"四档收敛。 */
+/** 激活状态徽章：每态一枚文案，颜色按"好 / 待重启 / 中性 / 坏"四档收敛。 */
 @Composable
 internal fun ActivationBadge(state: ActivationState, modifier: Modifier = Modifier) {
     val label = stringResource(
@@ -552,19 +552,29 @@ internal fun ActivationBadge(state: ActivationState, modifier: Modifier = Modifi
             ActivationState.BROKEN -> R.string.pm_market_state_broken
             ActivationState.MISSING -> R.string.pm_market_state_missing
             ActivationState.DISABLED -> R.string.pm_market_state_disabled
+            ActivationState.DISABLED_PENDING -> R.string.pm_market_state_disabled_pending
+            ActivationState.INCOMPATIBLE -> R.string.pm_market_state_incompatible
+            ActivationState.DENIED -> R.string.pm_market_state_denied
+            ActivationState.LIBRARY -> R.string.pm_market_state_library
         },
     )
     val container = when (state) {
         ActivationState.LIVE -> MaterialTheme.colorScheme.primaryContainer
         ActivationState.RESTART -> MaterialTheme.colorScheme.tertiaryContainer
-        ActivationState.INERT, ActivationState.DISABLED -> MaterialTheme.colorScheme.surface
+        ActivationState.INERT, ActivationState.DISABLED, ActivationState.DISABLED_PENDING,
+        ActivationState.LIBRARY -> MaterialTheme.colorScheme.surface
         ActivationState.BROKEN, ActivationState.MISSING -> MaterialTheme.colorScheme.errorContainer
+        ActivationState.INCOMPATIBLE -> MaterialTheme.colorScheme.errorContainer
+        ActivationState.DENIED -> MaterialTheme.colorScheme.errorContainer
     }
     val content = when (state) {
         ActivationState.LIVE -> MaterialTheme.colorScheme.onPrimaryContainer
         ActivationState.RESTART -> MaterialTheme.colorScheme.onTertiaryContainer
-        ActivationState.INERT, ActivationState.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant
+        ActivationState.INERT, ActivationState.DISABLED, ActivationState.DISABLED_PENDING,
+        ActivationState.LIBRARY -> MaterialTheme.colorScheme.onSurfaceVariant
         ActivationState.BROKEN, ActivationState.MISSING -> MaterialTheme.colorScheme.onErrorContainer
+        ActivationState.INCOMPATIBLE -> MaterialTheme.colorScheme.onErrorContainer
+        ActivationState.DENIED -> MaterialTheme.colorScheme.onErrorContainer
     }
     MarketPill(text = label, container = container, content = content, modifier = modifier)
 }

@@ -30,6 +30,9 @@ class DshApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (com.dshbox.app.dsh.DshRendererProcessPolicy.isRendererProcess(this, Application.getProcessName())) {
+            return
+        }
         if (Application.getProcessName() == "$packageName:browser") {
             android.webkit.WebView.setDataDirectorySuffix("browser")
             return

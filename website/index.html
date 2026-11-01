@@ -32,7 +32,7 @@
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.0">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -54,7 +54,7 @@
         "applicationCategory": "MobileApplication",
         "applicationSubCategory": "Local AI / LLM assistant",
         "operatingSystem": "Android (ARM64, Android 10+)",
-        "softwareVersion": "1.5.0",
+        "softwareVersion": "1.5.1",
         "inLanguage": ["en", "zh-CN"],
         "description": "Run DeepSeek Harness locally on Android with an AI browser assistant, phone tools, shared folders and a terminal. Guided Debian and Node.js setup, no root or Termux required. 中文：在安卓手机与平板上本地运行 DSH，集成 AI 浏览器助手、手机助手、系统文件共享区与终端；按引导安装 Debian 与 Node.js，无需 Root 或单独安装 Termux。",
         "featureList": [
@@ -142,14 +142,18 @@
           </p>
 
           <div class="hero-actions reveal">
-            <a id="download-apk" class="button button-primary" href="https://github.com/WSK-build/DSHBox/releases/latest">
-              <span class="lang-en">Download APK</span>
-              <span class="lang-zh">下载 APK</span>
+            <a id="download-apk-system-hero" class="button button-primary" href="https://github.com/WSK-build/DSHBox/releases/latest">
+              <span class="lang-en">Download · System WebView</span>
+              <span class="lang-zh">下载 · 系统 WebView 版</span>
             </a>
-            <button id="copy-download-link" class="button button-ghost" type="button">
-              <span class="lang-en">Copy download link</span>
-              <span class="lang-zh">复制下载链接</span>
-            </button>
+            <a id="download-apk-gecko-hero" class="button button-primary" href="https://github.com/WSK-build/DSHBox/releases/latest">
+              <span class="lang-en">Download · Embedded Gecko</span>
+              <span class="lang-zh">下载 · 内置 Gecko 版</span>
+            </a>
+            <a class="button button-ghost" href="#download">
+              <span class="lang-en">Compare versions</span>
+              <span class="lang-zh">版本对比</span>
+            </a>
             <a class="button button-secondary" href="https://github.com/WSK-build/DSHBox" target="_blank" rel="noopener">
               <span class="lang-en">View on GitHub</span>
               <span class="lang-zh">在 GitHub 查看</span>
@@ -179,7 +183,7 @@
               <h2 class="whats-new-title" id="whats-new-hero-title">
                 <span class="lang-en">What's new</span><span class="lang-zh">最新版本变化</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.0</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.1</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
@@ -223,12 +227,18 @@
     <section class="stats" aria-label="Current release facts">
       <div class="container">
         <dl class="stats-strip reveal">
-          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.0</dd></div>
-          <div class="stat" style="--i:1"><dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt><dd data-fact="apkSize">112.5 MB</dd></div>
+          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.1</dd></div>
+          <div class="stat" style="--i:1">
+            <dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt>
+            <dd class="stat-apk-sizes">
+              <span><span class="stat-label lang-en">System</span><span class="stat-label lang-zh">系统</span><b data-fact="apkSizeSystem">118.7 MB</b></span>
+              <span><span class="stat-label">Gecko</span><b data-fact="apkSizeGecko">207.5 MB</b></span>
+            </dd>
+          </div>
           <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime setup</span><span class="lang-zh">环境准备</span></dt><dd><span class="lang-en">Guided setup</span><span class="lang-zh">分步安装</span></dd></div>
           <div class="stat" style="--i:3"><dt><span class="lang-en">Android</span><span class="lang-zh">系统要求</span></dt><dd>10+ (ARM64)</dd></div>
           <div class="stat" style="--i:4"><dt><span class="lang-en">JVM tests</span><span class="lang-zh">JVM 测试项</span></dt><dd data-fact="testCount">1823</dd></div>
-          <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd data-fact="dshVersion">0.2.0-rc.2</dd></div>
+          <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd data-fact="dshVersion">0.2.1-rc.5</dd></div>
         </dl>
       </div>
     </section>
@@ -445,7 +455,7 @@
             <span class="flow-num" aria-hidden="true">5</span>
             <div>
               <h3><span class="lang-en">WebView / System Browser</span><span class="lang-zh">WebView / 系统浏览器</span></h3>
-              <p><span class="lang-en">You interact through the app or any local browser.</span><span class="lang-zh">通过 App 或任意本地浏览器交互。</span></p>
+              <p><span class="lang-en">Interact inside the app with either renderer, or open the local address in any browser.</span><span class="lang-zh">可在 App 内用任一渲染内核交互，也可用任意本地浏览器打开同一地址。</span></p>
             </div>
           </li>
         </ol>
@@ -482,13 +492,13 @@
               <li><span class="lang-en">Android 10 or newer (minSdk 29)</span><span class="lang-zh">Android 10 或更高（minSdk 29）</span></li>
               <li><span class="lang-en">ARM64 phone or tablet (targetSdk 36)</span><span class="lang-zh">ARM64 手机或平板（targetSdk 36）</span></li>
               <li><span class="lang-en">No root required</span><span class="lang-zh">无需 Root</span></li>
-              <li><span class="lang-en">Use the WebView check in setup; update the system WebView if pages stay blank or workspaces fail to load</span><span class="lang-zh">按引导检查 WebView 版本；白屏或工作区加载异常时，可更新适配设备的系统 WebView</span></li>
+              <li><span class="lang-en">System WebView version: keep the system WebView reasonably current. Embedded Gecko version: no system WebView dependency</span><span class="lang-zh">系统 WebView 版：保持系统 WebView 较新；内置 Gecko 版：不依赖系统 WebView</span></li>
             </ul>
           </div>
           <div class="req-card reveal" style="--i:1">
             <h3><span class="lang-en">Storage &amp; Network</span><span class="lang-zh">存储与网络</span></h3>
             <ul>
-              <li><span class="lang-en"><span data-fact="apkSize">112.5 MB</span> for the APK download</span><span class="lang-zh">APK 下载占 <span data-fact="apkSize">112.5 MB</span></span></li>
+              <li><span class="lang-en"><span data-fact="apkSizeSystem">118.7 MB</span> for the System WebView version, <span data-fact="apkSizeGecko">207.5 MB</span> for the Embedded Gecko version</span><span class="lang-zh">系统 WebView 版约 <span data-fact="apkSizeSystem">118.7 MB</span>，内置 Gecko 版约 <span data-fact="apkSizeGecko">207.5 MB</span></span></li>
               <li><span class="lang-en">Allow extra storage for Debian, Node.js and your workspace</span><span class="lang-zh">为 Debian、Node.js 与工作区预留充足存储</span></li>
               <li><span class="lang-en">Online mirror setup or offline runtime import</span><span class="lang-zh">支持在线多镜像源安装或离线导入运行环境</span></li>
             </ul>
@@ -498,8 +508,8 @@
             <ul>
               <li><span class="lang-en">Debian user-space via PRoot</span><span class="lang-zh">PRoot 提供的 Debian 用户态</span></li>
               <li><span class="lang-en">Node.js runtime</span><span class="lang-zh">Node.js 运行时</span></li>
-              <li><span class="lang-en">DSH <span data-fact="dshVersion">0.2.0-rc.2</span></span><span class="lang-zh">DSH <span data-fact="dshVersion">0.2.0-rc.2</span></span></li>
-              <li><span class="lang-en">Embedded WebView + local web server</span><span class="lang-zh">内嵌 WebView + 本地 Web 服务</span></li>
+              <li><span class="lang-en">DSH <span data-fact="dshVersion">0.2.1-rc.5</span></span><span class="lang-zh">DSH <span data-fact="dshVersion">0.2.1-rc.5</span></span></li>
+              <li><span class="lang-en">System WebView or embedded GeckoView, plus a local web server</span><span class="lang-zh">系统 WebView 或内置 GeckoView，配合本地 Web 服务</span></li>
             </ul>
           </div>
         </div>
@@ -516,20 +526,59 @@
               <span class="lang-zh">下载 DSHBox</span>
             </h2>
             <p>
-              <span class="lang-en">The button below always resolves to the latest APK from GitHub Releases. If the API is unreachable, you can still download manually from the Releases page.</span>
-              <span class="lang-zh">下方按钮始终解析 GitHub Releases 上的最新 APK。若 API 加载失败，仍可通过 Release 页面手动下载。</span>
+              <span class="lang-en">Two builds, same app and package. Both buttons always resolve to the latest files on GitHub Releases; if the API is unreachable, they fall back to the Releases page.</span>
+              <span class="lang-zh">同一应用、同一包名的两个版本。下方按钮始终解析 GitHub Releases 上的最新产物；若 API 加载失败，会回落到 Release 页面。</span>
             </p>
           </header>
 
-          <div class="download-actions">
-            <a id="download-apk-hero" class="button button-primary button-large" href="https://github.com/WSK-build/DSHBox/releases/latest">
-              <span class="lang-en">Download APK</span>
-              <span class="lang-zh">下载 APK</span>
-            </a>
-            <button id="copy-download-link-hero" class="button button-ghost button-large" type="button">
-              <span class="lang-en">Copy download link</span>
-              <span class="lang-zh">复制下载链接</span>
-            </button>
+          <div class="download-options">
+            <article class="download-option">
+              <h3 class="download-option-title">
+                <span class="lang-en">System WebView version</span>
+                <span class="lang-zh">系统 WebView 版</span>
+              </h3>
+              <p class="download-option-desc">
+                <span class="lang-en">Renders with the WebView already on your device. Smaller download; needs a reasonably recent system WebView.</span>
+                <span class="lang-zh">使用手机自带的 WebView 内核渲染。体积更小，需要系统 WebView 版本较新。</span>
+              </p>
+              <ul class="download-option-meta">
+                <li><span data-fact="apkSizeSystem">118.7 MB</span> · ARM64</li>
+              </ul>
+              <div class="download-actions">
+                <a id="download-apk-system" class="button button-primary button-large" href="https://github.com/WSK-build/DSHBox/releases/latest">
+                  <span class="lang-en">Download</span>
+                  <span class="lang-zh">下载</span>
+                </a>
+                <button id="copy-download-link-system" class="button button-ghost" type="button" data-copy-flavor="system">
+                  <span class="lang-en">Copy link</span>
+                  <span class="lang-zh">复制链接</span>
+                </button>
+              </div>
+            </article>
+
+            <article class="download-option">
+              <h3 class="download-option-title">
+                <span class="lang-en">Embedded Gecko version</span>
+                <span class="lang-zh">内置 Gecko 版</span>
+              </h3>
+              <p class="download-option-desc">
+                <span class="lang-en">Ships its own GeckoView rendering engine. Does not depend on the system WebView; larger download.</span>
+                <span class="lang-zh">内置完整 GeckoView 渲染内核，不依赖系统 WebView。体积较大。</span>
+              </p>
+              <ul class="download-option-meta">
+                <li><span data-fact="apkSizeGecko">207.5 MB</span> · ARM64</li>
+              </ul>
+              <div class="download-actions">
+                <a id="download-apk-gecko" class="button button-primary button-large" href="https://github.com/WSK-build/DSHBox/releases/latest">
+                  <span class="lang-en">Download</span>
+                  <span class="lang-zh">下载</span>
+                </a>
+                <button id="copy-download-link-gecko" class="button button-ghost" type="button" data-copy-flavor="gecko">
+                  <span class="lang-en">Copy link</span>
+                  <span class="lang-zh">复制链接</span>
+                </button>
+              </div>
+            </article>
           </div>
 
           <p id="release-information-hero" class="release-info" aria-live="polite">
@@ -547,7 +596,7 @@
                 <span class="lang-en">What's new in this version</span>
                 <span class="lang-zh">本次版本更新内容</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.0</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.1</span>
               <span class="whats-new-date" data-release-date>2026-10-17</span>
             </div>
             <ul class="whats-new-list" data-release-list>
@@ -668,8 +717,8 @@
               <span class="lang-zh">如何升级 DSH？</span>
             </summary>
             <p>
-              <span class="lang-en">The bundled version is <span data-fact="dshVersion">0.2.0-rc.2</span>. Use Settings → Update DSH to check online mirrors. Back up before trying Alpha versions: reverting to RC can cause conversation-data incompatibility.</span>
-              <span class="lang-zh">随包版本为 <span data-fact="dshVersion">0.2.0-rc.2</span>，可在设置 → 在线更新 DSH 中选择镜像源升级。体验 Alpha 前请备份，回退 RC 可能出现对话数据兼容问题。</span>
+              <span class="lang-en">The bundled version is <span data-fact="dshVersion">0.2.1-rc.5</span>. Use Settings → Update DSH to check online mirrors. Back up before trying Alpha versions: reverting to RC can cause conversation-data incompatibility.</span>
+              <span class="lang-zh">随包版本为 <span data-fact="dshVersion">0.2.1-rc.5</span>，可在设置 → 在线更新 DSH 中选择镜像源升级。体验 Alpha 前请备份，回退 RC 可能出现对话数据兼容问题。</span>
             </p>
           </details>
           <details class="faq-item reveal" style="--i:7">
@@ -772,6 +821,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.5.0" defer></script>
+  <script src="./assets/js/main.js?v=1.5.1" defer></script>
 </body>
 </html>

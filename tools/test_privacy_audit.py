@@ -94,6 +94,31 @@ class PrivacyAuditTest(unittest.TestCase):
                 with patch.object(sys, "argv", args), contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(audit.main(), expected)
 
+    def test_verified_guest_and_test_placeholders_are_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tests = Path(directory, "src/test")
+            tests.mkdir(parents=True)
+            test_address_two = ".".join(("10", "0", "0", "2"))
+            test_address_five = ".".join(("10", "0", "0", "5"))
+            Path(tests, "Placeholders.kt").write_text(
+                "\n".join([
+                    'val androidDir = "/home/.android"',
+                    'AdbAssets.unpackCommand(listOf("/tmp/b.deb"))',
+                    f'assertTrue(classify("connected to {test_address_two}:5555"))',
+                    f'resolveRegistryBase("https://{test_address_five}/npm")',
+                    'classify("git@github.com: Permission denied (publickey).")',
+                ]),
+                encoding="utf-8",
+            )
+            self.assertEqual([], audit.scan(directory))
+
+    def test_shell_prompt_placeholder_is_not_windows_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "Env.kt").write_text(
+                '"PS1=\\\\u@\\\\h:\\\\w\\\\$ "', encoding="utf-8",
+            )
+            self.assertFalse(any(item[2] == "Windows 盘符路径" for item in audit.scan(directory)))
+
 
 if __name__ == "__main__":
     unittest.main()

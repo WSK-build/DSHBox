@@ -1,5 +1,7 @@
 package com.dshbox.pluginmanager.safety
 
+import com.dshbox.pluginmanager.contract.HostSignals
+
 /** 一次失败归因命中的条目。 */
 data class FailureHit(
     /** loader 条目 id（失败行里有的话）。 */
@@ -53,18 +55,15 @@ data class FailureHit(
 object FailureAttribution {
 
     /** 聚合失败的收尾行：仅作兜底起点，不算失败信号本身。 */
-    private const val AGGREGATE_MARK = "loader entries failed to apply"
+    private const val AGGREGATE_MARK = HostSignals.LOADER_AGGREGATE
 
-    private val APPLY_RE =
-        Regex("""failed to \S+ loader entry (\S+) \((.*?)\): *(.*)$""")
-    private val FAILED_TO_LOAD_RE =
-        Regex("""plugin\(s\) failed to load: *([^\n;]*)""")
-    private val DID_NOT_ACTIVATE_RE =
-        Regex("""(\d+) entries did not activate""")
+    // 日志形态全部取自契约层，与其它解析方共用同一套定义。
+    private val APPLY_RE = HostSignals.LOADER_ENTRY_FAILURE
+    private val FAILED_TO_LOAD_RE = HostSignals.PLUGIN_FAILED_TO_LOAD
+    private val DID_NOT_ACTIVATE_RE = HostSignals.ENTRIES_NOT_ACTIVATED
 
     /** 顶格的点名行：`name: reason`。缩进行是栈，不在这里匹配。 */
-    private val NAMED_ENTRY_RE =
-        Regex("""^(\S.*?) *: +(.*)$""")
+    private val NAMED_ENTRY_RE = HostSignals.NAMED_ENTRY
 
     /** 该行是否是一条失败信号（用于定位"最后一组"）。 */
     fun isFailureLine(line: String): Boolean =
@@ -243,8 +242,8 @@ object FailureAttribution {
     private const val MAX_NAMED_ENTRIES = 50
 
     /** 链式失败的分段形状：只有它出现的位置才算"新的一层"。 */
-    private val CHAIN_SHAPE_RE = Regex("""failed to \S+ loader entry""")
+    private val CHAIN_SHAPE_RE = HostSignals.LOADER_ENTRY_CHAIN
 
     /** 一次启动尝试的尾行（node 退出时打印版本号）。 */
-    private val NODE_TRAILER_RE = Regex("""(^|\s)Node\.js v\d""")
+    private val NODE_TRAILER_RE = HostSignals.NODE_TRAILER
 }

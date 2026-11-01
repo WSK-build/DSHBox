@@ -1,5 +1,6 @@
 package com.dshbox.pluginmanager.market.data
 
+import com.dshbox.pluginmanager.contract.HostContract
 import com.dshbox.pluginmanager.core.PluginPaths
 import com.dshbox.pluginmanager.market.model.HostCompatibility
 import java.io.File
@@ -115,6 +116,29 @@ object Semver {
         fun matches(version: Version): Boolean =
             comparators.all { comparator -> matchesComparator(version, comparator) }
 
+        /**
+         * 严格门禁口径：`^` 与 `~` 的上界按 `<ceil-0` 处理。
+         *
+         * 不带 `-0` 时预发布版本会滑过隐式上界（`0.2.0-rc.2 < 0.2.0`），
+         * 而宿主恰恰会拒绝这种组合。
+         */
+        fun matchesStrict(version: Version): Boolean =
+            comparators.all { comparator ->
+                when (comparator.op) {
+                    Op.CARET -> {
+                        val ceiling = exclusiveCeiling(caretCeiling(comparator.target))
+                        compareVersions(version, comparator.target) >= 0 &&
+                            compareVersions(version, ceiling) < 0
+                    }
+                    Op.TILDE -> {
+                        val ceiling = exclusiveCeiling(tildeCeiling(comparator.target))
+                        compareVersions(version, comparator.target) >= 0 &&
+                            compareVersions(version, ceiling) < 0
+                    }
+                    else -> matchesComparator(version, comparator)
+                }
+            }
+
         fun belowMinimum(version: Version): Boolean {
             exact?.let { return compareVersions(version, it) < 0 }
             val bound = lowestBound() ?: return false
@@ -189,6 +213,10 @@ object Semver {
     private fun tildeCeiling(target: Version): Version =
         Version(target.major, target.minor + 1, 0, emptyList())
 
+    /** 把上界版本变成排他上界（`0.2.0` → `0.2.0-0`），用于挡住预发布版本。 */
+    private fun exclusiveCeiling(ceiling: Version): Version =
+        if (ceiling.pre.isEmpty()) ceiling.copy(pre = listOf("0")) else ceiling
+
     /** 区间的判定方向。 */
     enum class Direction { BELOW_MIN, ABOVE_MAX, UNKNOWN }
 
@@ -223,6 +251,19 @@ object Semver {
 
     /** 便捷入口：只关心"是否满足"。 */
     fun satisfies(version: String, range: String): Boolean? = evaluate(version, range)?.satisfied
+
+    /**
+     * 严格门禁口径的区间判定：`^` 与 `~` 的上界按 `<ceil-0` 处理。
+     *
+     * 与 [satisfies] 的唯一区别是预发布版本不会滑过隐式上界，宿主门禁即此口径。
+     * [satisfies] 保留给浏览期提示（它刻意放宽了"高于隐式上界"），两者不可合并。
+     */
+    internal fun satisfiesStrict(version: String, range: String): Boolean? {
+        val parsed = parse(version) ?: return null
+        val alternatives = parseAlternatives(range) ?: return null
+        if (alternatives.isEmpty()) return null
+        return alternatives.any { it.matchesStrict(parsed) }
+    }
 
     /**
      * 解析区间。返回 null 表示存在读不懂的部分——**整条区间作废**，
@@ -307,8 +348,8 @@ object HostCompatJudge {
     /**
      * @param requirements null 表示**取不到**这个包的声明（清单不存在或读不出来），
      *   结论落在 `UNKNOWN / UNAVAILABLE`。空列表表示"清单读到了、但里面没有声明"，
-     *   结论是 `UNKNOWN / UNDECLARED`。两者必须分开：把"我们没读到"说成
-     *   "插件未声明宿主要求"是把我们自己的问题算在插件头上。
+     *   结论是 `UNKNOWN / UNDECLARED`。两者必须分开：把"未读到"说成
+     *   "插件未声明宿主要求"是把市场侧的问题算在插件头上。
      */
     fun judge(requirements: List<HostRequirement>?, hostVersion: String?): HostCompatibility {
         if (requirements == null) {
@@ -372,13 +413,13 @@ object HostCompatJudge {
  *
  * 读文本一律**先剥 UTF-8 BOM**：随包的桩清单带 BOM（EF BB BF），
  * `org.json` 遇到 BOM 会直接抛异常，于是"宿主版本未知 → 兼容性恒 UNKNOWN"。
- * sandbox-manager 踩过同一个坑（离线导入被记成版本 "unknown"）。
+ * sandbox-manager 遇到过同一问题（离线导入被记成版本 "unknown"）。
  *
- * ## 为什么不需要联网
+ * ## 不需要联网的原因
  *
  * 判定只需要插件**本机已安装清单**里声明的区间，与宿主版本比对，都是本地
- * 文件。上游在浏览期还要为未安装的条目去 npm 查 manifest，那属于另一件事
- * （浏览期过滤），不在本版本范围内。
+ * 文件。未安装条目的浏览期判定要拉对端 manifest，那是另一条通道，见
+ * [RemoteHostCompatChecker]——两者共用同一套区间语义，但取数来源不同。
  *
  * ## 文案语言
  *
@@ -445,14 +486,19 @@ class HostCompatChecker(
  * 刻意**不再**把 `dsh` 层根部的 `package.json` 当候选：它只是构建桩
  * （`name = "dsh-layer"`），必被 [readHostVersion] 的名字校验拒绝，留着是死代码。
  */
-internal fun hostVersionCandidates(filesDir: File, nodeModulesDir: File): List<File> = listOf(
-    File(filesDir, "runtime/runtime-current/dsh/node_modules/$HOST_PACKAGE/package.json"),
-    File(filesDir, "runtime/runtime-current/dsh/.dshbox/version"),
-    File(filesDir, "runtime/runtime-current/node_modules/$HOST_PACKAGE/package.json"),
-    File(nodeModulesDir, "$HOST_PACKAGE/package.json"),
-)
+internal fun hostVersionCandidates(filesDir: File, nodeModulesDir: File): List<File> {
+    val host = HostContract.HOST_PACKAGE
+    val dshLayer = "${HostContract.RUNTIME_CURRENT}/${HostContract.DSH_LAYER}"
+    val modules = HostContract.NODE_MODULES
+    return listOf(
+        File(filesDir, "$dshLayer/$modules/$host/${HostContract.PROFILE_MANIFEST}"),
+        File(filesDir, "$dshLayer/${HostContract.VERSION_FILE}"),
+        File(filesDir, "${HostContract.RUNTIME_CURRENT}/$modules/$host/${HostContract.PROFILE_MANIFEST}"),
+        File(nodeModulesDir, "$host/${HostContract.PROFILE_MANIFEST}"),
+    )
+}
 
-private const val HOST_PACKAGE = "@deepseek-ai/dsh"
+private const val HOST_PACKAGE = HostContract.HOST_PACKAGE
 
 /**
  * 读一个清单文件（或 app 的纯文本版本记录）里的 `version`。
@@ -484,16 +530,17 @@ internal fun readHostVersion(file: File): String? {
 internal fun parseHostRequirements(manifestText: String): List<HostRequirement> {
     val obj = JSONObject(manifestText.trimStart('\uFEFF'))
     val out = mutableListOf<HostRequirement>()
-    val enginesRange = obj.optJSONObject("engines")?.optString("dsh")?.ifBlank { null }
+    val enginesRange = obj.optJSONObject(HostContract.FIELD_ENGINES)
+        ?.optString(HostContract.FIELD_DSH)?.ifBlank { null }
     // 两种写法生态里都在用；顶层声明优先。
-    val nestedRange = obj.optJSONObject("dsh")
-        ?.optJSONObject("engines")
-        ?.optString("dsh")
+    val nestedRange = obj.optJSONObject(HostContract.FIELD_DSH)
+        ?.optJSONObject(HostContract.FIELD_ENGINES)
+        ?.optString(HostContract.FIELD_DSH)
         ?.ifBlank { null }
     (enginesRange ?: nestedRange)?.let {
         out.add(HostRequirement(HostRequirement.Kind.ENGINE, it))
     }
-    obj.optJSONObject("peerDependencies")?.let { peers ->
+    obj.optJSONObject(HostContract.FIELD_PEER_DEPENDENCIES)?.let { peers ->
         for (key in peers.keys()) {
             if (!HOST_PEER_RE.containsMatchIn(key)) continue
             val range = peers.optString(key).ifBlank { null } ?: continue
@@ -504,4 +551,4 @@ internal fun parseHostRequirements(manifestText: String): List<HostRequirement> 
 }
 
 /** 宿主包命名空间下、属于同一条发布线的 peer 声明。 */
-private val HOST_PEER_RE = Regex("""^@deepseek-ai/dsh(?:-|$)""")
+private val HOST_PEER_RE = HostContract.HOST_PEER_RE

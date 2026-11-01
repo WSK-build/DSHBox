@@ -27,6 +27,7 @@ class ActivationClassifierTest {
         // 显式覆盖成 false。
         bundleEntryExists: Boolean = hasBundle,
         clientEntryExists: Boolean = hasClient,
+        declaredLibrary: Boolean = false,
     ) = PackageFacts(
         name = name,
         spec = "^1.0.0",
@@ -38,11 +39,47 @@ class ActivationClassifierTest {
         hasClient = hasClient,
         bundleEntryExists = bundleEntryExists,
         clientEntryExists = clientEntryExists,
+        declaredLibrary = declaredLibrary,
     )
+
+    @Test
+    fun marketDisableIsReportedAsPending() {
+        val verdict = ActivationClassifier.classify(
+            facts(), inBundles = true, disabled = true, restartPending = true,
+        )
+        assertEquals(ActivationState.DISABLED_PENDING, verdict.state)
+        assertTrue("停用也要如实说明何时生效", verdict.reasons.single().contains("重启"))
+    }
+
+    @Test
+    fun alreadyDisabledStaysDisabled() {
+        val verdict = ActivationClassifier.classify(facts(), inBundles = true, disabled = true)
+        assertEquals(ActivationState.DISABLED, verdict.state)
+    }
 
     @Test
     fun disabledWinsOverEverything() {
         val verdict = ActivationClassifier.classify(facts(installed = false), inBundles = true, disabled = true)
+        assertEquals(ActivationState.DISABLED, verdict.state)
+    }
+
+    @Test
+    fun declaredLibraryIsInertForOthersUse() {
+        val verdict = ActivationClassifier.classify(facts(declaredLibrary = true), inBundles = true, disabled = false)
+        assertEquals(ActivationState.LIBRARY, verdict.state)
+        assertTrue(verdict.reasons.single().contains("供其他插件使用"))
+    }
+
+    @Test
+    fun disabledDefersToDeclaredLibrary() {
+        // 上游同语义：库没有插件面，"已停用"对它没有信息量。
+        val verdict = ActivationClassifier.classify(facts(declaredLibrary = true), inBundles = false, disabled = true)
+        assertEquals(ActivationState.LIBRARY, verdict.state)
+    }
+
+    @Test
+    fun disabledStillWinsForNormalPlugins() {
+        val verdict = ActivationClassifier.classify(facts(hasBundle = true), inBundles = true, disabled = true)
         assertEquals(ActivationState.DISABLED, verdict.state)
     }
 
@@ -66,9 +103,19 @@ class ActivationClassifierTest {
     }
 
     @Test
-    fun declaredPluginInBundleLayerNeedsRestart() {
+    fun declaredPluginInBundleLayerIsActive() {
+        // 安装与 DSH 自身的开关都即时生效，只有市场自己刚拨过的那次才要重启。
         val verdict = ActivationClassifier.classify(facts(), inBundles = true, disabled = false)
+        assertEquals(ActivationState.LIVE, verdict.state)
+    }
+
+    @Test
+    fun marketToggleIsReportedAsPendingRestart() {
+        val verdict = ActivationClassifier.classify(
+            facts(), inBundles = true, disabled = false, restartPending = true,
+        )
         assertEquals(ActivationState.RESTART, verdict.state)
+        assertTrue(verdict.reasons.single().contains("重启"))
     }
 
     @Test
@@ -81,7 +128,7 @@ class ActivationClassifierTest {
     @Test
     fun clientOnlyPluginIsInertNotBroken() {
         // `dsh.profile.bundles` 是**宿主侧** loader 的组合清单；只声明了
-        // `dsh.client` 的插件本来就由客户端侧加载，不该出现在里面。
+        // `dsh.client` 的插件由客户端侧加载，不应出现在里面。
         // 把它判成 BROKEN 等于把正常插件说成坏的。
         val verdict = ActivationClassifier.classify(
             facts(hasBundle = false, hasClient = true),
@@ -139,13 +186,16 @@ class ActivationClassifierTest {
             inBundles = true,
             disabled = false,
         )
-        assertEquals(ActivationState.RESTART, inside.state)
+        assertEquals(ActivationState.LIVE, inside.state)
         val outside = ActivationClassifier.classify(
             facts(hasBundle = true, hasClient = false),
             inBundles = false,
             disabled = false,
         )
-        assertEquals(ActivationState.BROKEN, outside.state)
+        // 声明与产物都在、只是不在 bundles 里 = 未装配（宿主不会加载它），
+        // 上游同形态判 inert——把它说成"坏"会诱导用户去修一个没坏的东西。
+        assertEquals(ActivationState.INERT, outside.state)
+        assertTrue(outside.reasons.single().contains("dsh.profile.bundles"))
     }
 
     @Test
@@ -166,26 +216,34 @@ class ActivationClassifierTest {
             inBundles = false,
             disabled = false,
         )
-        assertEquals(ActivationState.BROKEN, verdict.state)
+        // 同上：宿主侧入口齐备、只是不在 bundles = 未装配，不是坏件。
+        assertEquals(ActivationState.INERT, verdict.state)
     }
 
     @Test
-    fun neverReportsLiveWithoutARealtimeInventory() {
+    fun liveOnlyComesFromTheBundleLayer() {
+        // LIVE 的判据只有一条：在 profile bundle 层里且没有待重启的开关；
+        // 其它任何组合都不得声称"已生效"。
         for (installed in listOf(true, false)) {
             for (readable in listOf(true, false)) {
                 for (hasDsh in listOf(true, false)) {
                     for (inBundles in listOf(true, false)) {
                         for (disabled in listOf(true, false)) {
-                            val verdict = ActivationClassifier.classify(
-                                facts(installed = installed, manifestReadable = readable, hasDshField = hasDsh),
-                                inBundles = inBundles,
-                                disabled = disabled,
-                            )
-                            assertNotEquals(
-                                "LIVE 需要宿主的实时清单，这一版不该出现",
-                                ActivationState.LIVE,
-                                verdict.state,
-                            )
+                            for (pending in listOf(true, false)) {
+                                val verdict = ActivationClassifier.classify(
+                                    facts(installed = installed, manifestReadable = readable, hasDshField = hasDsh),
+                                    inBundles = inBundles,
+                                    disabled = disabled,
+                                    restartPending = pending,
+                                )
+                                val legitimate = inBundles && !disabled && !pending &&
+                                    installed && readable && hasDsh
+                                assertEquals(
+                                    "只有'在 bundle 层且无待生效开关'才可以是 LIVE",
+                                    legitimate,
+                                    verdict.state == ActivationState.LIVE,
+                                )
+                            }
                         }
                     }
                 }
@@ -207,6 +265,69 @@ class ActivationClassifierTest {
             assertTrue(verdict.reasons.isNotEmpty())
             assertTrue(verdict.reasons.all { it.isNotBlank() })
         }
+    }
+
+    // ───────────────── 兼容门禁（INCOMPATIBLE） ─────────────────
+    //
+    // 这一态解决的是"假承诺"：宿主每次启动都会拒绝的插件，若显示成
+    // RESTART（重启后生效），用户会一直重启而永远不生效。
+
+    @Test
+    fun incompatibleWhenGateRejectsABundledPlugin() {
+        val verdict = ActivationClassifier.classify(
+            facts(hasBundle = true),
+            inBundles = true,
+            disabled = false,
+            gateRequirement = "engines.dsh: ^0.1.0",
+        )
+        assertEquals(ActivationState.INCOMPATIBLE, verdict.state)
+        assertTrue("原因里要带出是哪条声明", verdict.reasons.single().contains("engines.dsh: ^0.1.0"))
+    }
+
+    @Test
+    fun incompatibleOnlyAppliesToBundledPlugins() {
+        // 不在 bundles 里的包宿主不会加载，判"不兼容"没有意义。
+        val verdict = ActivationClassifier.classify(
+            facts(hasBundle = true),
+            inBundles = false,
+            disabled = false,
+            gateRequirement = "engines.dsh: ^0.1.0",
+        )
+        assertEquals(ActivationState.INERT, verdict.state)
+    }
+
+    @Test
+    fun disabledStillWinsOverIncompatible() {
+        val verdict = ActivationClassifier.classify(
+            facts(hasBundle = true),
+            inBundles = true,
+            disabled = true,
+            gateRequirement = "engines.dsh: ^0.1.0",
+        )
+        assertEquals(ActivationState.DISABLED, verdict.state)
+    }
+
+    @Test
+    fun brokenEntryArtifactStillWinsOverIncompatible() {
+        // 缺产物比"不兼容"更根本：它连加载的机会都没有。
+        val verdict = ActivationClassifier.classify(
+            facts(hasBundle = true, bundleEntryExists = false),
+            inBundles = true,
+            disabled = false,
+            gateRequirement = "engines.dsh: ^0.1.0",
+        )
+        assertEquals(ActivationState.BROKEN, verdict.state)
+    }
+
+    @Test
+    fun noGateVerdictKeepsActive() {
+        val verdict = ActivationClassifier.classify(
+            facts(hasBundle = true),
+            inBundles = true,
+            disabled = false,
+            gateRequirement = null,
+        )
+        assertEquals(ActivationState.LIVE, verdict.state)
     }
 }
 
@@ -305,5 +426,48 @@ class PackageFactsParsingTest {
         assertTrue(facts.hasBundle)
         assertFalse("main 与兜底路径都不在，就是没有产物", facts.bundleEntryExists)
         assertFalse(facts.hasUsableEntry())
+    }
+
+    @Test
+    fun declaredLibraryRequiresKindAndNoSurface() {
+        val library = parsePackageFacts(
+            name = "pkg",
+            spec = null,
+            manifestText = """{"name":"pkg","dsh":{"kind":"library"}}""",
+        )
+        assertTrue(library.declaredLibrary)
+        assertTrue(library.hasDshField)
+
+        // 有插件面就不再是"声明的库"：分类器按插件面继续判定。
+        val withBundle = parsePackageFacts(
+            name = "pkg",
+            spec = null,
+            manifestText = """{"name":"pkg","dsh":{"kind":"library","bundle":"./dist/bundle.js"}}""",
+        )
+        assertFalse(withBundle.declaredLibrary)
+
+        // 上游按"键不存在"判定：显式 null 的 bundle 同样不是声明库。
+        val withNullBundle = parsePackageFacts(
+            name = "pkg",
+            spec = null,
+            manifestText = """{"name":"pkg","dsh":{"kind":"library","bundle":null}}""",
+        )
+        assertFalse(withNullBundle.declaredLibrary)
+
+        // 其他 kind 取值与缺 kind 都不是库。
+        assertFalse(
+            parsePackageFacts(
+                name = "pkg",
+                spec = null,
+                manifestText = """{"name":"pkg","dsh":{"kind":"plugin"}}""",
+            ).declaredLibrary,
+        )
+        assertFalse(
+            parsePackageFacts(
+                name = "pkg",
+                spec = null,
+                manifestText = """{"name":"pkg","dsh":{}}""",
+            ).declaredLibrary,
+        )
     }
 }

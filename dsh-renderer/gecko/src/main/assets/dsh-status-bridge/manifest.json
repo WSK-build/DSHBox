@@ -1,0 +1,46 @@
+{
+  "manifest_version": 2,
+  "name": "DSHBox DSH bridge",
+  "version": "1.1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "dshbox-status-bridge@dshbox.invalid"
+    }
+  },
+  "permissions": [
+    "geckoViewAddons",
+    "webRequest",
+    "nativeMessaging",
+    "nativeMessagingFromContent",
+    "http://127.0.0.1:3080/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:3080/*"
+      ],
+      "js": [
+        "page-compat-config.js",
+        "dsh-page-compat.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "http://127.0.0.1:3080/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

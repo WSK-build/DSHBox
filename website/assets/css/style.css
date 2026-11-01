@@ -432,10 +432,17 @@ html[lang="en"] .lang-zh { display: none !important; }
 }
 
 .hero-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 28px;
+}
+.hero-actions .button {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 12px;
+  font-size: 0.95rem;
+  text-align: center;
 }
 
 /* 版本读数：版本号/体积/日期是系统数据，用等宽面读起来像设备读数 */
@@ -609,6 +616,29 @@ html[lang="en"] .lang-zh { display: none !important; }
   font-size: 1.16rem;
   letter-spacing: -0.01em;
   color: var(--ink);
+}
+/* 双版本 APK 体积：版本标签与数值分离，窄列中保持清晰的两行读数。 */
+.stat-apk-sizes {
+  display: grid;
+  gap: 3px;
+  font-size: 0.94rem;
+}
+.stat-apk-sizes > span {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.stat-apk-sizes .stat-label {
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+}
+.stat-apk-sizes b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Sections ---------- */
@@ -801,7 +831,8 @@ html[lang="en"] .lang-zh { display: none !important; }
    这一屏是全页唯一的转化点，靠留白与居中排版压住，而不是靠发光。 */
 .download-card {
   position: relative;
-  max-width: 720px;
+  width: 100%;
+  max-width: 900px;
   margin-inline: auto;
   padding: 48px 44px;
   text-align: center;
@@ -819,6 +850,58 @@ html[lang="en"] .lang-zh { display: none !important; }
   justify-content: center;
   gap: 10px;
   margin: 26px 0 6px;
+}
+
+/* 双版本下载卡：两侧等宽并排，窄屏改上下堆叠。
+   每个版本独立呈现体积、适用场景与自己的下载/复制入口。 */
+.download-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+  text-align: left;
+}
+.download-option {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 24px 22px;
+  border-radius: var(--radius);
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.download-option-title {
+  margin: 0 0 8px;
+  font-size: 1.06rem;
+}
+.download-option-desc {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--ink-muted);
+}
+.download-option-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.download-option .download-actions {
+  margin: 18px 0 0;
+  justify-content: flex-start;
+}
+/* 卡片内按钮收一档内边距，保证中英文下"下载 / 复制链接"同排不换行 */
+.download-option .button,
+.download-option .button-large {
+  padding: 11px 16px;
+  font-size: 0.92rem;
 }
 .download-card .release-info { margin-top: 10px; }
 
@@ -1100,6 +1183,12 @@ html[lang="en"] .lang-zh { display: none !important; }
 
 @media (max-width: 768px) {
   .nav-toggle { display: flex; }
+  .download-options { grid-template-columns: minmax(0, 1fr); }
+  .stats-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: 16px; }
+  .stat:nth-child(n + 3) { border-top: 1px solid var(--border); }
+  .stat:nth-child(even) { border-left: 1px solid var(--border); }
+  .stat + .stat::before { display: none; }
   .site-nav {
     position: absolute;
     top: 100%; left: 0; right: 0;
@@ -1123,13 +1212,22 @@ html[lang="en"] .lang-zh { display: none !important; }
   .scroll-hint { display: none; }
 }
 
+/* 481–600px 的双列按钮不足以容纳英文长标签，允许两行并保持四块等高。 */
+@media (min-width: 481px) and (max-width: 600px) {
+  .hero-actions .button {
+    min-height: 62px;
+    padding-block: 8px;
+    line-height: 1.2;
+    white-space: normal;
+  }
+}
+
 @media (max-width: 480px) {
   .container { padding-inline: 18px; }
   .hero-inner { padding-block: 48px 44px; gap: 36px; }
-  .hero-actions .button { flex: 1 1 100%; }
-  .stats-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
+  .hero-actions { grid-template-columns: minmax(0, 1fr); }
+  .stats-strip { padding: 0; }
   .stat { padding: 14px 16px; }
-  .stat + .stat::before { display: none; }
   .feature-grid { grid-template-columns: 1fr; }
   /* 截图区：手机上改**双列**小图（原为单列限宽 320px）。
      图片是 1260×2800 的竖屏截图，单列时每张高约 711px、四张堆叠达 2844px

@@ -41,13 +41,17 @@ class MarketLoadTest {
 
         val registryForce = mutableListOf<Boolean>()
         val updatesForce = mutableListOf<Boolean>()
+        var installedCalls = 0
 
         override suspend fun loadRegistry(force: Boolean): AppResult<Registry> {
             registryForce.add(force)
             return registry
         }
 
-        override suspend fun loadInstalled(): AppResult<List<InstalledPlugin>> = installed
+        override suspend fun loadInstalled(): AppResult<List<InstalledPlugin>> {
+            installedCalls += 1
+            return installed
+        }
 
         // 数据源对本文件要钉的"三种没有"没有影响：给个默认源、读写都是空操作。
         override val catalogSource: StateFlow<CatalogSource> = MutableStateFlow(CatalogSource.DEFAULT)
@@ -95,10 +99,7 @@ class MarketLoadTest {
     @Test
     fun installedFailureIsPreservedInsteadOfBecomingAnEmptyList() = runBlocking {
         val error = AppError("PROFILE_MANIFEST_MISSING", "profile 清单不存在")
-        val snapshot = loadMarket(
-            FakeRepository(installed = AppResult.Failure(error)),
-            force = false,
-        )
+        val snapshot = loadInstalledPart(FakeRepository(installed = AppResult.Failure(error)))
         assertEquals("失败必须带出来", error, snapshot.installedFailure)
         assertTrue(snapshot.installed.isEmpty())
         // 界面据此显示"读不出来 + 重试"，而不是"尚未安装社区插件"。
@@ -111,14 +112,14 @@ class MarketLoadTest {
     @Test
     fun updatesFailureIsPreservedInsteadOfBecomingAnEmptyMap() = runBlocking {
         val error = AppError("PROFILE_MANIFEST_INVALID", "profile 清单不是合法 JSON")
-        val snapshot = loadMarket(FakeRepository(updates = AppResult.Failure(error)), force = false)
+        val snapshot = loadCatalogPart(FakeRepository(updates = AppResult.Failure(error)), force = false)
         assertEquals(error, snapshot.updatesFailure)
         assertTrue(snapshot.updates.isEmpty())
     }
 
     @Test
     fun successfulLoadClearsTheFailures() = runBlocking {
-        val snapshot = loadMarket(FakeRepository(installed = AppResult.Success(listOf(plugin))), force = false)
+        val snapshot = loadInstalledPart(FakeRepository(installed = AppResult.Success(listOf(plugin))))
         assertNull(snapshot.installedFailure)
         assertNull(snapshot.updatesFailure)
         assertEquals(listOf(plugin), snapshot.installed)
@@ -131,7 +132,7 @@ class MarketLoadTest {
             registry = AppResult.Failure(AppError("REGISTRY_UNAVAILABLE", failure.message)),
             registryFailure = MutableStateFlow(failure),
         )
-        val snapshot = loadMarket(repository, force = true)
+        val snapshot = loadCatalogPart(repository, force = true)
         assertNull("失败时不返回目录，调用方保留上一份快照", snapshot.registry)
         assertEquals(failure, snapshot.registryFailure)
     }
@@ -139,14 +140,50 @@ class MarketLoadTest {
     @Test
     fun forceIsPassedOnlyWhenExplicitlyRequested() = runBlocking {
         val local = FakeRepository()
-        loadMarket(local, force = false)
+        loadCatalogPart(local, force = false)
         assertEquals(listOf(false), local.registryForce)
         assertEquals(listOf(false), local.updatesForce)
 
         val explicit = FakeRepository()
-        loadMarket(explicit, force = true)
+        loadCatalogPart(explicit, force = true)
         assertEquals(listOf(true), explicit.registryForce)
         assertEquals(listOf(true), explicit.updatesForce)
+    }
+
+    @Test
+    fun installedPartStaysOffline() = runBlocking {
+        val repository = FakeRepository()
+        val snapshot = loadInstalledPart(repository)
+        assertTrue("已装清单不得请求目录", repository.registryForce.isEmpty())
+        assertTrue("已装清单不得跑更新检测", repository.updatesForce.isEmpty())
+        assertEquals(1, repository.installedCalls)
+        assertNull(snapshot.registry)
+        assertTrue(snapshot.updates.isEmpty())
+    }
+
+    @Test
+    fun catalogPartDoesNotTouchTheInstalledList() = runBlocking {
+        val repository = FakeRepository()
+        val snapshot = loadCatalogPart(repository, force = false)
+        assertEquals(0, repository.installedCalls)
+        assertEquals(listOf(false), repository.registryForce)
+        assertTrue(snapshot.installed.isEmpty())
+        assertNull(snapshot.installedFailure)
+    }
+
+    @Test
+    fun pageLoadsTheTwoPartsIndependently() = runBlocking {
+        val repository = FakeRepository(installed = AppResult.Success(listOf(plugin)))
+        val local = loadInstalledPart(repository)
+        val catalog = loadCatalogPart(repository, force = true)
+        // 已装段只读本地；目录段只走网络——两段互不牵连，页面各自消费。
+        assertEquals(1, repository.installedCalls)
+        assertEquals(listOf(true), repository.registryForce)
+        assertEquals(listOf(true), repository.updatesForce)
+        assertEquals(listOf(plugin), local.installed)
+        // 目录段不读已装清单；已装段不返回目录。
+        assertTrue(catalog.installed.isEmpty())
+        assertNull(local.registry)
     }
 
     @Test
@@ -214,33 +251,23 @@ class MarketLoadTest {
     }
 
     @Test
-    fun localReloadReusesPreviousUpdatesWithoutRechecking() = runBlocking {
-        // 拨开关 / 写备注不可能改变版本：复用上一份更新结果，不重跑检测，
-        // 免得每次本地操作都卡在"更新检测中"。
-        val previous = mapOf(
-            "pkg" to UpdateStatus(
-                updateAvailable = true,
-                current = "1.0.0",
-                latest = "2.0.0",
-                kind = "npm",
-                checked = true,
-            ),
-        )
+    fun localReloadTouchesNeitherCatalogNorUpdates() = runBlocking {
+        // 拨开关 / 写备注不可能改变版本：页面只重读已装清单，目录与更新检测都不碰
+        // （旧实现会顺带重拉目录，目录不可达时把本地操作拖满一整个超时）。
         val repository = FakeRepository()
-        val snapshot = loadMarket(repository, force = false, reuseUpdates = previous)
-        assertEquals("必须原样复用上一份结果", previous, snapshot.updates)
+        val snapshot = loadInstalledPart(repository)
+        assertTrue("本地重载不得请求目录", repository.registryForce.isEmpty())
+        assertTrue("本地重载不得重跑更新检测", repository.updatesForce.isEmpty())
+        assertEquals(1, repository.installedCalls)
+        // 更新结果由页面保留上一份，加载器本身不返回更新数据。
+        assertTrue(snapshot.updates.isEmpty())
         assertNull(snapshot.updatesFailure)
-        assertTrue("复用路径不该调用 checkUpdates", repository.updatesForce.isEmpty())
-        // 目录与已装清单仍然要重读（磁盘状态可能变了）。
-        assertEquals(listOf(false), repository.registryForce)
     }
 
     @Test
-    fun explicitRefreshIgnoresTheReuseHint() = runBlocking {
-        val previous = mapOf("pkg" to UpdateStatus(updateAvailable = true, checked = true))
+    fun explicitRefreshRunsTheUpdateDetection() = runBlocking {
         val repository = FakeRepository()
-        val snapshot = loadMarket(repository, force = true, reuseUpdates = previous)
+        loadCatalogPart(repository, force = true)
         assertEquals("显式刷新必须真的重跑检测", listOf(true), repository.updatesForce)
-        assertTrue(snapshot.updates.isEmpty())
     }
 }

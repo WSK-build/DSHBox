@@ -1,0 +1,26 @@
+GeckoView source availability (Gecko APK only)
+
+Unmodified binary coordinate:
+org.mozilla.geckoview:geckoview-arm64-v8a:158.0.20261021001945
+
+The fixed release POM identifies this upstream source revision:
+e4ce606692cd81e6898547e2edd7c552fefcbb04
+https://hg.mozilla.org/releases/mozilla-release/rev/e4ce606692cd81e6898547e2edd7c552fefcbb04
+
+Corresponding full upstream source archive:
+https://hg.mozilla.org/releases/mozilla-release/archive/e4ce606692cd81e6898547e2edd7c552fefcbb04.tar.gz
+
+Java API source archive (not a substitute for full engine sources):
+https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/158.0.20261021001945/geckoview-158.0.20261021001945-sources.jar
+
+GeckoView build documentation:
+https://firefox-source-docs.mozilla.org/mobile/android/geckoview/contributor/geckoview-quick-start.html
+
+GeckoView is licensed under MPL-2.0. Embedded third-party components keep their
+own licenses. The APK preserves the engine's omni.ja license.html and bundled
+PDF/font license texts under assets/licenses/dependencies/.
+
+Distributors must keep corresponding sources available as required by the
+applicable licenses. Updating the engine requires updating this exact revision
+record and verifying the accompanying source delivery; a license text alone
+does not fulfill source-availability obligations.

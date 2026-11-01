@@ -404,4 +404,6 @@
     <string name="relay_risk_low">影响较小。</string>
     <string name="relay_risk_medium">读取个人数据或影响其他应用。</string>
 
+    <string name="pilot_page_developer_mode">开发者模式</string>
+    <string name="pilot_devmode_unavailable">开发者模式尚未初始化</string>
 </resources>

@@ -7,6 +7,7 @@ import com.dshbox.pluginmanager.market.model.HostCompatibility
 import com.dshbox.pluginmanager.market.model.InstalledPlugin
 import com.dshbox.pluginmanager.market.model.Registry
 import com.dshbox.pluginmanager.market.model.RegistryFailure
+import com.dshbox.pluginmanager.market.model.RegistryPlugin
 import com.dshbox.pluginmanager.market.model.UpdateStatus
 import kotlinx.coroutines.flow.StateFlow
 
@@ -65,6 +66,25 @@ interface MarketRepository {
 
     /** 宿主兼容性（浏览期按需查询，失败一律返回 UNKNOWN）。 */
     suspend fun hostCompatibility(names: List<String>): Map<String, HostCompatibility>
+
+    /**
+     * 目录条目的宿主兼容性（浏览期，按 npm manifest 判定）。
+     *
+     * 默认实现一律返回 UNKNOWN：未接线远端查询时不得把未知说成兼容或不兼容。
+     */
+    suspend fun browseCompatibility(entries: List<RegistryPlugin>): Map<String, HostCompatibility> =
+        entries.associate { it.displayName to HostCompatibility.unknown }
+
+    /**
+     * 停用覆盖层里无人认领的残留行。
+     *
+     * 默认实现返回空：未接线时不报告任何残留，避免误删真实生效的停用行。
+     */
+    suspend fun auditOverlay(): List<String> = emptyList()
+
+    /** 清理残留行；默认实现明确失败，不做任何写入。 */
+    suspend fun cleanOverlayRows(rowIds: List<String>): AppResult<Unit> =
+        AppResult.Failure(AppError(code = "CLEAN_UNSUPPORTED", message = "本实现不提供清理"))
 
     /**
      * 启停一个插件。

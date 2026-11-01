@@ -81,13 +81,63 @@ object Constants {
     const val DSH_LINK_SHIM_SO_GUEST_PATH = "$DSH_LINK_SHIM_GUEST_DIR/libdshbox-link.so"
 
     /**
+     * `xdg-open` 垫片在 guest 内的文件名。与硬链接垫片同目录（`/opt/dshbox`）：
+     * DSH 的 `openNativeTextFile` 按 PATH 查找 `xdg-open`，而 base 层没有这个
+     * 二进制——本垫片把打开请求转写成请求文件交给宿主 APP（内置查看器），
+     * 不修改 DSH 源码，System / Gecko 行为一致。
+     */
+    const val XDG_OPEN_SHIM_NAME = "xdg-open"
+
+    /** `xdg-open` 垫片写出的请求文件名（宿主与 guest 同名，同在 `/opt/dshbox`）。 */
+    const val XDG_OPEN_REQUEST_NAME = "xdg-open.request"
+
+    /**
      * guest 内「工具链缓存」挂载点（宿主侧 `SandboxConfig.guestCacheDir` bind 到此）。
      *
      * 装 `dsh plugin` 用的 pnpm 时，pnpm 的 store 与 corepack 的缓存**默认都往 `$HOME` 写**：
      * 前者会落进 base 层（Files 页看不见、清理规则也扫不到），后者会落进工作区。
-     * 统一引到这个挂载点：包装脚本把 `COREPACK_HOME` 与 `pnpm --store-dir` 都指进来。
+     * pnpm 包装脚本把 store 指到本挂载点的 `pnpm-store` 子目录、`COREPACK_HOME`
+     * 指到 `corepack` 子目录（内置缓存由 bootstrap 释放至此），见各常量说明。
      */
     const val DSHBOX_GUEST_CACHE_DIR = "/opt/dshbox-cache"
+
+    /** guest-cache 挂载点的宿主侧目录名（appFilesDir 之下）。
+     *  [com.dshbox.app.sandbox.SandboxConfig.guestCacheDir] 与市场判定面共引此常量，
+     *  目录改名时编译期即断，避免两侧路径静默分叉。 */
+    const val GUEST_CACHE_DIR_LEAF = "guest-cache"
+
+    /** pnpm 镜像源覆盖文件名（guest `/opt/dshbox-cache/pnpm-registry`）。
+     *  一行裸 URL；文件缺失或为空 = 未配置（回退官方 registry）。App 侧探测后原子
+     *  写入；pnpm 包装脚本不读它，唯一消费者是插件市场的判定面（经 PluginPaths
+     *  直读宿主侧同一文件，bind 挂载同一位）。 */
+    const val PNPM_REGISTRY_FILE_LEAF = "pnpm-registry"
+
+    /** pnpm 镜像源探测的单次总预算（毫秒）。双源竞速共用此预算。 */
+    const val PNPM_REGISTRY_PROBE_BUDGET_MS = 2500
+
+    /** 镜像探测看门狗的提前量（毫秒）：看门狗落点严格早于探测超时点，
+     *  留出断开连接、解除阻塞读的时间窗。 */
+    const val PNPM_REGISTRY_WATCHDOG_LEAD_MS = 250
+
+    /** 官方 npm registry 基址（探测与未配置时的缺省，无尾斜杠）。 */
+    const val PNPM_OFFICIAL_REGISTRY_BASE = "https://registry.npmjs.org"
+
+    /** 国内镜像 npm registry 基址（探测候选；与上游 dsh-market China 区同源，无尾斜杠）。 */
+    const val PNPM_CHINA_REGISTRY_BASE = "https://mirrors.cloud.tencent.com/npm"
+
+    /** 内置 corepack 缓存"就绪"标记文件名（内容 = 资产 sha256，用于幂等与版本一致性）。 */
+    const val COREPACK_CACHE_READY_MARKER = ".ready-sha256"
+
+    /** APK 内置工具链缓存的资产目录（构建脚本产物入库处）。 */
+    const val TOOLCHAIN_CACHE_ASSET_DIR = "toolchain-cache"
+
+    /** 内置 corepack 缓存资产文件名（不含扩展名前缀；.tar.zst + .sha256 成对）。 */
+    const val COREPACK_CACHE_ASSET_NAME = "corepack-pnpm-11.1.2.tar.zst"
+
+    /** corepack 缓存目录名（位于工具链缓存挂载点之下）。
+     *  bootstrap 把 APK 内置的 pnpm 缓存释放到宿主侧 `guest-cache/corepack`，
+     *  pnpm 包装脚本以 `COREPACK_HOME` 指向 guest 侧对应路径。 */
+    const val COREPACK_CACHE_DIR_LEAF = "corepack"
 
     /**
      * opencode 终端 Agent 的安装落点（guest 侧）。

@@ -166,16 +166,23 @@ if [ "$MIGRATE_LEGACY" -eq 1 ]; then
   LEGACY_MOVED=1
 fi
 
-"$NODE" - "$PKGJSON" "$PKG" "$LEGACY_PKG" <<'NODE'
+"$NODE" - "$PKGJSON" "$PKG" "$LEGACY_PKG" "$SRC" <<'NODE'
 const fs = require('node:fs')
 const path = require('node:path')
-const [file, name, legacyName] = process.argv.slice(2)
+const [file, name, legacyName, src] = process.argv.slice(2)
 const st = fs.statSync(file)
 const data = JSON.parse(fs.readFileSync(file, 'utf8'))
 const bundles = data?.dsh?.profile?.bundles
 if (!Array.isArray(bundles)) process.exit(1)
 data.dsh.profile.bundles = bundles.filter((bundle) => bundle !== legacyName)
 if (!data.dsh.profile.bundles.includes(name)) data.dsh.profile.bundles.push(name)
+// 同时声明为依赖：只写 bundles 不足以让 pnpm 认它。pnpm 每次装/删插件都按
+// 「manifest + lockfile」重建 node_modules，未声明为依赖的目录属于游离包会被
+// 清理；而 bundles 里的条目会被视为模板条目保留，于是启动时解析不到该包
+// （cannot resolve profile bundle，侧边栏显示异常/未安装）。
+const deps = (data.dependencies ??= {})
+const spec = `file:${src}`
+if (deps[name] !== spec) deps[name] = spec
 const tmp = path.join(path.dirname(file), `.browser-use-package-json.${process.pid}.${Date.now()}`)
 try {
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', { flag: 'wx', mode: st.mode })

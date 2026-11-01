@@ -9,10 +9,10 @@ import org.json.JSONObject
  *
  * @property disabled 用户关掉的插件；每次启动都要重放，否则开关会在重启后失效。
  * @property notes 用户自己给插件写的一行备注（见 [MarketStateCodec.MAX_NOTE]）。
- * @property preserved 我们不解释、但必须逐字写回的顶层字段（键 → 原始 JSON 片段）。
- *   它是桌面端与未来版本写进去的东西（分组、收藏、下载区域、更新通道……）。
+ * @property preserved 本模块不解释、但必须逐字写回的顶层字段（键 → 原始 JSON 片段）。
+ *   来自桌面端与未来版本（分组、收藏、下载区域、更新通道等）。
  *   丢掉它们的后果不是"少了个设置"，而是**用户的选择被静默抹掉**——桌面端
- *   就因为这个出过一次问题。
+ *   曾因此出过问题。
  */
 data class MarketState(
     val disabled: List<String>,
@@ -78,7 +78,7 @@ object MarketStateCodec {
      * 渲染成 state.json 正文。
      *
      * 手工拼装而不是复用 JSON 库，是因为保留字段必须**逐字**写回：再走一遍
-     * 解析/序列化，等于让库去猜我们本来就不理解的字段，多一层改写就多一次
+     * 解析/序列化，等于让库去猜本模块并不理解的字段，多一层改写就多一次
      * 丢信息的机会。
      */
     fun encode(state: MarketState): String {
@@ -130,7 +130,7 @@ object MarketStateCodec {
  * 读盘结果。
  *
  * 三种情况必须分开，因为**只有一种可以写**：文件不存在说明这是首次写入，
- * 可以写；文件存在但读不出来说明盘上有我们看不懂的内容（桌面端写的字段、
+ * 可以写；文件存在但读不出来说明盘上有本模块读不懂的内容（桌面端写的字段、
  * 被截断的 JSON），此时按"空状态"合并再写回，等于把用户的选择静默抹掉。
  */
 sealed interface MarketStateRead {
@@ -233,7 +233,7 @@ class MarketStateStore(private val file: File) {
     /**
      * 同 [write]，但把失败原因带出来。
      *
-     * 调用方需要区分"盘上的文件坏了，我们不敢写"与"磁盘写不进去"：前者要
+     * 调用方需要区分"盘上的文件损坏、不可安全写入"与"磁盘写不进去"：前者要
      * 让用户知道**原文件没被动过**，后者是一次可重试的 IO 故障。
      */
     fun writeOutcome(disabled: Collection<String>, notes: Map<String, String>): MarketStateWrite {
@@ -248,7 +248,7 @@ class MarketStateStore(private val file: File) {
     }
 
     /**
-     * 备份损坏的状态文件并重建一份只含我们字段的新文件。
+     * 备份损坏的状态文件并重建一份只含本模块字段的新文件。
      *
      * 盘上的 `state.json` 读不出来时，[writeOutcome] 一律**拒绝写入**（避免把
      * 桌面端写进去的字段整块抹掉），于是开关与备注永久无法保存，而应用内没有
@@ -282,7 +282,7 @@ class MarketStateStore(private val file: File) {
                 "备份损坏的状态文件失败，原文件未被改动 / backing up the broken state file failed; the original was left untouched",
             )
         }
-        // 新文件只含我们拥有的字段：原文件里我们不理解的内容无法读出来，
+        // 新文件只含本模块拥有的字段：原文件中读不懂的内容无法迁出，
         // 但已完整留档在备份里。
         val next = MarketStateCodec.merge(MarketState.EMPTY, disabled, notes)
         val outcome = writeRaw(MarketStateCodec.encode(next))

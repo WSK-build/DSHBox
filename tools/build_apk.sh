@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# build_apk.sh - build the install-and-go APK: embeds the fixed runtime bundle
-# into the APK assets so a fresh device needs nothing but the APK.
+# build_apk.sh - build both install-and-go APK variants with the fixed runtime
+# embedded in their assets.
 #
 # Usage:
 #   tools/build_apk.sh [bundle.tar.gz] [debug|release]
@@ -9,7 +9,8 @@
 #   variant  default: release (signed with keystore.properties when present)
 #
 # Output:
-#   app/build/outputs/apk/<variant>/app-<variant>.apk
+#   app/build/outputs/apk/systemWebView/<variant>/app-systemWebView-<variant>.apk
+#   app/build/outputs/apk/gecko/<variant>/app-gecko-<variant>.apk
 #
 # The embedded bundle must contain the DSHapp fixes; a "<name>.sha256" sidecar
 # is generated next to it and verified by the app before first-boot extraction
@@ -23,6 +24,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LAYERS_DIR="${LAYERS_DIR:-$ROOT_DIR/dist}"
 BUNDLE="${1:-$ROOT_DIR/dist/dshapp-runtime-debian-arm64-rootfs-fixed-0.1.0.tar.gz}"
 VARIANT="${2:-release}"
+case "$VARIANT" in
+    debug|release) ;;
+    *) echo "invalid variant: $VARIANT (expected debug or release)" >&2; exit 1 ;;
+esac
 ASSETS_DIR="$ROOT_DIR/app/src/main/assets/runtime"
 
 embed_layered() {
@@ -58,7 +63,16 @@ else
     ls -la "$ASSETS_DIR"
 fi
 
-echo "==> building $VARIANT APK"
+case "$VARIANT" in
+    debug)
+        TASKS=(":app:assembleSystemWebViewDebug" ":app:assembleGeckoDebug")
+        ;;
+    release)
+        TASKS=(":app:assembleSystemWebViewRelease" ":app:assembleGeckoRelease")
+        ;;
+esac
+
+echo "==> building both $VARIANT APK variants"
 # in-process Kotlin compilation: avoids a kotlin-daemon that may not be able
 # to write its state dir (e.g. sandboxed CI/build environments). A larger heap
 # plus capped workers keep the 400MB embedded-bundle compression from killing
@@ -67,13 +81,16 @@ GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT_DIR/.gradle-home}" \
     "$ROOT_DIR/gradlew" -p "$ROOT_DIR" -Pkotlin.compiler.execution.strategy=in-process \
     -Dorg.gradle.jvmargs="-Xmx5g -XX:MaxMetaspaceSize=1g" \
     -Dorg.gradle.workers.max=4 \
-    ":app:assemble${VARIANT^}"
+    "${TASKS[@]}"
 
-APK="$ROOT_DIR/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk"
-[ -f "$APK" ] || { echo "build produced no APK at $APK" >&2; exit 1; }
+for FLAVOR in systemWebView gecko; do
+    APK="$ROOT_DIR/app/build/outputs/apk/$FLAVOR/$VARIANT/app-$FLAVOR-$VARIANT.apk"
+    [ -f "$APK" ] || { echo "build produced no APK at $APK" >&2; exit 1; }
 
-echo "==> verifying embedded bundle inside APK"
-unzip -l "$APK" | grep -E "assets/runtime/dshapp-runtime" || { echo "bundle missing from APK" >&2; exit 1; }
+    echo "==> verifying embedded bundle inside $FLAVOR APK"
+    unzip -l "$APK" | grep -E "assets/runtime/(android-side|dshapp-runtime)" ||
+        { echo "runtime layer missing from $FLAVOR APK" >&2; exit 1; }
 
-echo "==> BUILD-OK: $APK ($(du -h "$APK" | awk '{print $1}'))"
-echo "    sha256: $(sha256sum "$APK" | awk '{print $1}')"
+    echo "==> BUILD-OK: $APK ($(du -h "$APK" | awk '{print $1}'))"
+    echo "    sha256: $(sha256sum "$APK" | awk '{print $1}')"
+done

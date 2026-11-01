@@ -1,5 +1,6 @@
 package com.dshbox.pluginmanager.layer
 
+import com.dshbox.pluginmanager.contract.PatchSyntax
 import java.io.File
 
 /** 从补丁层里扫出来的行信息（只读用途）。 */
@@ -12,6 +13,8 @@ data class PatchRowScan(
     val forcedEnabled: List<String>,
     /** `- insert:` 下插入的 id。 */
     val inserted: List<String>,
+    /** 层里出现过的 `name:` 值（顶层行与插入行都算），用于按包名判断引用。 */
+    val names: List<String>,
 )
 
 /**
@@ -26,11 +29,13 @@ data class PatchRowScan(
  */
 object PatchDialect {
 
-    private val INSERT_HEAD_RE = Regex("^- insert: *$")
-    private val TOP_ENTRY_RE = Regex("^- id: *(.+?) *$")
-    private val INSERT_ITEM_RE = Regex("^ {4}- id: *(.+?) *$")
-    private val DISABLED_TRUE_RE = Regex("^ {2}disabled: *true *$")
-    private val DISABLED_FALSE_RE = Regex("^ {2}disabled: *false *$")
+    // 行语法全部取自 PatchSyntax，与写入方共用同一套正则。
+    private val INSERT_HEAD_RE = PatchSyntax.INSERT_HEAD_BARE
+    private val TOP_ENTRY_RE = PatchSyntax.TOP_ENTRY
+    private val INSERT_ITEM_RE = PatchSyntax.INSERT_ITEM
+    private val DISABLED_TRUE_RE = PatchSyntax.DISABLED_TRUE
+    private val DISABLED_FALSE_RE = PatchSyntax.DISABLED_FALSE
+    private val NAME_RE = PatchSyntax.NAME_VALUE
 
     fun scan(file: File): PatchRowScan =
         scan(runCatching { file.readText(Charsets.UTF_8) }.getOrDefault(""))
@@ -40,6 +45,7 @@ object PatchDialect {
         val disabled = mutableListOf<String>()
         val forced = mutableListOf<String>()
         val inserted = mutableListOf<String>()
+        val names = mutableListOf<String>()
         var inInsert = false
         var pending: String? = null
 
@@ -62,6 +68,10 @@ object PatchDialect {
                     index++
                     continue
                 }
+                NAME_RE.find(line)?.let { match ->
+                    val name = PluginLayer.unquote(match.groupValues[1])
+                    if (name.isNotEmpty()) names.add(name)
+                }
                 // 插入块内部的续行（字段、嵌套配置）跳过。
                 if (line.startsWith("    ") || line.isBlank() || line.startsWith("#")) {
                     index++
@@ -80,12 +90,16 @@ object PatchDialect {
                 index++
                 continue
             }
+            NAME_RE.find(line)?.let { match ->
+                val name = PluginLayer.unquote(match.groupValues[1])
+                if (name.isNotEmpty()) names.add(name)
+            }
             when {
                 DISABLED_TRUE_RE.matches(line) -> pending?.let { disabled.add(it) }
                 DISABLED_FALSE_RE.matches(line) -> pending?.let { forced.add(it) }
             }
             index++
         }
-        return PatchRowScan(ids, disabled, forced, inserted)
+        return PatchRowScan(ids, disabled, forced, inserted, names)
     }
 }

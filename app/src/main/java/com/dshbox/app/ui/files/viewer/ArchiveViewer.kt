@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
+import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.util.formatFileSize
 import com.dshbox.app.util.viewer.ArchiveBrowser
 import com.dshbox.app.util.viewer.FileTypeClassifier
@@ -89,6 +90,7 @@ internal fun ArchiveViewer(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
     val scope = rememberCoroutineScope()
 
     var format by remember(file) { mutableStateOf<ArchiveBrowser.Format?>(null) }
@@ -163,11 +165,11 @@ internal fun ArchiveViewer(
                         context.contentResolver.openOutputStream(uri)?.use { out ->
                             ArchiveBrowser.openEntryStream(file, fmt, entry.path, snap.charsetLabel)?.use { ins ->
                                 ins.copyTo(out, 64 * 1024)
-                            } ?: error(context.getString(R.string.viewer_entry_stream_unavailable))
-                        } ?: error(context.getString(R.string.viewer_out_stream_unavailable))
+                            } ?: error(resources.getString(R.string.viewer_entry_stream_unavailable))
+                        } ?: error(resources.getString(R.string.viewer_out_stream_unavailable))
                     }.isSuccess
                 }
-                toast(context.getString(if (ok) R.string.files_export_done else R.string.files_export_failed_generic))
+                toast(resources.getString(if (ok) R.string.files_export_done else R.string.files_export_failed_generic))
             }
         }
     }
@@ -185,10 +187,10 @@ internal fun ArchiveViewer(
                             ZipOutputStream(out.buffered()).use { zip ->
                                 ArchiveBrowser.exportAllToZip(file, fmt, zip, { job?.ensureActive() }, snap.charsetLabel)
                             }
-                        } ?: error(context.getString(R.string.viewer_out_stream_unavailable))
+                        } ?: error(resources.getString(R.string.viewer_out_stream_unavailable))
                     }.isSuccess
                 }
-                toast(context.getString(if (ok) R.string.files_export_done else R.string.files_export_failed_generic))
+                toast(resources.getString(if (ok) R.string.files_export_done else R.string.files_export_failed_generic))
             }
         }
     }
@@ -197,7 +199,7 @@ internal fun ArchiveViewer(
     fun openEntry(entry: ArchiveBrowser.Entry) {
         val fmt = format ?: return
         if (entry.isEncrypted) {
-            toast(context.getString(R.string.files_archive_encrypted_entry))
+            toast(resources.getString(R.string.files_archive_encrypted_entry))
             return
         }
         scope.launch {
@@ -220,16 +222,16 @@ internal fun ArchiveViewer(
                                 val n = ins.read(buf)
                                 if (n < 0) break
                                 total += n
-                                if (total > ARCHIVE_PREVIEW_MAX_BYTES) error(context.getString(R.string.viewer_entry_too_large))
+                                if (total > ARCHIVE_PREVIEW_MAX_BYTES) error(resources.getString(R.string.viewer_entry_too_large))
                                 out.write(buf, 0, n)
                             }
                         }
-                    } ?: error(context.getString(R.string.viewer_entry_unreadable))
+                    } ?: error(resources.getString(R.string.viewer_entry_unreadable))
                     target
                 }.getOrNull()
             }
             if (tmp == null) {
-                toast(context.getString(R.string.files_archive_preview_failed))
+                toast(resources.getString(R.string.files_archive_preview_failed))
                 return@launch
             }
             // 文本嗅探：非文本条目不进文本预览（删临时文件，引导导出查看）
@@ -239,7 +241,7 @@ internal fun ArchiveViewer(
             }
             if (!isText) {
                 withContext(NonCancellable + Dispatchers.IO) { tmp.delete() }
-                toast(context.getString(R.string.files_archive_binary_entry))
+                toast(resources.getString(R.string.files_archive_binary_entry))
                 return@launch
             }
             val det = withContext(Dispatchers.IO) {

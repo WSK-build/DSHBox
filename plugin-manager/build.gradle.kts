@@ -1,10 +1,9 @@
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
-android {
+extensions.configure<com.android.build.api.dsl.LibraryExtension> {
     namespace = "com.dshbox.pluginmanager"
     compileSdk = 36
 
@@ -25,19 +24,18 @@ android {
     // 见该目录 README.md。其中 assets/ 是随 APK 交付的运行期载荷，而 Gradle 默认只认
     // src/main/assets —— 这里额外登记它。asset 合并以各 srcDir 为根，故打包后的路径
     // 仍是 dshbox/… 与 plugins/…，运行期读取代码无需改动。
-    sourceSets["main"].assets.srcDir("dshbox-plugins/assets")
+    sourceSets.named("main") { assets.directories.add("dshbox-plugins/assets") }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
     }
 }
+
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
     // 层读写要复用 DSH 接入层的路径约定（我们的 --patch 层落点）。
@@ -63,4 +61,20 @@ dependencies {
     // 因此给单测挂一份真实的实现，否则解析/落盘的用例会静默走默认值。
     testImplementation("org.json:json:20231013")
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+// mobile-adapt 顶栏钉住的 standalone 行为测试（Gecko 钉住/还原、System 零动作、
+// 开关联动、幂等与 composer 共存）。脚本仅依赖 Node 内置模块，毫秒级完成。
+val mobileAdaptKeyboardSemantics = tasks.register<Exec>("testMobileAdaptKeyboardJavaScript") {
+    group = "verification"
+    inputs.files(
+        "dshbox-plugins/assets/plugins/dsh-mobile-adapt/plugin/lib/client.js",
+        "dshbox-plugins/tools/mobile-adapt/client-keyboard-gecko.test.cjs",
+    )
+    workingDir(projectDir)
+    commandLine("node", "dshbox-plugins/tools/mobile-adapt/client-keyboard-gecko.test.cjs")
+}
+
+tasks.matching { it.name.startsWith("testDebugUnitTest") }.configureEach {
+    dependsOn(mobileAdaptKeyboardSemantics)
 }

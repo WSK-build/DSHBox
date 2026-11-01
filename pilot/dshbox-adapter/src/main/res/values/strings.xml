@@ -402,4 +402,6 @@
     <string name="relay_risk_low">Low impact.</string>
     <string name="relay_risk_medium">Reads personal data or affects other apps.</string>
 
+    <string name="pilot_page_developer_mode">Developer mode</string>
+    <string name="pilot_devmode_unavailable">Developer mode is not initialized</string>
 </resources>

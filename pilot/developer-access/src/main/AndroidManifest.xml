@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- TCP 模式（本机回环 / 局域网）下对外部工具提供 socket 服务与 adb 连接。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application />
+
+</manifest>

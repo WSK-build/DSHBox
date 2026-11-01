@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dshbox.app.R
 import com.dshbox.app.common.Constants
+import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.util.FileEntry
 import com.dshbox.app.util.Layer
 import com.dshbox.app.util.LayerRoots
@@ -113,6 +114,7 @@ internal fun FolderPickerScreen(
     confirmPluralRes: Int = R.plurals.files_picker_confirm,
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
     val scope = rememberCoroutineScope()
 
     var rootMode by remember { mutableIntStateOf(0) }
@@ -197,11 +199,11 @@ internal fun FolderPickerScreen(
     fun isDisabled(physical: File): Pair<Boolean, String?> {
         for (src in sourceDirs) {
             if (physical == src || MovePlanner.isWithin(physical, src)) {
-                return true to context.getString(R.string.files_picker_source_locked)
+                return true to resources.getString(R.string.files_picker_source_locked)
             }
         }
         if (layerOf(physical.absolutePath, layerRoots) == Layer.SYSTEM_DIR) {
-            return true to context.getString(R.string.files_picker_system_locked)
+            return true to resources.getString(R.string.files_picker_system_locked)
         }
         return false to null
     }
@@ -451,7 +453,7 @@ internal fun FolderPickerScreen(
                             target.mkdirs()
                         }
                         created.onFailure {
-                            Toast.makeText(context, it.message ?: context.getString(R.string.files_create_failed), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, it.message ?: resources.getString(R.string.files_create_failed), Toast.LENGTH_SHORT).show()
                         }
                         if (created.isSuccess) {
                             newFolderName = ""

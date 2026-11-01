@@ -71,10 +71,13 @@ import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.UiText
 import com.dshbox.app.ui.asString
+import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.common.Constants
 import com.dshbox.app.sandbox.SandboxManager
 import com.dshbox.app.sandbox.DshUpdateOutcome
 import com.dshbox.app.service.SandboxService
+import com.dshbox.app.dsh.DshRendererReportStore
+import com.dshbox.app.dsh.DshDiagnosticLogs
 import com.dshbox.app.ui.theme.AppLanguage
 import com.dshbox.app.ui.theme.AppLocaleState
 import com.dshbox.app.ui.theme.AppThemeState
@@ -105,10 +108,12 @@ fun SettingsScreen(
     onPendingOnlineImportConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
     val scope = rememberCoroutineScope()
     val sandboxManager = (context.applicationContext as DshApp).container.sandboxManager
     var showDiagnostics by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
+    var diagnosticsLogView by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showBatteryDialog by remember { mutableStateOf(false) }
     // 在线导入运行环境包（base/node 退出 APK 的主链路）：0=隐藏 1=入口页 2=Linux层 3=node层。
     var onlineImportPage by remember { mutableStateOf(0) }
@@ -205,8 +210,8 @@ fun SettingsScreen(
                     // 登记后台操作，阻止清理与其并发（写入 cacheDir）。
                     val result = BackgroundOps.runTracked { installUpdateFromUri(context, sandboxManager, uri) }
                     val message = when (result) {
-                        is AppResult.Success -> context.getString(R.string.settings_update_imported)
-                        is AppResult.Failure -> context.getString(
+                        is AppResult.Success -> resources.getString(R.string.settings_update_imported)
+                        is AppResult.Failure -> resources.getString(
                             R.string.settings_update_import_failed,
                             result.error.userMessage?.asString(context) ?: result.error.message,
                         )
@@ -219,7 +224,7 @@ fun SettingsScreen(
                     // 无异常处理器，直通即 crash）。
                     Toast.makeText(
                         context,
-                        context.getString(R.string.settings_update_import_failed, e.message ?: context.getString(R.string.error_unknown)),
+                        resources.getString(R.string.settings_update_import_failed, e.message ?: resources.getString(R.string.error_unknown)),
                         Toast.LENGTH_LONG,
                     ).show()
                 } finally {
@@ -246,13 +251,13 @@ fun SettingsScreen(
                             val newVer = result.value.version?.takeIf { it.isNotBlank() } ?: "—"
                             Toast.makeText(
                                 context,
-                                context.getString(R.string.settings_dsh_updated, newVer),
+                                resources.getString(R.string.settings_dsh_updated, newVer),
                                 Toast.LENGTH_LONG,
                             ).show()
                         }
                         is AppResult.Failure -> Toast.makeText(
                             context,
-                            context.getString(R.string.settings_update_import_failed, result.error.userMessage?.asString(context) ?: result.error.message),
+                            resources.getString(R.string.settings_update_import_failed, result.error.userMessage?.asString(context) ?: result.error.message),
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -263,7 +268,7 @@ fun SettingsScreen(
                     // 未预见的异常路径直通协程导致 crash。
                     Toast.makeText(
                         context,
-                        context.getString(R.string.settings_update_import_failed, e.message ?: context.getString(R.string.error_unknown)),
+                        resources.getString(R.string.settings_update_import_failed, e.message ?: resources.getString(R.string.error_unknown)),
                         Toast.LENGTH_LONG,
                     ).show()
                 } finally {
@@ -321,9 +326,44 @@ fun SettingsScreen(
     }
 
     if (showDiagnostics) {
+        if (diagnosticsLogView != null) {
+            DshLogViewerScreen(
+                title = stringResource(R.string.settings_diagnostics),
+                content = diagnosticsLogView?.second.orEmpty(),
+                onBack = { diagnosticsLogView = null },
+                backEnabled = isActive,
+                modifier = modifier,
+            )
+            return
+        }
         DiagnosticsScreen(
             sandboxReady = sandboxRunning,
             onBack = { showDiagnostics = false },
+            onOpenLogs = {
+                diagnosticsLogView = null
+                scope.launch {
+                    val report = DshRendererReportStore.report.value
+                    val content = withContext(Dispatchers.IO) {
+                        val logsDir = File(context.filesDir, "logs")
+                        buildString {
+                            append(DshDiagnosticLogs.exportReport(report))
+                            append("\n")
+                            for (fileName in listOf(
+                                "process-dsh.log",
+                                "process-sandbox.log",
+                                "process-guest.log",
+                            )) {
+                                for (suffix in listOf(".prev", "")) {
+                                    val file = File(logsDir, fileName + suffix)
+                                    if (suffix.isNotEmpty() && !file.isFile) continue
+                                    append(DshDiagnosticLogs.readTail(file, 150).exportText())
+                                }
+                            }
+                        }
+                    }
+                    diagnosticsLogView = "renderer-report" to content
+                }
+            },
             modifier = modifier,
             backEnabled = isActive,
         )
@@ -395,7 +435,7 @@ fun SettingsScreen(
                     if (maintenanceBusy) {
                         Toast.makeText(
                             context,
-                            context.getString(R.string.settings_cleanup_busy),
+                            resources.getString(R.string.settings_cleanup_busy),
                             Toast.LENGTH_SHORT,
                         ).show()
                     } else {
@@ -443,7 +483,7 @@ fun SettingsScreen(
             SettingsDivider()
             SettingsRow(
                 title = stringResource(R.string.settings_dsh_version),
-                value = dshVersion?.takeIf { it.isNotBlank() } ?: context.getString(R.string.settings_dsh_not_installed),
+                value = dshVersion?.takeIf { it.isNotBlank() } ?: resources.getString(R.string.settings_dsh_not_installed),
             )
             val dshUpdateText = dshUpdateProgress
             if (dshUpdateText != null) {

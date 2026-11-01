@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dshbox.app.R
+import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.common.UiText
 import com.dshbox.app.util.viewer.ContentFingerprint
 import com.dshbox.app.util.viewer.LargeTextLoader
@@ -108,6 +109,7 @@ internal fun TextCodeViewer(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val resources = configurationAwareResources()
     val scope = rememberCoroutineScope()
 
     // ---- 文本状态（LF 归一编辑表示；保存时按 newlineTarget 还原；fullBytes 实例变化 = 重新初始化） ----
@@ -207,12 +209,12 @@ internal fun TextCodeViewer(
                     savedText = text
                     controller.dirty = false
                     // 元数据（rwx/时间戳）恢复失败时显示保存结果中的警告。
-                    onToast(result.warning?.asString(context) ?: context.getString(R.string.files_save_done))
+                    onToast(result.warning?.asString(context) ?: resources.getString(R.string.files_save_done))
                     onRequestRefresh()
                 }
                 is TextFileStore.SaveOutcome.ExternalChanged -> pendingExternalChange = result.current
                 is TextFileStore.SaveOutcome.Failed -> onToast(
-                    context.getString(R.string.files_save_failed, result.reason.asString(context)),
+                    resources.getString(R.string.files_save_failed, result.reason.asString(context)),
                 )
             }
         }
@@ -239,10 +241,10 @@ internal fun TextCodeViewer(
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openOutputStream(target)?.use { it.write(out) }
-                        ?: error(context.getString(R.string.viewer_out_stream_unavailable))
+                        ?: error(resources.getString(R.string.viewer_out_stream_unavailable))
                 }.isSuccess
             }
-            onToast(context.getString(if (ok) R.string.files_saveas_done else R.string.files_save_failed_generic))
+            onToast(resources.getString(if (ok) R.string.files_saveas_done else R.string.files_save_failed_generic))
         }
     }
 
@@ -492,7 +494,7 @@ internal fun TextCodeViewer(
                                 lossy = decoded.lossy
                                 setEditorText(TextEncoding.normalizeToLf(decoded.text))
                             } else {
-                                onToast(context.getString(R.string.files_viewer_read_failed))
+                                onToast(resources.getString(R.string.files_viewer_read_failed))
                             }
                         }
                     }) { Text(stringResource(R.string.files_ext_changed_reload)) }

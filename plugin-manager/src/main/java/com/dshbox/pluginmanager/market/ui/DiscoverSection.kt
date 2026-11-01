@@ -306,11 +306,21 @@ internal fun MarketPluginCard(
                     .padding(bottom = 10.dp),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                MarketAvatar(
-                    owner = plugin.owner,
-                    size = 18,
-                    modifier = Modifier.padding(end = 6.dp),
-                )
+                // 条目自带的策展图标优先；缺席回落作者头像（与上游一致）。
+                if (plugin.icon != null) {
+                    MarketIconImage(
+                        url = plugin.icon,
+                        owner = plugin.owner,
+                        size = 18,
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                } else {
+                    MarketAvatar(
+                        owner = plugin.owner,
+                        size = 18,
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                }
                 Text(
                     text = plugin.displayName,
                     style = MaterialTheme.typography.titleSmall,
@@ -605,7 +615,7 @@ private fun MarketSourceRow(
             .padding(horizontal = 16.dp, vertical = 3.dp),
         // 间距收到 6dp、方框内边距收到 8dp、按钮内边距收到 10dp：三者合起来给源名多让出
         // 20dp 左右 —— 等宽字体下 `awesome-dsh-mobile-plugins` 需要约 187dp，
-        // 上一版只剩 180dp，于是尾巴被省略号截掉（真机反馈）。
+        // 上一版只剩 180dp，于是尾巴被省略号截掉（实测反馈）。
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -832,7 +842,7 @@ internal fun isInstalledInRegistry(plugin: RegistryPlugin, installedNames: Set<S
  * 目录条目 → 交给 guest 的安装目标。
  *
  * 目录里的 `install` 字段是**一整条命令**（`dsh plugin --profile web add <目标>`），
- * 不是裸目标——直接把它当目标会被字符白名单拒掉（真机上就踩过）。
+ * 不是裸目标——直接把它当目标会被字符白名单拒掉（实测曾出现）。
  * 所以优先用 `npm` 名；没有 npm 名时从那条命令里取 `add` 之后的**最后一个**词，
  * 那才是真正的目标（`github:owner/repo`、tarball URL 等）。
  */

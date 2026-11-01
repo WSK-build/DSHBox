@@ -1,0 +1,26 @@
+#!/bin/sh
+# DSHBox xdg-open shim (guest /opt/dshbox/xdg-open).
+#
+# DSH 的「打开配置文件」最终走 openNativeTextFile -> xdg-open <path>；
+# Android guest 里没有桌面环境，系统 xdg-open 不存在。这个垫片把请求转交给
+# 宿主 APP：把目标路径以一行 JSON 写入请求文件（与本目录同名 .request），
+# APP 侧读取后用内置查看器打开。不修改 DSH 任何源码，System / Gecko 两种
+# 渲染器行为一致（都走服务器原生 RPC 链路）。
+#
+# 契约：
+#   - 只处理第一个参数；无参数时静默成功（避免非本用途调用刷屏）。
+#   - 请求文件为原子替换（tmp + mv），APP 读到半行也不会解析错。
+#   - 路径以 /root/projects/ 开头时宿主映射到 app user-data；其余路径原样
+#     交给宿主判断（内置查看器自带白名单校验）。
+
+requestFile="$(dirname "$0")/xdg-open.request"
+tmp="$requestFile.tmp.$$"
+
+if [ "$#" -eq 0 ] || [ -z "$1" ]; then
+    exit 0
+fi
+
+ts=$(date +%s 2>/dev/null || echo 0)
+printf '{"path": "%s", "ts": %s}\n' "$1" "$ts" > "$tmp" 2>/dev/null || exit 0
+mv -f "$tmp" "$requestFile" 2>/dev/null
+exit 0

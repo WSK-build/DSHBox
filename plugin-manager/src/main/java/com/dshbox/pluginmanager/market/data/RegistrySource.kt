@@ -9,6 +9,7 @@ import com.dshbox.pluginmanager.market.model.RegistryPlugin
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -39,10 +40,10 @@ fun interface RegistryFetcher {
  * ## 取数这一层**不加**任何缓存控制
  *
  * 这里刻意不发 `Cache-Control` / `Pragma`，也不给 URL 挂时间戳参数：
- * "总数偏小是不是中间层缓存造成的"**没有取得证据** —— 早先按这个猜测加过那两样，
- * 真机上数字没有变化，已按用户指示回退。
+ * "总数偏小是否由中间层缓存造成"**没有取得证据**：曾按该猜测加过这两项，
+ * 实际数字没有变化，已回退。
  * 上游 `registry.ts` 用 ETag / Last-Modified 条件请求 + 落盘副本处理新鲜度，
- * 我们没有移植那套；要不要移植，要等现场证据，不再凭猜。
+ * 本模块未移植该机制；是否移植取决于现场证据，不做推测。
  *
  * 保留**一行**诊断日志：总数对不上时，先看这一次到底取到了多长的正文 ——
  * 正文长度直接说明拿到的是不是一份完整目录。
@@ -127,7 +128,7 @@ internal fun jsonText(value: Any?): String =
 /**
  * 策展目录的拉取与解析。
  *
- * ## 为什么失败时什么都不回喂
+ * ## 失败时不回喂旧目录的原因
  *
  * 目录回答的是"现在有哪些插件"。它每天新增，所以一份旧目录不是"降级答案"
  * 而是**错误答案**：今早刚发布的插件在旧目录里读作"不存在"。因此这里没有
@@ -136,13 +137,13 @@ internal fun jsonText(value: Any?): String =
  * 拿到的副本：`force = false` 时直接复用它，省掉一次几 MB 的下载；一旦
  * 发起请求并失败，即使副本在手也返回失败。
  *
- * ## 为什么每源试两次，而且先把每个源都走一遍
+ * ## 每源两次、且先遍历全部源的原因
  *
  * 目录是市场发起的第一个请求，而它往往要跨一段很长、很差的链路。一次
  * 瞬时失败会让整个市场看起来"一个插件都没有"，而重试一次的代价只有一两秒。
  *
  * 但重试是**第二轮**才发生的事：第一轮先把每个源各试一次。否则一个黑洞型
- * 源（连不上、又不立刻报错）会先吃掉 2 × 超时，把后面本来能用的源饿死。
+ * 源（连不上、又不立刻报错）会先吃掉 2 × 超时，把后面可用的源饿死。
  *
  * 注：上游按"下载区域"维护多条目录源；本版本只有官方一条，区域路由属于
  * 另一个模块，因此这里保留"多源 + 每源重试"的结构但默认只配一条。
@@ -168,7 +169,7 @@ class RegistrySource(
          * 单次请求的超时。
          *
          * 刻意给得宽松：目录有几百 KB，从远端网络取回来本就不是四秒能完成的事，
-         * 而过早掐断一条**本来能答**的链路，比多等几秒的代价大得多。
+         * 而过早掐断一条**可正常应答**的链路，比多等几秒的代价大得多。
          */
         const val FETCH_TIMEOUT_MS = 15_000
 
@@ -194,14 +195,20 @@ class RegistrySource(
         var lastReason = "unknown error"
         // 轮次在外、地址在内：**先把每个地址各试一次，全都失败再回头重试**。
         // 原先地址在外、重试在内，于是一个黑洞型地址（连不上但不立刻报错）会先用掉
-        // 2 × FETCH_TIMEOUT_MS，第二个本来能用的地址要等满 30 秒才被轮到；多地址时
+        // 2 × FETCH_TIMEOUT_MS，第二个可用地址要等满 30 秒才被轮到；多地址时
         // 最坏延迟还会随地址数线性累加，界面看起来就是"卡死"。
         // 改成本结构后最坏一轮（= 一个超时），且坏地址不会饿死好地址；
         // 只有一个地址时行为与原先完全一致（仍是试 attemptsPerSource 次）。
         for (round in 0 until attemptsPerSource) {
             for (source in sources) {
+                // 阻塞取数期间观察不到取消：这里主动检查一次，被取消的加载不再
+                // 继续重试（否则后台空转还能跑满整轮超时）。
+                ensureActive()
                 attempts += 1
                 val attempt = attempt(source)
+                // 阻塞取数不会被取消打断：成功分支同样要在写状态前观察一次，
+                // 否则被取消的一轮会把旧内容（可能是上一个源）写回副本。
+                ensureActive()
                 val registry = attempt.registry
                 if (registry != null) {
                     cached = registry
@@ -217,6 +224,9 @@ class RegistrySource(
             attempts = attempts,
             elapsedMs = elapsed,
         )
+        // 被取消的加载不得落失败：它既会把横幅写在之后成功的那次加载上，
+        // 又会把新拿到的副本抹掉。
+        ensureActive()
         // 连同内存副本一起丢掉：一次失败之后不能再有任何路径把旧目录当成
         // 当前目录交出去，否则"失败"与"成功"在界面上就分不清了。
         cached = null
@@ -237,6 +247,9 @@ class RegistrySource(
      * "切了没反应"。所以这里不把这个责任留给调用方。
      */
     fun setSources(newSources: List<String>) {
+        // 地址没变就别丢副本：调用方每次重载都会走一遍这里，无条件 forget()
+        // 会让"非强制重载"也变成整份重新下载。
+        if (newSources == sources) return
         sources = newSources
         forget()
     }
@@ -250,6 +263,10 @@ class RegistrySource(
             response.body.isNullOrBlank() -> Attempt(null, "empty response body")
             else -> Attempt(parse(response.body), "")
         }
+    } catch (t: kotlinx.coroutines.CancellationException) {
+        // 取消不是"这条线路失败"：吞掉它会让被取消的加载继续跑完，
+        // 并把失败横幅写在之后成功的那次加载上。
+        throw t
     } catch (t: Throwable) {
         Attempt(null, t.message?.takeIf { it.isNotBlank() } ?: t::class.java.simpleName)
     }
@@ -310,6 +327,7 @@ class RegistrySource(
                     deprecated = item.optBoolean("deprecated", false),
                     replacement = item.stringOrNull("replacement"),
                     screenshots = screenshotUrls(item.optJSONArray("screenshots")),
+                    icon = imageUrl(item.optString("icon")),
                 ),
             )
         }
@@ -372,9 +390,29 @@ class RegistrySource(
             val lower = value.lowercase()
             if (!lower.startsWith("https://")) continue
             if (!ALLOWED_IMAGE_HOSTS.any { lower.startsWith(it) }) continue
+            // SVG 是文档不是图：解码路径与缩放行为都不可控，上游客户端同样拒收。
+            if (isSvgPath(lower)) continue
             out.add(value)
         }
         return out
+    }
+
+    /**
+     * SVG 是文档不是图（上游客户端按路径结尾拒收）：只看 `?`/`#` 之前的路径段，
+     * 带查询串的变形同样拦住。
+     */
+    private fun isSvgPath(lowerUrl: String): Boolean =
+        lowerUrl.substringBefore('?').substringBefore('#').endsWith(".svg")
+
+    /** 单个图片地址，与截图同一信任边界；不在白名单或非 https 一律丢弃。 */
+    private fun imageUrl(value: String): String? {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return null
+        val lower = trimmed.lowercase()
+        if (!lower.startsWith("https://")) return null
+        if (!ALLOWED_IMAGE_HOSTS.any { lower.startsWith(it) }) return null
+        if (isSvgPath(lower)) return null
+        return trimmed
     }
 
     private fun stringMap(obj: JSONObject?): Map<String, String> {        if (obj == null) return emptyMap()

@@ -37,3 +37,9 @@
 # ---------------------------------------------------------------------------
 -keep class org.bouncycastle.** { *; }
 -dontwarn org.bouncycastle.**
+
+# snakeyaml (GeckoView 传递依赖) 在静态初始化里用 Class.getPackage().getName()
+# 作 logger 名；R8 将其移入根包后 Android 返回 null，GeckoRuntime.create 直接
+# ExceptionInInitializerError。保留原始包名是 Gecko 包能启动的前提。
+-keep class org.yaml.snakeyaml.** { *; }
+-dontwarn org.yaml.snakeyaml.**

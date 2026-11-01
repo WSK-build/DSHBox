@@ -39,7 +39,9 @@ class TerminalCommandFactoryTest {
     fun `normal sandbox command execs guest bash directly`() {
         val p = paths()
         val argv = TerminalCommandFactory.sandboxLoginShell(p)
-        assertEquals(listOf("/usr/bin/bash", "--login"), argv.takeLast(2))
+        assertEquals(listOf("/usr/bin/bash", "--noprofile", "--login"), argv.takeLast(3))
+        // 跳过 /etc/profile：基础镜像里的 `PATH="..."` 会覆盖调用方注入的 PATH。
+        assertTrue(argv.contains("--noprofile"))
         assertTrue(argv.contains("--kill-on-exit"))
         assertTrue(argv.contains("-0"))
         assertTrue(argv.any { it.startsWith("--rootfs=") })
@@ -50,7 +52,10 @@ class TerminalCommandFactoryTest {
     fun `overlay session runs snippet then bash login and clears screen`() {
         val p = paths()
         val argv = TerminalCommandFactory.sandboxLoginShell(p, "do_stuff; ")
-        assertEquals(listOf("/usr/bin/bash", "-c", "do_stuff; exec /usr/bin/bash --login"), argv.takeLast(3))
+        assertEquals(
+            listOf("/usr/bin/bash", "-c", "do_stuff; exec /usr/bin/bash --noprofile --login"),
+            argv.takeLast(3),
+        )
         // 回归护栏：guest 入口不得是宿主 /system/bin/*（部分厂商 ROM 的内核
         // 会以 EPERM 拒绝 proot 内的宿主二进制执行）。
         assertTrue(argv.none { it == "/system/bin/sh" })
