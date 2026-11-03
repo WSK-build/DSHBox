@@ -79,6 +79,9 @@ internal object SystemMetricsParsing {
         "npu", "tpu", "audio", "speaker", "flash", "ufs", "mmc",
         "cooldev", "uspace", "user_space", "hotplug", "virtual",
         "tsens_tz_sensor",
+        // cpu-hw-trip-* 等是硬件过温保护阈值节点，不是当前温度；
+        // 取最大值时会把固定阈值（如 95℃）当成芯片温度显示。
+        "trip",
     )
 
     /**

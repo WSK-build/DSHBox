@@ -324,6 +324,8 @@ class SystemMetricsParsingTest {
             "cpu-thermal-0-0_user_space", "thermal-cooldev",
             // 旧高通纯序号名：无法从名字判语义，宁可退电池档
             "tsens_tz_sensor0", "tsens_tz_sensor3",
+            // 硬件过温保护阈值节点：返回固定阈值（如 95℃），不是当前温度
+            "cpu-hw-trip-0", "cpu-hw-trip-1",
         ).forEach { assertFalse("should reject: $it", SystemMetricsParsing.isSocZone(it)) }
     }
 
