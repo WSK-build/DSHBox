@@ -534,7 +534,7 @@
     <string name="settings_import_running_msg">Копирование и установка выбранного пакета (официальный пакет среды выполнения — около 200 МБ, подождите несколько минут). Не покидайте эту страницу и не закрывайте приложение.</string>
     <string name="settings_import_running_title">Импорт…</string>
     <string name="settings_import_runtime_confirm_action">Импортировать</string>
-    <string name="settings_import_runtime_confirm_msg">Выберите пакет среды выполнения (.zip или .tar.gz / .tar.zst).\n\nСодержит саму среду выполнения:\n• base (обрезанная корневая файловая система Debian)\n• node (Node 24.19.0)\n• android-side (proot/shmem/loader)\n• runtime-profile.json\n(DSH НЕ включён; слой DSH не заменяется.)\n\nИмпорт сбрасывает и заменяет виртуальную системную среду выполнения (base/node/android-side) и может привести к потере данных внутри песочницы; слой DSH (runtime-current/dsh) и user-data/.dsh не затрагиваются. Продолжить?</string>
+    <string name="settings_import_runtime_confirm_msg">Выберите пакет среды выполнения (.zip или .tar.gz / .tar.zst).\n\nСодержит саму среду выполнения:\n• base (обрезанная корневая файловая система Debian)\n• node (Node 24.22.2)\n• android-side (proot/shmem/loader)\n• runtime-profile.json\n(DSH НЕ включён; слой DSH не заменяется.)\n\nИмпорт сбрасывает и заменяет виртуальную системную среду выполнения (base/node/android-side) и может привести к потере данных внутри песочницы; слой DSH (runtime-current/dsh) и user-data/.dsh не затрагиваются. Продолжить?</string>
     <string name="settings_import_runtime_confirm_title">Импорт пакета среды выполнения</string>
     <string name="settings_import_update">Импортировать пакет среды выполнения (офлайн)</string>
     <string name="settings_language">Язык</string>

@@ -32,6 +32,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.commons.compress)
+    // 同 app 模块：传递依赖 commons-lang3 钉版 3.18.0（CVE-2025-48924 修复版）。
+    implementation(libs.commons.lang3)
     // Debian Release.gpg OpenPGP 验签（在线导入的信任链加固）。
     implementation(libs.bcpg)
     // XZ 解压需要 org.tukaani:xz（commons-compress 的 XZ 支持不内嵌该实现；

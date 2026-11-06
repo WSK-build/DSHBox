@@ -13,14 +13,14 @@
 #   runtime-bundle/build_node.sh
 #
 # Environment:
-#   NODE_VERSION  default "24.19.0" (target version; Phase D validates the full
+#   NODE_VERSION  default "24.22.2" (target version; Phase D validates the full
 #                 arm64 native-package recompile against this exact version)
 #   ARCH          default "arm64"
 #   BUILD_DIR     build work root (default $ROOT/build)
 #   OUT_DIR       node layer output dir (default $BUILD_DIR/layers/node)
 set -euo pipefail
 
-NODE_VERSION="${NODE_VERSION:-24.19.0}"
+NODE_VERSION="${NODE_VERSION:-24.22.2}"
 ARCH="${ARCH:-arm64}"
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -58,4 +58,4 @@ tar -xJf "$TARBALL" -C "$OUT_DIR" --strip-components=1
 echo "====> node layer content:"
 ls -la "$OUT_DIR" | head -20
 echo "====> node layer prepared at: $OUT_DIR"
-echo "====> pack with: tools/pack_runtime.sh node $OUT_DIR $BUILD_DIR/layers [18.x|24.19.0] [arch]"
+echo "====> pack with: tools/pack_runtime.sh node $OUT_DIR $BUILD_DIR/layers [18.x|24.22.2] [arch]"

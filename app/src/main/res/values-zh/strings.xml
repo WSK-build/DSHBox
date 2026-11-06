@@ -501,7 +501,7 @@
     <string name="settings_import_running_msg">正在复制并安装所选包（官方运行环境包约 200MB，需要一到几分钟），请勿离开本页或关闭应用。</string>
     <string name="settings_import_running_title">正在导入…</string>
     <string name="settings_import_runtime_confirm_action">确定导入</string>
-    <string name="settings_import_runtime_confirm_msg">请选择一个运行环境包（.zip 或 .tar.gz / .tar.zst）。\n\n它包含运行环境本体：\n• base（Debian 裁剪根文件系统）\n• node（Node 24.19.0）\n• android-side（proot/shmem/loader）\n• runtime-profile.json\n（不含 DSH。DSH 为独立层，不会被替换。）\n\n导入会重置并替换虚拟系统运行环境（base/node/android-side），可能导致沙盒内数据丢失；DSH 层（runtime-current/dsh）与 user-data/.dsh 不受影响。确定继续？</string>
+    <string name="settings_import_runtime_confirm_msg">请选择一个运行环境包（.zip 或 .tar.gz / .tar.zst）。\n\n它包含运行环境本体：\n• base（Debian 裁剪根文件系统）\n• node（Node 24.22.2）\n• android-side（proot/shmem/loader）\n• runtime-profile.json\n（不含 DSH。DSH 为独立层，不会被替换。）\n\n导入会重置并替换虚拟系统运行环境（base/node/android-side），可能导致沙盒内数据丢失；DSH 层（runtime-current/dsh）与 user-data/.dsh 不受影响。确定继续？</string>
     <string name="settings_import_runtime_confirm_title">离线导入运行环境包</string>
     <string name="settings_import_update">离线导入运行环境包</string>
     <string name="settings_language">语言 / Language</string>

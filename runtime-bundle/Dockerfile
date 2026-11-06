@@ -14,7 +14,7 @@
 FROM --platform=linux/arm64 debian:trixie-slim
 
 ARG DSH_VERSION=0.1.0-rc.6
-ARG NODE_VERSION=22.17.0
+ARG NODE_VERSION=24.22.2
 ARG NODE_DISTRO=linux-arm64
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -33,7 +33,7 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-$
     | tar -xJ -C /usr/local --strip-components=1
 
 # pnpm via corepack (bundled with Node). Pin by packageManager after this step.
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 
 # Install DSH into a dedicated runtime directory. Pin the exact version; do not
 # rely on latest dist-tags of @deepseek-ai/dsh-* subpackages.

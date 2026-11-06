@@ -20,7 +20,7 @@ OUT_PROFILE="${2:?usage: gen_profile.sh <layers_dir> <out_profile.json> [version
 VERSION="${3:-0.1.0}"
 ARCH="${4:-arm64}"
 ZSTD_LEVEL="${5:-19}"
-NODE_VERSION="${6:-${NODE_VERSION:-24.19.0}}"
+NODE_VERSION="${6:-${NODE_VERSION:-24.22.2}}"
 
 if [ ! -d "$LAYERS_DIR" ]; then
     echo "layers dir not found: $LAYERS_DIR" >&2

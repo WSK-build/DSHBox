@@ -512,7 +512,7 @@
     <string name="settings_import_running_msg">Copying and installing the selected package (the official runtime package is about 200MB, allow a few minutes). Do not leave this page or close the app.</string>
     <string name="settings_import_running_title">Importing…</string>
     <string name="settings_import_runtime_confirm_action">Import</string>
-    <string name="settings_import_runtime_confirm_msg">Select a runtime package (.zip or .tar.gz / .tar.zst).\n\nIt contains the runtime itself:\n• base (trimmed Debian rootfs)\n• node (Node 24.19.0)\n• android-side (proot/shmem/loader)\n• runtime-profile.json\n(DSH is NOT included; the DSH layer is not replaced.)\n\nImport resets and replaces the virtual system runtime (base/node/android-side) and may cause data loss inside the sandbox; the DSH layer (runtime-current/dsh) and user-data/.dsh are not affected. Continue?</string>
+    <string name="settings_import_runtime_confirm_msg">Select a runtime package (.zip or .tar.gz / .tar.zst).\n\nIt contains the runtime itself:\n• base (trimmed Debian rootfs)\n• node (Node 24.22.2)\n• android-side (proot/shmem/loader)\n• runtime-profile.json\n(DSH is NOT included; the DSH layer is not replaced.)\n\nImport resets and replaces the virtual system runtime (base/node/android-side) and may cause data loss inside the sandbox; the DSH layer (runtime-current/dsh) and user-data/.dsh are not affected. Continue?</string>
     <string name="settings_import_runtime_confirm_title">Import runtime package</string>
     <string name="settings_import_update">Import runtime package (offline)</string>
     <string name="settings_language">Language</string>

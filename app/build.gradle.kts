@@ -139,6 +139,9 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.documentfile)
     implementation(libs.commons.compress)
+    // commons-compress 的传递依赖 commons-lang3 3.16.0 含 CVE-2025-48924（不受控递归 DoS），
+    // 显式钉版到已修复的 3.18.0 覆盖传递版本。
+    implementation(libs.commons.lang3)
     // 代码编辑核心（撤销/搜索/行号），LGPL-2.1-or-later 未修改 aar
     implementation(libs.sora.editor)
     // Markdown 预览（Apache-2.0）

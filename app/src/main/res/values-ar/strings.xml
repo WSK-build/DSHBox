@@ -556,7 +556,7 @@
     <string name="settings_import_running_msg">جارٍ نسخ وتثبيت الحزمة المختارة (حزمة بيئة التشغيل الرسمية حوالي 200 ميغابايت، خصص بضع دقائق). لا تغادر هذه الصفحة أو أغلق التطبيق.</string>
     <string name="settings_import_running_title">جارٍ الاستيراد…</string>
     <string name="settings_import_runtime_confirm_action">استيراد</string>
-    <string name="settings_import_runtime_confirm_msg">اختر حزمة بيئة تشغيل (.zip أو .tar.gz / .tar.zst).\n\nتحتوي على بيئة التشغيل نفسها:\n• base (نظام Debian الجذري المختزل)\n• node (Node 24.19.0)\n• android-side (proot/shmem/loader)\n• runtime-profile.json\n(لا يتضمن DSH؛ طبقة DSH لن تُستبدل.)\n\nيُعيِّن الاستيراد و يستبدل بيئة التشغيل الافتراضية (base/node/android-side) وقد يُسبب فقدان البيانات داخل الصندوق الرملي؛ لا تتأثر طبقة DSH (runtime-current/dsh) و user-data/.dsh. هل تريد المتابعة؟</string>
+    <string name="settings_import_runtime_confirm_msg">اختر حزمة بيئة تشغيل (.zip أو .tar.gz / .tar.zst).\n\nتحتوي على بيئة التشغيل نفسها:\n• base (نظام Debian الجذري المختزل)\n• node (Node 24.22.2)\n• android-side (proot/shmem/loader)\n• runtime-profile.json\n(لا يتضمن DSH؛ طبقة DSH لن تُستبدل.)\n\nيُعيِّن الاستيراد و يستبدل بيئة التشغيل الافتراضية (base/node/android-side) وقد يُسبب فقدان البيانات داخل الصندوق الرملي؛ لا تتأثر طبقة DSH (runtime-current/dsh) و user-data/.dsh. هل تريد المتابعة؟</string>
     <string name="settings_import_runtime_confirm_title">استيراد حزمة بيئة التشغيل</string>
     <string name="settings_import_update">استيراد حزمة بيئة التشغيل (غير متصل)</string>
     <string name="settings_language">اللغة</string>

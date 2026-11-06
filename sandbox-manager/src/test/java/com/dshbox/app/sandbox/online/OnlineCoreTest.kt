@@ -17,15 +17,15 @@ class Shasums256Test {
         val h2 = "b47d8f2ab47d8f2ab47d8f2ab47d8f2ab47d8f2ab47d8f2ab47d8f2ab47d8f2a"
         val h3 = "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
         val text = """
-            $h1  node-v24.19.0-linux-arm64.tar.xz
-            $h2 *node-v24.19.0-linux-x64.tar.xz
-            $h3  node-v24.19.0-win-x64.zip
+            $h1  node-v24.22.2-linux-arm64.tar.xz
+            $h2 *node-v24.22.2-linux-x64.tar.xz
+            $h3  node-v24.22.2-win-x64.zip
             not-a-hash-line
         """.trimIndent()
         val map = Shasums256.parse(text)
         assertEquals(3, map.size)
-        assertEquals(h1, map["node-v24.19.0-linux-arm64.tar.xz"])
-        assertEquals(h2, map["node-v24.19.0-linux-x64.tar.xz"])
+        assertEquals(h1, map["node-v24.22.2-linux-arm64.tar.xz"])
+        assertEquals(h2, map["node-v24.22.2-linux-x64.tar.xz"])
     }
 
     @Test
@@ -89,7 +89,7 @@ class RuntimeProfileWriterTest {
         val json = RuntimeProfileWriter.build(
             bundleVersion = "0.1.0", arch = "arm64",
             baseVersion = "0.1.0", baseSha256 = "a".repeat(64), baseSizeBytes = 123L,
-            nodeVersion = "24.19.0", nodeSha256 = "b".repeat(64), nodeSizeBytes = 456L,
+            nodeVersion = "24.22.2", nodeSha256 = "b".repeat(64), nodeSizeBytes = 456L,
             asideVersion = "0.1.0", asideSha256 = "c".repeat(64), asideSizeBytes = 789L,
             builtAtIsoUtc = "2026-09-13T00:00:00Z",
         )
@@ -122,7 +122,7 @@ class RuntimeProfileWriterTest {
         RuntimeProfileWriter.build(
             bundleVersion = "0.1.0", arch = "arm64",
             baseVersion = "0.1.0", baseSha256 = "zz", baseSizeBytes = 1L,
-            nodeVersion = "24.19.0", nodeSha256 = "b".repeat(64), nodeSizeBytes = 1L,
+            nodeVersion = "24.22.2", nodeSha256 = "b".repeat(64), nodeSizeBytes = 1L,
             asideVersion = "0.1.0", asideSha256 = "c".repeat(64), asideSizeBytes = 1L,
             builtAtIsoUtc = "2026-09-13T00:00:00Z",
         )
@@ -133,7 +133,7 @@ class RuntimeProfileWriterTest {
         RuntimeProfileWriter.build(
             bundleVersion = "0.1.0\nINJECTED", arch = "arm64",
             baseVersion = "0.1.0", baseSha256 = "a".repeat(64), baseSizeBytes = 1L,
-            nodeVersion = "24.19.0", nodeSha256 = "b".repeat(64), nodeSizeBytes = 1L,
+            nodeVersion = "24.22.2", nodeSha256 = "b".repeat(64), nodeSizeBytes = 1L,
             asideVersion = "0.1.0", asideSha256 = "c".repeat(64), asideSizeBytes = 1L,
             builtAtIsoUtc = "2026-09-13T00:00:00Z",
         )
@@ -144,7 +144,7 @@ class RuntimeProfileWriterTest {
         RuntimeProfileWriter.build(
             bundleVersion = "0.1.0", arch = "arm64",
             baseVersion = "0.1.0", baseSha256 = "a".repeat(64), baseSizeBytes = 1L,
-            nodeVersion = "24.19.0", nodeSha256 = null, nodeSizeBytes = 1L,
+            nodeVersion = "24.22.2", nodeSha256 = null, nodeSizeBytes = 1L,
             asideVersion = "0.1.0", asideSha256 = "c".repeat(64), asideSizeBytes = 1L,
             builtAtIsoUtc = "2026-09-13T00:00:00Z",
         )

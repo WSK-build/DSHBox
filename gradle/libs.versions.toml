@@ -11,6 +11,7 @@ geckoview = "158.0.20261021001945"
 coroutines = "1.9.0"
 junit = "4.13.2"
 commonsCompress = "1.27.1"
+commonsLang3 = "3.18.0"
 androidxJunit = "1.2.1"
 espressoCore = "3.6.1"
 documentfile = "1.0.1"
@@ -19,7 +20,7 @@ soraEditor = "0.23.5"
 markwon = "4.6.2"
 zxing = "3.5.3"
 kxml2 = "2.3.0"
-bcpg = "1.78.1"
+bcpg = "1.86"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +39,7 @@ androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "w
 geckoview-arm64 = { group = "org.mozilla.geckoview", name = "geckoview-arm64-v8a", version.ref = "geckoview" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
 androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidxAnnotation" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

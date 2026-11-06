@@ -14,7 +14,7 @@
 #   tools/build_arm64_runtime_bundle.sh [suite] [arch]
 #
 # Environment:
-#   NODE_VERSION  node layer version (default 24.19.0)
+#   NODE_VERSION  node layer version (default 24.22.2)
 #   BUNDLE_VERSION bundle version (default 0.1.0)
 #   OUT_DIR       dist output dir (default $ROOT/build/dist)
 #   ZSTD_LEVEL    zstd compression level (default 19)
@@ -23,7 +23,7 @@ set -euo pipefail
 SUITE="${1:-trixie}"
 ARCH="${2:-arm64}"
 BUNDLE_VERSION="${BUNDLE_VERSION:-0.1.0}"
-NODE_VERSION="${NODE_VERSION:-24.19.0}"
+NODE_VERSION="${NODE_VERSION:-24.22.2}"
 ZSTD_LEVEL="${ZSTD_LEVEL:-19}"
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"

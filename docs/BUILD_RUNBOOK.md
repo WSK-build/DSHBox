@@ -45,7 +45,7 @@ bash tools/pipeline_dryrun.sh
 
 ### 1.4 构建
 ```bash
-export NODE_VERSION=24.19.0
+export NODE_VERSION=24.22.2
 export BUNDLE_VERSION=0.1.0
 export ZSTD_LEVEL=19            # zstd 存在时用；不存在则 pack 脚本自动 gzip
 bash tools/build_arm64_runtime_bundle.sh   # 默认 trixie arm64

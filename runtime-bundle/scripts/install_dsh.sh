@@ -11,7 +11,7 @@ PNPM_DIR="${PNPM_DIR:-/opt/dshapp/pnpm-cache}"
 
 echo "Installing DeepSeek Harness ${DSH_VERSION} (pin exact version; do not use latest tag)"
 npm install --prefix /opt/dshapp/runtime "npm:@deepseek-ai/dsh@${DSH_VERSION}" --registry "$DSH_NPM_REGISTRY"
-npm install --prefix /opt/dshapp/runtime "pnpm@latest" --registry "$DSH_NPM_REGISTRY" || true
+npm install --prefix /opt/dshapp/runtime "pnpm@10.34.9" --registry "$DSH_NPM_REGISTRY" || true
 
 # Android 硬链接兼容：就地改写 DSH 的 JS 文件不可行（补丁锚点会随上游漂移）。
 # 1.3.1 起改为**运行期垫片**（app 启动 DSH 时以 --import 预加载 link-shim.mjs），

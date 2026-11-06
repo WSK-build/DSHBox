@@ -9,7 +9,7 @@ object Shasums256 {
 
     private val LINE = Regex("^([0-9a-fA-F]{64})\\s{1,2}[ *]?(.+)$")
 
-    /** 文件名（如 `node-v24.19.0-linux-arm64.tar.xz`）→ 小写 sha256。 */
+    /** 文件名（如 `node-v24.22.2-linux-arm64.tar.xz`）→ 小写 sha256。 */
     fun parse(text: String): Map<String, String> =
         text.lineSequence()
             .mapNotNull { line ->

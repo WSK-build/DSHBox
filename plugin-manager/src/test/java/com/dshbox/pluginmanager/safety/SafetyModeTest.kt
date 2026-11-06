@@ -49,7 +49,7 @@ class SafetyModeTest {
             AggregateError: loader entries failed to apply
             Error: failed to import loader entry bad-a (bad-a): BOOM-A: import 阶段故意抛错
             Error: failed to apply loader entry bad-b (bad-b): BOOM-B: apply 阶段故意抛错
-            Node.js v24.19.0
+            Node.js v24.22.2
         """.trimIndent()
         val hits = FailureAttribution.parse(text)
         // 三条都要认出来：链根 include（随后被"受保护"规则滤掉）+ 两个真正的坏插件。
@@ -66,9 +66,9 @@ class SafetyModeTest {
         // 每次尝试都以 `Node.js v…` 结尾，用它分段：旧的失败不该再被拿来隔离。
         val text = """
             failed to apply loader entry old-one (old-one): boom
-            Node.js v24.19.0
+            Node.js v24.22.2
             failed to import loader entry new-one (new-one): boom2
-            Node.js v24.19.0
+            Node.js v24.22.2
         """.trimIndent()
         assertEquals(listOf("new-one"), FailureAttribution.parse(text).map { it.id })
     }
@@ -108,9 +108,9 @@ class SafetyModeTest {
         // 以及 DSH 已经起来之后又白隔离一次）。
         val text = """
             failed to import loader entry bad-a (bad-a): BOOM-A
-            Node.js v24.19.0
+            Node.js v24.22.2
             failed to apply loader entry bad-b (bad-b): BOOM-B
-            Node.js v24.19.0
+            Node.js v24.22.2
         """.trimIndent()
         assertEquals(2, FailureAttribution.trailerCount(text))
         // 尚未收尾（正在启动）的尝试：计数不变 = 不算失败。
@@ -124,10 +124,10 @@ class SafetyModeTest {
     fun `失败原文摘要给的是点名行`() {
         val text = """
             failed to import loader entry bad-a (bad-a): BOOM-A
-            Node.js v24.19.0
+            Node.js v24.22.2
             something else
             failed to apply loader entry bad-b (bad-b): BOOM-B
-            Node.js v24.19.0
+            Node.js v24.22.2
         """.trimIndent()
         val snippet = FailureAttribution.failureSnippet(text)
         assertTrue(snippet, snippet.contains("bad-b"))

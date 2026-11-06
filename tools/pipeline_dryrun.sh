@@ -36,8 +36,8 @@ else
     warn "apt-get NOT found; cannot debootstrap from mirror"
 fi
 
-# Node: must be 24.19.0 to match the bundle's node layer.
-NODE_VERSION="${NODE_VERSION:-24.19.0}"
+# Node: must be 24.22.2 to match the bundle's node layer.
+NODE_VERSION="${NODE_VERSION:-24.22.2}"
 if command -v node >/dev/null 2>&1; then
     hv="$(node --version | sed 's/^v//')"
     if [ "$hv" = "$NODE_VERSION" ]; then ok "node $hv == $NODE_VERSION"; else warn "node $hv != $NODE_VERSION (bundle node layer will be $NODE_VERSION)"; fi

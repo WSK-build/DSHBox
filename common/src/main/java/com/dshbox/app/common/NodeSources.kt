@@ -20,7 +20,7 @@ data class NodeDistSource(
 
 object NodeSources {
     /** node 层版本基线（与 runtime-bundle/build_node.sh / RUNTIME_LAYERS.md 一致，随版本更新）。 */
-    const val NODE_VERSION = "24.19.0"
+    const val NODE_VERSION = "24.22.2"
 
     /** APK ABI → node dist 架构名（模拟器 x86_64 对应 x64）。 */
     fun nodeArch(supportedAbi: String?): String = when (supportedAbi) {

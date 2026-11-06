@@ -6,15 +6,15 @@
 |---|---|---|---|
 | DeepSeek Harness（`@deepseek-ai/dsh` 及子包） | Agent Runtime | MIT | 以 npm 包形式随运行环境分发 |
 | Cordis（`@deepseek-ai/cordis`） | 插件框架 | MIT | npm 包 |
-| Node.js 24.19.0 | JavaScript Runtime | MIT（详见 Node 发行版 LICENSE） | 运行环境内置 |
+| Node.js 24.22.2 | JavaScript Runtime | MIT（详见 Node 发行版 LICENSE） | 运行环境内置 |
 | npm / pnpm | 包管理器 | Artistic-2.0（npm）/ MIT（pnpm） | 随 Node 分发 |
 | Debian GNU/Linux rootfs | Linux 用户空间 | 各包按 Debian 版权文件分别授权 | debootstrap 构建；各包许可证见 rootfs 内 `/usr/share/doc/*/copyright` |
 | PRoot（`libproot.so` / `libproot-loader.so` / `libandroid-shmem.so`） | 用户态沙箱（chroot 替代） | GPL-2+（以源码 COPYING 为准） | 二进制来自 termux-packages 构建；源码见下方链接 |
 | talloc（`libtalloc.so`） | 内存池（PRoot 依赖） | LGPL-3+ | 动态链接使用；源码见下方链接 |
 | zstd-jni（`libs/zstd-jni-*.jar` + `jniLibs/*/libzstd-jni-*.so`） | zstd 层解压及 tar.zst 条目枚举 | JNI 包装层 BSD-2-Clause；Zstandard 内核 BSD-3-Clause | 当前 1.5.7-15；原文见 licenses/Zstd-JNI-LICENSE.txt 与 licenses/Zstd-LICENSE.txt |
-| commons-compress（`org.apache.commons:commons-compress` 1.27.1） | 压缩包枚举与解压 | Apache-2.0 | 随 APK 分发；实际传递依赖含 commons-codec 1.17.1、commons-io 2.16.1 与 commons-lang3 3.16.0，保留各自 LICENSE/NOTICE；https://commons.apache.org/proper/commons-compress/ |
+| commons-compress（`org.apache.commons:commons-compress` 1.27.1） | 压缩包枚举与解压 | Apache-2.0 | 随 APK 分发；实际传递依赖含 commons-codec 1.17.1、commons-io 2.16.1 与 commons-lang3（传递版本 3.16.0 含 CVE-2025-48924，已在版本目录显式钉版 3.18.0 覆盖），保留各自 LICENSE/NOTICE；https://commons.apache.org/proper/commons-compress/ |
 | Apache Commons Codec / IO / Lang | commons-compress 的运行时传递依赖 | Apache-2.0 | 版本与文件以 APK 内 DEPENDENCIES.txt 为准，各自的 NOTICE 隔离保留 |
-| Bouncy Castle（`org.bouncycastle:bcpg-jdk18on` 1.78.1，传递 `bcprov-jdk18on`/`bcutil-jdk18on`） | Debian `Release.gpg` OpenPGP 验签（在线导入 Linux 层的信任链锚点） | MIT（Bouncy Castle Licence；bcprov 内部分组件为 Apache-2.0，POM 双许可声明） | Gradle 依赖；随 APK 分发；预埋公钥取自 ftp-master.debian.org/keys（Debian 官方归档钥，非第三方许可物）；上游 https://www.bouncycastle.org/java.html |
+| Bouncy Castle（`org.bouncycastle:bcpg-jdk18on` 1.86，传递 `bcprov-jdk18on`/`bcutil-jdk18on`） | Debian `Release.gpg` OpenPGP 验签（在线导入 Linux 层的信任链锚点） | MIT（Bouncy Castle Licence；bcprov 内部分组件为 Apache-2.0，POM 双许可声明） | Gradle 依赖；随 APK 分发；预埋公钥取自 ftp-master.debian.org/keys（Debian 官方归档钥，非第三方许可物）；上游 https://www.bouncycastle.org/java.html |
 | interlock-relay-core（`pilot/interlock-relay-core/`） | 手机助手平台层：通道与协议、审批闸门、三个执行后端、存储与配额、审计日志、宿主扩展点 | Apache-2.0 | 上游 https://github.com/WSK-build/interlock-relay ；版本 0.1.0；版权 Copyright 2026 WSK-build；以源码形式随本仓库分发；许可原文与依赖清单见 `pilot/interlock-relay-core/{LICENSE,NOTICE}`；在本应用内随整体以 GPL-3.0 分发，单独取用时适用 Apache-2.0 |
 | Shizuku API（`dev.rikka.shizuku:api` / `:provider` 13.1.5，传递 `:aidl` / `:shared`） | shell 身份执行通路（手机助手核心层经 Shizuku 以 shell 权限调用系统能力） | MIT | Gradle 依赖；随 APK 分发；坐标未进版本目录，由手机助手核心层直接声明；`provider` 声明的组件已随清单合并生效、无额外运行时下载；上游 https://github.com/RikkaApps/Shizuku ，许可原文 https://github.com/RikkaApps/Shizuku-API/blob/master/LICENSE |
 | ZXing Core（`com.google.zxing:core` 3.5.3） | 开发者模式面板的二维码编解码（访问码二维码生成；core 一件覆盖生成与解码两侧，不含 Android 取景管线） | Apache-2.0 | Gradle 依赖；随 APK 分发；上游 https://github.com/zxing/zxing ；许可原文 https://github.com/zxing/zxing/blob/master/LICENSE
