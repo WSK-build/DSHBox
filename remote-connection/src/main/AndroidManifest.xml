@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 远程连接模块：面板 UI 与远程会话内核的承载库，无独立组件。
+     扫码器的 CAMERA 权限由宿主应用声明（app 清单），本库不重复声明；
+     相机硬件特性按宿主 uses-feature required=false 口径，无摄像头设备
+     由扫码页的「相机不可用」说明页兜底。
+     VPN 观测（LanVpnWatcher）读取网络能力清单需要 ACCESS_NETWORK_STATE：
+     缺失时 ConnectivityManager 相关查询抛 SecurityException，VPN 提示失效
+     （面板静默无提示）。库内声明、由清单合并带入宿主（normal 级权限，
+     免运行时授权）。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

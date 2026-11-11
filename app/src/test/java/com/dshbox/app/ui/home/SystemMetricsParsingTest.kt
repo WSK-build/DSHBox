@@ -1,16 +1,14 @@
 package com.dshbox.app.ui.home
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * 监控卡取数规则的纯 JVM 测试（无 Android Context、不碰设备）。
  *
  * 覆盖：/proc/stat 计数解析与占用率差值、/proc/loadavg 负载换算、本应用 CPU 时间换算、
- * /proc/meminfo 与 statfs 的占用率、热区与电池温度的归一与越界过滤、以及界面文案格式化。
+ * /proc/meminfo 与 statfs 的占用率、以及界面文案格式化。
  * 逐项验证数值解析和格式化，防止错误数据进入监控显示。
  */
 class SystemMetricsParsingTest {
@@ -301,64 +299,6 @@ class SystemMetricsParsingTest {
         assertNull(SystemMetricsParsing.usagePercent(1L, 0L))
     }
 
-    // ---------- 温度 ----------
-
-    @Test
-    fun socZoneMatchingAcceptsCpuClassNames() {
-        listOf(
-            "cpu0-thermal", "cpu-thermal", "cpu_thermal", "mtktscpu",
-            "soc-thermal", "soc_therm", "cluster0-thermal",
-            "bigcore0", "smallcore0", "atlas0", "apollo",
-            "cls0-thermal", "BIG", "MID", "LITTLE", "AP_THERM", "ap_therm0",
-        ).forEach { assertTrue("should accept: $it", SystemMetricsParsing.isSocZone(it)) }
-    }
-
-    @Test
-    fun socZoneMatchingRejectsNonCpuZones() {
-        listOf(
-            "gpu-thermal", "g3d-thermal", "battery", "mtktsbattery", "charger",
-            "usb-therm", "quiet_therm", "pa_therm0", "mtktspa", "modem-therm",
-            "wlan", "display", "VIRTUAL-SKIN",
-            // Tensor 电源轨：含 cpu 但先被 vdd/s2m_ 黑名单排除，不能当 CPU 结温
-            "S2M_VDD_CPUCL2", "S2M_VDD_CPUCL1",
-            "cpu-thermal-0-0_user_space", "thermal-cooldev",
-            // 旧高通纯序号名：无法从名字判语义，宁可退电池档
-            "tsens_tz_sensor0", "tsens_tz_sensor3",
-        ).forEach { assertFalse("should reject: $it", SystemMetricsParsing.isSocZone(it)) }
-    }
-
-    @Test
-    fun socCelsiusNormalizesMilliDegrees() {
-        assertEquals(45, SystemMetricsParsing.socCelsius("45000"))
-        assertEquals(1, SystemMetricsParsing.socCelsius("1000")) // 下边界：1℃
-        assertEquals(120, SystemMetricsParsing.socCelsius("120000"))
-        assertNull(SystemMetricsParsing.socCelsius("125000")) // 超过合理上限
-        assertNull(SystemMetricsParsing.socCelsius("0")) // 未上电哨兵值
-        assertNull(SystemMetricsParsing.socCelsius("45")) // 45 毫度 = 0℃，坏值
-        assertNull(SystemMetricsParsing.socCelsius("450")) // 0.45℃ 截断为 0，坏值
-        assertNull(SystemMetricsParsing.socCelsius("-5000"))
-        assertNull(SystemMetricsParsing.socCelsius("abc"))
-        assertNull(SystemMetricsParsing.socCelsius(""))
-    }
-
-    @Test
-    fun batteryCelsiusFiltersOutOfRangeTenths() {
-        assertEquals(35, SystemMetricsParsing.batteryCelsius(350L))
-        assertEquals(0, SystemMetricsParsing.batteryCelsius(0L))
-        assertEquals(120, SystemMetricsParsing.batteryCelsius(1200L))
-        assertNull(SystemMetricsParsing.batteryCelsius(1201L))
-        assertNull(SystemMetricsParsing.batteryCelsius(-1L))
-        assertNull(SystemMetricsParsing.batteryCelsius(null))
-    }
-
-    @Test
-    fun temperatureFractionScalesToBar() {
-        assertEquals(0f, SystemMetricsParsing.temperatureFraction(0), 0.0001f)
-        assertEquals(0.5f, SystemMetricsParsing.temperatureFraction(40), 0.0001f)
-        assertEquals(1f, SystemMetricsParsing.temperatureFraction(80), 0.0001f)
-        assertEquals(1f, SystemMetricsParsing.temperatureFraction(120), 0.0001f)
-    }
-
     // ---------- 文案 ----------
 
     @Test
@@ -379,8 +319,6 @@ class SystemMetricsParsingTest {
     fun valueTextsFallBackToPlaceholder() {
         assertEquals("—", SystemMetricsParsing.percentText(null))
         assertEquals("42%", SystemMetricsParsing.percentText(42))
-        assertEquals("—", SystemMetricsParsing.temperatureText(null))
-        assertEquals("43°C", SystemMetricsParsing.temperatureText(43))
     }
 
     @Test

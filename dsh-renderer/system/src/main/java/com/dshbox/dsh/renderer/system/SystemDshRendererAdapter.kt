@@ -22,11 +22,15 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.ScriptHandler
+import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewCompat.WebMessageListener
 import androidx.webkit.WebViewFeature
 import com.dshbox.dsh.renderer.api.DshAsyncRequestId
 import com.dshbox.dsh.renderer.api.DshFileChooserRequest
+import com.dshbox.dsh.renderer.api.DshMainFrameDecision
+import com.dshbox.dsh.renderer.api.resolveMainFrameNavigation
 import com.dshbox.dsh.renderer.api.DshLoadDispatchResult
 import com.dshbox.dsh.renderer.api.DshLoadRejectionReason
 import com.dshbox.dsh.renderer.api.DshNativeRef
@@ -36,6 +40,7 @@ import com.dshbox.dsh.renderer.api.DshRenderFailureKind
 import com.dshbox.dsh.renderer.api.DshRenderIdentity
 import com.dshbox.dsh.renderer.api.DshRenderLoadRequest
 import com.dshbox.dsh.renderer.api.DshRenderer
+import com.dshbox.dsh.renderer.api.DshDownloadRequest
 import com.dshbox.dsh.renderer.api.DshRendererAdapter
 import com.dshbox.dsh.renderer.api.DshRendererCapabilities
 import com.dshbox.dsh.renderer.api.DshRendererConfig
@@ -102,7 +107,8 @@ private class SystemDshRenderer(
     private val host: DshRendererHost,
     override val capabilities: DshRendererCapabilities,
 ) : DshRenderer {
-    private val originPolicy = DshOriginPolicy.create(config.trustedBaseOrigin)
+    private val originPolicy =
+        DshOriginPolicy.create(config.trustedBaseOrigin, config.mainFrameNavigation)
     private val internalSchemes = config.internalSchemes.mapTo(mutableSetOf()) {
         it.lowercase(Locale.ROOT)
     }
@@ -163,8 +169,71 @@ private class SystemDshRenderer(
                 "DSH compatibility injection unavailable; refusing navigation",
             )
         }
+        installExternalMessageListener(config.hostMessageChannelEnabled)
         Log.i(WEB_LOG_TAG, "System WebView UA: ${webView.settings.userAgentString}")
         WebView.setWebContentsDebuggingEnabled(config.debuggingEnabled)
+    }
+
+    /**
+     * 页面外链的宿主消息通道：页面侧兼容脚本在可信 origin 顶层文档内通过
+     * `dshboxHost` 对象递交外部 http(s) 目标（JSON 帧），文档自身不导航。
+     * 注册以配置开关为前提（代理与直连远程会话声明启用；本机 DSH 容器保持
+     * 默认关闭，页面行为零变化——注册会把同源 `_blank` 从「静默失败」变为
+     * 可递交）。gecko 远程会话不注册该通道：其内置扩展 content script 只
+     * 注入固定的本机 origin 注入范围，远程页面拿不到页面桥。注册失败不阻碍
+     * 会话，影响仅限页面外链不可递交。
+     */
+    private fun installExternalMessageListener(enabled: Boolean) {
+        if (!enabled) return
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            Log.w(WEB_LOG_TAG, "WEB_MESSAGE_LISTENER unavailable; page external bridge stays unregistered")
+            return
+        }
+        val originRule = runCatching { trustedOriginRule(config.trustedBaseOrigin) }.getOrNull()
+        if (originRule == null) {
+            Log.w(WEB_LOG_TAG, "External message channel unavailable: invalid trusted origin")
+            return
+        }
+        runCatching {
+            WebViewCompat.addWebMessageListener(
+                webView,
+                DSH_HOST_MESSAGE_NAME,
+                setOf(originRule),
+                WebMessageListener { _, webMessage, sourceOrigin, isMainFrame, _ ->
+                    handleExternalHostMessage(webMessage, sourceOrigin, isMainFrame, originRule)
+                },
+            )
+        }.onFailure { failure ->
+            Log.w(
+                WEB_LOG_TAG,
+                "Cannot register external message channel: ${redact(failure.message.orEmpty())}",
+            )
+        }
+    }
+
+    /**
+     * 外链消息受理校验：仅主框架文档、源 origin 与可信规则一致、JSON 结构
+     * 合法且地址为无内嵌凭据的绝对 http(s) 短地址。通过则上报外链事件
+     * （[DshRendererEvent.ExternalUrlRequested]，forced = true——页面递交的
+     * 打开请求一律强制外放，宿主不得就地加载目标）；校验失败只记一条不含
+     * 地址的告警，不抛异常（消息源是页面自身，异常无恢复价值）。
+     */
+    private fun handleExternalHostMessage(
+        webMessage: WebMessageCompat?,
+        sourceOrigin: Uri?,
+        isMainFrame: Boolean,
+        originRule: String,
+    ) {
+        if (released) return
+        if (!isMainFrame) return
+        val messageOrigin = sourceOrigin?.toString() ?: return
+        if (messageOrigin != originRule) return
+        val url = DshExternalMessage.parse(webMessage?.data)
+        if (url == null) {
+            Log.w(WEB_LOG_TAG, "External bridge message rejected (structure or guard)")
+            return
+        }
+        emit(DshRendererEvent.ExternalUrlRequested(url, forced = true))
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -205,13 +274,24 @@ private class SystemDshRenderer(
                 if (released) return true
                 val uri = request.url
                 val scheme = uri.scheme?.lowercase(Locale.ROOT)
-                if (request.isForMainFrame &&
-                    (scheme == "http" || scheme == "https") &&
-                    isTrustedDocument(view?.url) &&
-                    !originPolicy.isTrusted(uri.toString())
-                ) {
-                    emit(DshRendererEvent.ExternalUrlRequested(uri.toString()))
-                    return true
+                if (request.isForMainFrame) {
+                    // 主框架导航判定收口在 api 纯函数（默认策略 = 既有行为，
+                    // AnyHttps 仅供直连会话放宽口径）
+                    when (
+                        resolveMainFrameNavigation(
+                            mainFrameNavigation = config.mainFrameNavigation,
+                            scheme = scheme,
+                            targetTrusted = originPolicy.isTrusted(uri.toString()),
+                            currentDocumentTrusted = isTrustedDocument(view?.url),
+                        )
+                    ) {
+                        DshMainFrameDecision.Allow -> Unit
+                        DshMainFrameDecision.Cancel -> return true
+                        DshMainFrameDecision.External -> {
+                            emit(DshRendererEvent.ExternalUrlRequested(uri.toString()))
+                            return true
+                        }
+                    }
                 }
                 if (scheme !in internalSchemes) return false
 
@@ -476,6 +556,31 @@ private class SystemDshRenderer(
     override fun applyTheme(theme: DshRendererTheme) {
         if (released) return
         webView.setBackgroundColor(theme.canvasColor)
+    }
+
+    override fun setDownloadListener(listener: ((DshDownloadRequest) -> Unit)?) {
+        if (released) return
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            listener?.invoke(
+                DshDownloadRequest(
+                    url = url,
+                    userAgent = userAgent,
+                    contentDisposition = contentDisposition,
+                    mimeType = mimeType,
+                ),
+            )
+        }
+    }
+
+    override fun setEnterKeyNewline(newline: Boolean) {
+        if (released || rendererGone) return
+        // 推送不改注入配置、不落盘：页面兼容层每次按键读取可变全局
+        // `__dshboxEnterNewline`，这里只翻那个全局——设置拨动即刻落到已
+        // 建立的页面，无需重载。失败静默：最坏是本页保持旧档，宿主下次
+        // 装配（重建/新会话）自然按新值注入。
+        runCatching {
+            webView.evaluateJavascript(buildEnterNewlinePushSource(newline), null)
+        }
     }
 
     override fun canGoBack(): Boolean =
@@ -755,7 +860,7 @@ private class SystemDshRenderer(
             Log.w(WEB_LOG_TAG, "DSH page compatibility resource is unavailable")
             return false
         }
-        val pageConfig = buildPageCompatConfig(originRule)
+        val pageConfig = buildPageCompatConfig(originRule, config.enterKeyNewline)
         // Exactly one document-start registration owns both the capability
         // bootstrap and the APP page bridge. They are not separate entries.
         val source = listOf(
@@ -874,6 +979,9 @@ private fun encodeQueryValue(value: String): String = buildString {
 
 private const val WEB_LOG_TAG = "DshWebConsole"
 
+/** 页面侧外链通道的注入对象名（页面经它 postMessage 递交外部目标）。 */
+internal const val DSH_HOST_MESSAGE_NAME = "dshboxHost"
+
 private const val COMPAT_BOOTSTRAP_ASSET = "dsh-compat/standard-bootstrap.js"
 private const val PAGE_COMPAT_ASSET = "dsh-renderer/dsh-page-compat.js"
 private const val WORKER_PROBE_ASSET = "dsh-compat/worker-capability-probe.js"
@@ -885,14 +993,26 @@ private const val WORKER_PROBE_RETRY_MS = 1_500L
 private const val MAX_WORKER_PROBE_ATTEMPTS = 3
 private const val MAX_WORKER_PROBE_RESULT = 16_384
 
-private fun buildPageCompatConfig(trustedOrigin: String): String =
+private fun buildPageCompatConfig(trustedOrigin: String, enterKeyNewline: Boolean): String =
     "(function(){try{" +
         "var k=Symbol.for('com.dshbox.renderer.dsh-page-compat-config.v1');" +
         "Object.defineProperty(globalThis,k,{configurable:true,enumerable:false," +
         "writable:false,value:Object.freeze({trustedOrigin:" +
         JSONObject.quote(trustedOrigin) +
+        ",enterKeyNewline:" + enterKeyNewline +
         "})});" +
         "}catch(_){}})();"
+
+/**
+ * 回车「换行」开关的**运行期推送**源：只翻页面可变全局
+ * `__dshboxEnterNewline`（页面兼容层每次按键读取），不动 document-start
+ * 注入的安装期配置。与 [buildPageCompatConfig] 的分工：安装期定初值，
+ * 推送管后来的拨动。
+ */
+internal const val ENTER_NEWLINE_GLOBAL = "__dshboxEnterNewline"
+
+internal fun buildEnterNewlinePushSource(newline: Boolean): String =
+    "(function(){try{window.$ENTER_NEWLINE_GLOBAL=" + newline + ";}catch(_){}})();"
 
 private const val BLUR_ACTIVE_ELEMENT_JS =
     "(function(){try{var e=document.activeElement;" +

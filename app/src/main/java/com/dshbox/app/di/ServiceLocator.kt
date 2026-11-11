@@ -5,6 +5,7 @@ import android.os.PowerManager
 import com.dshbox.app.R
 import com.dshbox.app.bridge.BridgeRouter
 import com.dshbox.app.bridge.api.BridgeApi
+import com.dshbox.app.dsh.DshRendererFactory
 import com.dshbox.app.runtime.RuntimeUpdateManager
 import com.dshbox.app.sandbox.DefaultSandboxManager
 import com.dshbox.app.sandbox.SandboxConfig
@@ -37,6 +38,11 @@ object ServiceLocator {
             extraPathEntriesProvider = {
                 developer.access.DeveloperAccessWiring.guestPathEntries()
             },
+            // 渲染器变体决定端口自适应：gecko 的状态桥扩展（manifest 的 match 规则、
+            // content/background 脚本的 TRUSTED_ORIGIN）与构建期 page-compat 配置都
+            // 固化本机 origin `http://127.0.0.1:3080`，端口一变即整链失效——该变体
+            // **固定 3080 不自适应**；systemWebView 变体按运行期地址走，启用。
+            dshPortAdaptationEnabled = !DshRendererFactory.isGeckoVariant,
         )
         // 设备交互状态（唤醒且亮屏）交给健康循环：休眠期间 guest 会被整体冻结，
         // 端口在听但 HTTP 不应答，此时的探测失败是暂时状态，不该判为 DSH 宕机。

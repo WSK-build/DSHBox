@@ -1,9 +1,6 @@
 package com.dshbox.app.ui.home
 
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
 import android.os.Process
 import android.os.StatFs
 import android.os.SystemClock
@@ -55,9 +52,6 @@ private const val SAMPLE_INTERVAL_MILLIS = 2_000L
 /** 采样间隔的宽限倍数：间隔超过 2 倍视为「中间停过表」，重记基线再采。 */
 private const val SAMPLE_GAP_TOLERANCE = 2L
 
-/** 电池温度退回系统广播的最小刷新间隔：电池温度变化很慢，没必要每轮都问一次系统服务。 */
-private const val BATTERY_BROADCAST_REFRESH_MILLIS = 30_000L
-
 /** CPU 告警阈值（整机口径两档：占整机 CPU 的比例，%）。 */
 private const val CPU_ALERT_PERCENT = 90.0
 
@@ -67,9 +61,6 @@ private const val APP_CAPACITY_ALERT_PERCENT = 50.0
 /** 内存 / 存储占用告警阈值（%）。 */
 private const val USAGE_ALERT_PERCENT = 90
 
-/** 温度告警阈值（℃）。 */
-private const val TEMP_ALERT_CELSIUS = 50
-
 /**
  * CPU 读数的平滑窗口：最近 5 个采样（约 10 秒）的均值。
  *
@@ -77,12 +68,6 @@ private const val TEMP_ALERT_CELSIUS = 50
  * 都会在某个 2 秒窗口里扎堆，瞬时值能在 3% 与 80% 之间乱跳；监视卡要的是趋势值。
  */
 private const val CPU_SMOOTHING_SAMPLES = 5
-
-/** SoC 热区短名单全部取值失败的连续轮数上限：达到即判定名单过期，清空后重扫一次。 */
-private const val SOC_ZONE_FAIL_STREAK_LIMIT = 3
-
-/** SoC 热区重扫节流（毫秒）：无匹配 zone / 名单失效后隔这么久才再扫一次目录。 */
-private const val SOC_REPROBE_INTERVAL_MILLIS = 60_000L
 
 private const val TAG = "DshSystemMetrics"
 
@@ -92,28 +77,25 @@ private data class CpuReading(val percent: Double?, val source: CpuSource)
 /** 一次采样的结果；读不到的项为 null / [CpuSource.NONE]。 */
 private data class SystemMetrics(
     val cpu: CpuReading,
-    val temperature: Temperature?,
     val memory: Usage?,
     val storage: Usage?,
 )
 
 /**
- * 控制页「系统状态」卡：CPU 压力、温度、内存、存储四项，纵向四行。
+ * 控制页「系统状态」卡：CPU 压力、内存、存储三项，纵向三行。
  *
  * CPU 口径是分档的（各 ROM 对 /proc 的开放程度不同，见 [SystemMetricsSampler.readCpu]）：
  * 整机占用率 → 整机负载 → 本应用（含沙箱），界面按实际拿到的那一档标注来源；四档都是
  * 「占整机 CPU 的比例」——应用那档把主进程与沙箱进程树的 CPU 时间合在一起除以
- * 「墙钟 × 核数」，与其它三行同一把尺，不会出现单核 200% 这类读数。显示值是最近
+ * 「墙钟 × 核数」，与其它两行同一把尺，不会出现单核 200% 这类读数。显示值是最近
  * [CPU_SMOOTHING_SAMPLES] 个采样（约 10 秒）的均值——占用读数本身是突发性的，
  * 单窗口的瞬时值会大幅摆动，直接显示只会误导。
- * 温度同理：芯片热区优先，退回电池温度并标注。
  *
  * 开销纪律（本卡不做任何常驻动作）：只在 [active]（控制页可见）且 App 处于前台
  * （RESUMED）时每 [SAMPLE_INTERVAL_MILLIS] 采一次；退后台由 repeatOnLifecycle 直接
  * 取消采样协程（不等重组），回到前台重新记基线再采，暂停期间不产生任何读取。
- * 采样在 IO 线程上做，单次只有几次极小的 /proc、sysfs 与 statfs 读取——不起服务、
- * 不注册常驻监听、不持唤醒锁，也不需要额外权限。唯一的系统服务调用是电池温度退回
- * 系统广播时的查询，且按 [BATTERY_BROADCAST_REFRESH_MILLIS] 降频。
+ * 采样在 IO 线程上做，单次只有几次极小的 /proc、statfs 读取——不起服务、
+ * 不注册常驻监听、不持唤醒锁，也不需要额外权限。
  *
  * [sandboxCpuMillis] 由宿主注入（沙箱与 DSH 进程树的累计 CPU 毫秒数）：沙箱本来就是这个
  * 应用内部的东西，所以并入「本应用」一档一起统计，不单列条目。未运行时注入方返回 null。
@@ -160,21 +142,6 @@ internal fun SystemMetricsCard(active: Boolean, sandboxCpuMillis: suspend () -> 
         )
         CpuSource.NONE, null -> stringResource(R.string.home_metrics_cpu)
     }
-    val temperature = metrics?.temperature
-    val temperatureLabel = if (temperature == null) {
-        stringResource(R.string.home_metrics_temp)
-    } else {
-        stringResource(
-            R.string.home_metrics_temp_with_source,
-            stringResource(
-                if (temperature.fromBattery) {
-                    R.string.home_metrics_source_battery
-                } else {
-                    R.string.home_metrics_source_soc
-                },
-            ),
-        )
-    }
     val cpuPercent = cpu?.percent
     val memory = metrics?.memory
     val storage = metrics?.storage
@@ -211,15 +178,6 @@ internal fun SystemMetricsCard(active: Boolean, sandboxCpuMillis: suspend () -> 
                     CpuSource.APP -> (cpuPercent ?: 0.0) >= APP_CAPACITY_ALERT_PERCENT
                     else -> (cpuPercent ?: 0.0) >= CPU_ALERT_PERCENT
                 },
-            )
-            MetricsRow(
-                label = temperatureLabel,
-                detail = null,
-                value = SystemMetricsParsing.temperatureText(temperature?.celsius),
-                fraction = temperature?.let {
-                    SystemMetricsParsing.temperatureFraction(it.celsius)
-                },
-                alert = (temperature?.celsius ?: 0) >= TEMP_ALERT_CELSIUS,
             )
             MetricsRow(
                 label = stringResource(R.string.home_metrics_memory),
@@ -320,14 +278,6 @@ private class SystemMetricsSampler(context: Context) {
     private var cpuHistorySource: CpuSource? = null
     private var cpuLoadLogged = false
     private var cpuAppLogged = false
-    private var temperatureUnavailableLogged = false
-    private var socProbeLogged = false
-    private var batteryBroadcastCelsius: Int? = null
-    private var batteryBroadcastAt = 0L
-    private var socUnavailable = false
-    private var socZoneShortlist: List<File>? = null
-    private var socZoneFailStreak = 0
-    private var socNextProbeAtMs = 0L
 
     /**
      * 记一次基线：恢复采样前调用，避免把暂停期间的平均值算进第一格。
@@ -346,7 +296,6 @@ private class SystemMetricsSampler(context: Context) {
 
     suspend fun sample(sandboxCpuMillis: suspend () -> Long?): SystemMetrics = SystemMetrics(
         cpu = readCpu(runCatching { sandboxCpuMillis() }.getOrNull()),
-        temperature = readTemperature(),
         memory = readMemoryUsage(),
         storage = readStorageUsage(),
     )
@@ -360,7 +309,7 @@ private class SystemMetricsSampler(context: Context) {
      * 3. 本应用（含沙箱）：主进程 CPU 时间（Process.getElapsedCpuTime）加 [sandboxCpuMs]
      *    给出的沙箱进程树 CPU 时间——纯 API 加按 pid 的 /proc 读取，任何设备都拿得到。
      *
-     * 三档都换算成「占整机 CPU 的比例」，与其余三行同一把尺。读不到值的那一轮（窗口过短、
+     * 三档都换算成「占整机 CPU 的比例」，与其余两行同一把尺。读不到值的那一轮（窗口过短、
      * 坏窗、读数缺失）沿用上一格读数，不闪占位符——[lastCpu] 只在成功读到值的那几轮更新。
      * 每档原始值都经 [smoothed] 并入最近约 10 秒的窗口再显示。
      */
@@ -469,120 +418,5 @@ private class SystemMetricsSampler(context: Context) {
     private fun readStorageUsage(): Usage? {
         val stat = runCatching { StatFs(appContext.dataDir.absolutePath) }.getOrNull() ?: return null
         return SystemMetricsParsing.storageUsage(stat.totalBytes, stat.availableBytes)
-    }
-
-    /**
-     * 温度：优先 SoC 热区，读不到退回电池温度。
-     *
-     * 两者物理含义不同（芯片结温 / 电池表面温度），界面按来源标注，不混为一谈；
-     * 部分机型对应用封了 /sys/class/thermal，此时只剩电池温度可用。
-     */
-    private fun readTemperature(): Temperature? {
-        readSocCelsius()?.let { return Temperature(it, fromBattery = false) }
-        readBatteryCelsius()?.let { return Temperature(it, fromBattery = true) }
-        if (!temperatureUnavailableLogged) {
-            temperatureUnavailableLogged = true
-            Log.w(TAG, "temperature unavailable: no readable thermal zone and no battery temperature")
-        }
-        return null
-    }
-
-    /**
-     * 取命名属于 SoC 一类的热区里最热的一个。
-     *
-     * zone 目录只在需要时扫描并把命中名单缓存下来：zone 集合在设备生命周期内是固定的，
-     * 每 2 秒全量枚举一次 + 逐个读 type 是白烧的开销。
-     *
-     * 两种「拿不到名单」的处置不同：目录**读不了**（策略拒绝）是永久情形，置
-     * [socUnavailable] 本会话不再试；**没有匹配 zone** 可能只是启动早期 thermal 尚未就绪，
-     * 故不粘死，按 [SOC_REPROBE_INTERVAL_MILLIS] 节流重扫。短名单里全部取值失败/非法连续
-     * [SOC_ZONE_FAIL_STREAK_LIMIT] 轮同样清空名单并进入节流——否则「有名单但恒读不到值」
-     * 会退化成每 3 轮一次的无限全量枚举。
-     */
-    private fun readSocCelsius(): Int? {
-        if (socUnavailable) return null
-        val shortlist = socZoneShortlist ?: run {
-            val now = SystemClock.elapsedRealtime()
-            if (now < socNextProbeAtMs) return null
-            probeSocZones() ?: run {
-                socNextProbeAtMs = now + SOC_REPROBE_INTERVAL_MILLIS
-                return null
-            }
-        }
-        var hottest: Int? = null
-        for (zone in shortlist) {
-            val raw = runCatching { File(zone, "temp").readText() }.getOrNull() ?: continue
-            val celsius = SystemMetricsParsing.socCelsius(raw) ?: continue
-            hottest = maxOf(hottest ?: celsius, celsius)
-        }
-        if (hottest == null) {
-            if (++socZoneFailStreak >= SOC_ZONE_FAIL_STREAK_LIMIT) {
-                socZoneShortlist = null
-                socZoneFailStreak = 0
-                socNextProbeAtMs = SystemClock.elapsedRealtime() + SOC_REPROBE_INTERVAL_MILLIS
-            }
-        } else {
-            socZoneFailStreak = 0
-        }
-        return hottest
-    }
-
-    /**
-     * 扫描一次 /sys/class/thermal，返回命中 SoC 命名的 zone 目录并缓存短名单。
-     *
-     * 目录不可读（策略拒绝）→ 置 [socUnavailable]（本会话不再重试）+ 一次性日志；
-     * 目录可读但没有匹配 zone → 只返回 null，是否重扫交给调用方的节流决定。
-     */
-    private fun probeSocZones(): List<File>? {
-        val dir = File("/sys/class/thermal")
-        val zones = runCatching {
-            dir.listFiles { file -> file.name.startsWith("thermal_zone") }
-        }.getOrNull()
-        if (zones == null) {
-            socUnavailable = true
-            if (!socProbeLogged) {
-                socProbeLogged = true
-                Log.w(TAG, "temperature: cannot list $dir; falling back to battery only")
-            }
-            return null
-        }
-        val matching = zones.filter { zone ->
-            runCatching { File(zone, "type").readText() }
-                .getOrNull()
-                ?.let { SystemMetricsParsing.isSocZone(it) } == true
-        }
-        if (matching.isEmpty()) {
-            if (!socProbeLogged) {
-                socProbeLogged = true
-                Log.w(TAG, "temperature: no SoC thermal zone among ${zones.size} zone(s)")
-            }
-            return null
-        }
-        socZoneShortlist = matching
-        socZoneFailStreak = 0
-        return matching
-    }
-
-    /**
-     * 电池温度：先读 sysfs（零 IPC）；该节点缺失或值不可信时才退回系统粘性广播
-     * （一次系统服务调用），并按 [BATTERY_BROADCAST_REFRESH_MILLIS] 降频、其余轮次用缓存。
-     */
-    private fun readBatteryCelsius(): Int? {
-        val fromSysfs = runCatching {
-            File("/sys/class/power_supply/battery/temp").readText().trim().toLongOrNull()
-        }.getOrNull()
-        SystemMetricsParsing.batteryCelsius(fromSysfs)?.let { return it }
-        val now = SystemClock.elapsedRealtime()
-        if (batteryBroadcastCelsius == null || now - batteryBroadcastAt >= BATTERY_BROADCAST_REFRESH_MILLIS) {
-            batteryBroadcastAt = now
-            val battery = runCatching {
-                appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            }.getOrNull()
-            val tenths = battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
-            batteryBroadcastCelsius = SystemMetricsParsing.batteryCelsius(
-                tenths?.takeIf { it != Int.MIN_VALUE }?.toLong(),
-            )
-        }
-        return batteryBroadcastCelsius
     }
 }

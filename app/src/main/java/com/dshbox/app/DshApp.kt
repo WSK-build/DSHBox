@@ -4,9 +4,14 @@ import android.app.Application
 import com.dshbox.app.common.Constants
 import com.dshbox.app.di.AppContainer
 import com.dshbox.app.di.ServiceLocator
+import com.dshbox.app.lanaccess.LanAccessController
 import com.dshbox.app.sandbox.OfficialPluginOverlay
+import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.service.DshboxLayoutMigration
 import com.dshbox.app.service.SandboxService
+import com.dshbox.app.ui.theme.AppDshAddressState
+import com.dshbox.app.ui.theme.AppDshBehaviorState
+import com.dshbox.app.ui.home.AppUpdateHighlightsState
 import com.dshbox.app.ui.theme.AppLocaleState
 import com.dshbox.app.ui.theme.AppThemeState
 import com.dshbox.app.util.FileOps
@@ -39,6 +44,37 @@ class DshApp : Application() {
         }
         container = ServiceLocator.createAppContainer(this)
         AppThemeState.load(this)
+        // 运行期 DSH 地址状态：把 sandbox-manager 从启动输出解析
+        // 出的地址流转播为应用级状态——界面（首页/设置/诊断/WebView/token 拼接）
+        // 端口变化即时随动。常量 DSH_BASE_URL 保留为默认兜底（未确证时读取方
+        // 拿到它）。
+        browserScope.launch {
+            container.sandboxManager.dshBaseUrl.collect { url -> AppDshAddressState.update(url) }
+        }
+        // 局域网访问网关：装配密钥存取、DSH 地址通道与网络观测。
+        // 开关默认关闭且不跨进程保持；仅当用户开启且 DSH READY 时才会真正
+        // 监听。DshState 的 READY 变化（重启/停机）由下面第二条 collect 触发
+        // 重评（refresh 在 READY 回场时自动重绑）。
+        LanAccessController.install(
+            context = this,
+            dshProvider = object : LanAccessController.DshProvider {
+                override fun baseUrl(): String? = AppDshAddressState.confirmedBaseUrl
+                override fun launchToken(): String? =
+                    container.sandboxManager.dshLaunchToken.value
+            },
+            dshReady = { container.sandboxManager.dshState.value == DshState.READY },
+        )
+        browserScope.launch {
+            container.sandboxManager.dshState.collect {
+                LanAccessController.refresh()
+            }
+        }
+        // DSH 页签两项通用偏好（本机状态栏 / 回车键档位）：先于任何读取方
+        // 装配（渲染容器、远程门面在组合期读现值）。
+        AppDshBehaviorState.load(this)
+        // 首页「版本更新要点」卡的展示状态（开关 + 上次展示版本号）：先于
+        // 任何读取方装配（首页组合期读现值判定是否展示）。
+        AppUpdateHighlightsState.load(this)
         // 资产目录布局的一次性迁移（旧名 → 新名）。**必须早于任何往新路径写文件的代码**：
         // 紧随其后的那次 refresh 就会写新路径，那会让迁移误判"新文件已存在"而跳过，
         // 设备上就永久留下一份旧的 features/ 目录。

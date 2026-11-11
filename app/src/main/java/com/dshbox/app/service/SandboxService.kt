@@ -12,7 +12,6 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
-import android.net.Uri
 import android.os.LocaleList
 import android.system.Os
 import android.os.Build
@@ -23,6 +22,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.dshbox.app.DshApp
+import com.dshbox.app.MainActivity
 import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.R
 import com.dshbox.app.common.AppResult
@@ -36,7 +36,6 @@ import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.sandbox.SandboxState
 import com.dshbox.pluginmanager.core.BrowserAdapterAssemblyGate
 import com.dshbox.app.ui.theme.AppLocaleState
-import com.dshbox.app.ui.webview.dshBrowserChooser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,6 +44,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -77,6 +77,9 @@ class SandboxService : Service() {
 
     @Volatile
     private var restartInProgress = false
+
+    /** 通知栏「启动」去重：快速双击只跑一次组合启动。 */
+    private val startAllInProgress = java.util.concurrent.atomic.AtomicBoolean(false)
 
     @Volatile
     private var browserStageProvisioned = false
@@ -171,13 +174,11 @@ class SandboxService : Service() {
             ACTION_STOP_SANDBOX -> serviceScope.launch { stopSandbox() }
             ACTION_RESTART_SANDBOX -> serviceScope.launch { restartSandbox() }
             ACTION_START_DSH -> serviceScope.launch { startDsh() }
+            // 通知栏「启动」：沙箱停止时先启动沙箱，再启动 DSH（组合动作只服务
+            // 通知入口，不改变其它调用方「DSH 需要沙箱先运行」的既有契约）。
+            ACTION_START_ALL -> serviceScope.launch { startSandboxAndDsh() }
             ACTION_RESTART_DSH -> serviceScope.launch { restartDsh() }
             ACTION_STOP_DSH -> serviceScope.launch { stopDsh() }
-            // 通知栏「打开 DSH」：**点击时**现取 token 再开浏览器。
-            // 不能把带 token 的 URL 烤进 PendingIntent —— token 随 DSH 重启轮换，
-            // 而通知只在状态变化时重建，烤进去的迟早是过期值（点了停在鉴权页）。
-            // 交给 Service 承接这个动作，每次点击都读当前 token，永远是最新的。
-            ACTION_OPEN_DSH -> openDshInBrowser()
             ACTION_STOP_ALL -> {
                 serviceScope.launch {
                     terminalManager.stopAll()
@@ -187,6 +188,10 @@ class SandboxService : Service() {
             }
             // 语言切换后由 MainActivity.onResume 触发，通知按新语言重建。
             ACTION_REFRESH_NOTIFICATION -> updateNotification()
+            // 升级瞬间旧通知可能还挂着已移除的 action：记一笔，不静默吞掉。
+            else -> if (intent?.action != null) {
+                Log.w(TAG, "unknown service action: ${intent.action}")
+            }
         }
         return START_STICKY
     }
@@ -194,28 +199,75 @@ class SandboxService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     /**
-     * 用外部浏览器打开 DSH（通知栏入口）。token 在此刻现取，因此总是最新值。
+     * 通知栏「启动」：沙箱停止时先启动沙箱，再启动 DSH。
      *
-     * 与首页入口同一套意图构造（[dshBrowserChooser]）：URL 必须带 token，且套 chooser
-     * ——隐式 http 意图可被任何声明了 127.0.0.1 的应用抢走，而 token 等同沙箱控制权。
-     * 失败（无浏览器/无 token）只提示不崩：这是可预期的环境问题。
+     * 与 [startDsh] 的区别只在入口语义：其它调用方（首页等）仍保持「DSH 需要
+     * 沙箱先运行」的既有契约，不在这里改动。启动/恢复中只等它自己收敛到
+     * RUNNING，不在中途重复拉起 proot；未初始化时先等 bootstrap 的 initialize()
+     * 落定，避免两边并发写沙箱状态。
      */
-    private fun openDshInBrowser() {
-        val token = sandboxManager.dshLaunchToken.value
-        if (token.isNullOrEmpty()) {
-            Toast.makeText(this, R.string.home_open_no_token, Toast.LENGTH_SHORT).show()
-            return
+    private suspend fun startSandboxAndDsh() {
+        if (!startAllInProgress.compareAndSet(false, true)) return
+        try {
+            // 即时反馈放在去重之后：快速双击只提示一次、只执行一次。
+            showToast(localizedContext().getString(R.string.notify_starting_all))
+            when (sandboxManager.sandboxState.value) {
+                SandboxState.RUNNING -> Unit
+                SandboxState.UNINITIALIZED, SandboxState.INITIALIZING -> {
+                    val settled = withTimeoutOrNull(SANDBOX_START_WAIT_MILLIS) {
+                        sandboxManager.sandboxState.first {
+                            it == SandboxState.RUNNING ||
+                                it == SandboxState.STOPPED ||
+                                it == SandboxState.ERROR
+                        }
+                    }
+                    if (settled == null) {
+                        Log.w(TAG, "startSandboxAndDsh: initialize wait timed out")
+                        return
+                    }
+                    if (sandboxManager.sandboxState.value != SandboxState.RUNNING) {
+                        startSandbox()
+                    }
+                }
+                SandboxState.STARTING -> {
+                    // 启动中：等它自己收敛；STOPPED/ERROR 说明本次启动失败，
+                    // 由本动作再拉一次，避免固定空等 30 秒。
+                    val settled = withTimeoutOrNull(SANDBOX_START_WAIT_MILLIS) {
+                        sandboxManager.sandboxState.first {
+                            it == SandboxState.RUNNING ||
+                                it == SandboxState.STOPPED ||
+                                it == SandboxState.ERROR
+                        }
+                    }
+                    if (settled == null) {
+                        Log.w(TAG, "startSandboxAndDsh: start wait timed out")
+                        return
+                    }
+                    if (sandboxManager.sandboxState.value != SandboxState.RUNNING) {
+                        startSandbox()
+                    }
+                }
+                SandboxState.RECOVERING -> {
+                    // 恢复链路会经过中间 STOPPED 再到 STARTING，不能按中间态
+                    // 提前决策，只等最终 RUNNING。
+                    val running = withTimeoutOrNull(SANDBOX_START_WAIT_MILLIS) {
+                        sandboxManager.sandboxState.first { it == SandboxState.RUNNING }
+                    }
+                    if (running == null) {
+                        Log.w(TAG, "startSandboxAndDsh: recovery did not reach RUNNING")
+                        return
+                    }
+                }
+                else -> startSandbox()
+            }
+            if (sandboxManager.sandboxState.value == SandboxState.RUNNING) {
+                startDsh()
+            } else {
+                Log.w(TAG, "startSandboxAndDsh: sandbox not running after start attempt")
+            }
+        } finally {
+            startAllInProgress.set(false)
         }
-        val opened = runCatching {
-            startActivity(
-                dshBrowserChooser(
-                    Constants.DSH_BASE_URL,
-                    token,
-                    getString(R.string.home_open),
-                ),
-            )
-        }.onFailure { t -> Log.w(TAG, "open DSH in browser failed: ${t.message}") }.isSuccess
-        if (!opened) Toast.makeText(this, R.string.home_open_browser_failed, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {
@@ -1380,52 +1432,60 @@ class SandboxService : Service() {
             else -> ctx.getString(R.string.notify_dsh_other)
         }
         val contentTitle = "$sandboxText · $dshText"
-        val contentText = Constants.DSH_BASE_URL
+        // 运行期地址（端口自适应）：通知正文随确认地址更新，未确证时为默认常量。
+        val contentText = com.dshbox.app.ui.theme.AppDshAddressState.baseUrl
 
-        // 打开动作交给 Service（见 openDshInBrowser）：token 在点击那一刻现取。
-        val openPending = PendingIntent.getService(
+        // 点通知主体回 App 首页；不再提供外部浏览器入口（action 位只留控制项）。
+        val contentPending = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, SandboxService::class.java).setAction(ACTION_OPEN_DSH),
+            Intent(this, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            ),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val startDshIntent = Intent(this, SandboxService::class.java).setAction(ACTION_START_DSH)
-        val startDshPending = PendingIntent.getService(
-            this,
-            1,
-            startDshIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        // 动作按状态给（策略见 notificationActions），最多两个：运行中
+        // 「重启 / 关闭」，启动/恢复中只给「关闭」，已停止「启动」。Android
+        // 标准通知模板最多渲染三个 action，固定四项会把最后一项截掉（旧版
+        // 「停止沙箱」不可见的根因）。PendingIntent 按实际用到的动作创建，
+        // 不预先构造全部三个。
+        fun actionPending(requestCode: Int, action: String): PendingIntent =
+            PendingIntent.getService(
+                this,
+                requestCode,
+                Intent(this, SandboxService::class.java).setAction(action),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
 
-        val restartDshIntent = Intent(this, SandboxService::class.java).setAction(ACTION_RESTART_DSH)
-        val restartDshPending = PendingIntent.getService(
-            this,
-            2,
-            restartDshIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val stopSandboxIntent = Intent(this, SandboxService::class.java).setAction(ACTION_STOP_SANDBOX)
-        val stopSandboxPending = PendingIntent.getService(
-            this,
-            3,
-            stopSandboxIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
+            .setContentIntent(contentPending)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF10A37F.toInt())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(0, ctx.getString(R.string.notify_action_open_dsh), openPending)
-            .addAction(0, ctx.getString(R.string.notify_action_start_dsh), startDshPending)
-            .addAction(0, ctx.getString(R.string.notify_action_restart_dsh), restartDshPending)
-            .addAction(0, ctx.getString(R.string.notify_action_stop_sandbox), stopSandboxPending)
-            .build()
+        for (action in notificationActions(sandboxState)) {
+            when (action) {
+                NotificationAction.START -> builder.addAction(
+                    0,
+                    ctx.getString(R.string.notify_action_start),
+                    actionPending(1, ACTION_START_ALL),
+                )
+                NotificationAction.RESTART -> builder.addAction(
+                    0,
+                    ctx.getString(R.string.notify_action_restart),
+                    actionPending(2, ACTION_RESTART_DSH),
+                )
+                NotificationAction.STOP -> builder.addAction(
+                    0,
+                    ctx.getString(R.string.notify_action_stop),
+                    actionPending(3, ACTION_STOP_SANDBOX),
+                )
+            }
+        }
+        return builder.build()
     }
 
     private fun createNotificationChannel() {
@@ -1451,10 +1511,13 @@ class SandboxService : Service() {
         const val ACTION_STOP_SANDBOX = "com.dshbox.app.action.STOP_SANDBOX"
         const val ACTION_RESTART_SANDBOX = "com.dshbox.app.action.RESTART_SANDBOX"
         const val ACTION_START_DSH = "com.dshbox.app.action.START_DSH"
+        const val ACTION_START_ALL = "com.dshbox.app.action.START_ALL"
         const val ACTION_RESTART_DSH = "com.dshbox.app.action.RESTART_DSH"
         const val ACTION_STOP_DSH = "com.dshbox.app.action.STOP_DSH"
         const val ACTION_STOP_ALL = "com.dshbox.app.action.STOP_ALL"
-        const val ACTION_OPEN_DSH = "com.dshbox.app.action.OPEN_DSH"
+
+        /** 通知栏「启动」等待沙箱从启动中收敛到 RUNNING 的上限。 */
+        private const val SANDBOX_START_WAIT_MILLIS = 30_000L
         const val ACTION_REFRESH_NOTIFICATION = "com.dshbox.app.action.REFRESH_NOTIFICATION"
 
         /**

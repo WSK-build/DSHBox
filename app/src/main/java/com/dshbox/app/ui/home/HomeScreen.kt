@@ -35,6 +35,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,37 +77,43 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.dshbox.app.BuildConfig
 import com.dshbox.app.R
-import com.dshbox.app.common.Constants
 import com.dshbox.app.service.SandboxService
+import com.dshbox.app.ui.theme.AppDshAddressState
 import com.dshbox.app.common.R as CommonR
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/** 首页页签数：控制 / Pilot / Cordis。 */
-private const val HomeTabCount = 3
+/** 首页页签数：控制 / Pilot / Cordis / 远程。 */
+private const val HomeTabCount = 4
 
-/** 首页三页签文案。 */
+/** 首页四页签文案。 */
 private val HomeTabLabels =
-    listOf(R.string.home_tab_control, R.string.home_tab_pilot, R.string.home_tab_cordis)
+    listOf(
+        R.string.home_tab_control,
+        R.string.home_tab_pilot,
+        R.string.home_tab_cordis,
+        R.string.home_tab_remote,
+    )
 
 /**
- * 首页外壳：品牌顶栏 + 三页签（控制 / Pilot / Cordis）。
+ * 首页外壳：品牌顶栏 + 四页签（控制 / Pilot / Cordis / 远程）。
  *
- * 「控制」承载沙箱与 DSH 的启停状态卡；Pilot 与 Cordis 的内容由宿主注入
- * （[pilotContent] / [cordisContent]），内嵌的模块页组合原样复用、零改动。
+ * 「控制」承载沙箱与 DSH 的启停状态卡；Pilot、Cordis 与远程面板的内容由宿主注入
+ * （[pilotContent] / [cordisContent] / [remoteContent]），内嵌的模块页组合原样复用、零改动。
  *
  * 垂直方向的 insets 账目（宿主 Scaffold 对首页 contentWindowInsets = 0，见 MainScreen）：
  * - 状态栏：品牌顶栏让位（本文件 HomeBrandBar），只让一次；
  * - 系统导航栏：壳层 bottomBar（AppBottomNavigationBar）让位，页签内容区底部即其上沿；
- * - 三页签内容区：左右出血 16dp、顶部 12dp、底部 24dp，由各页自行处理，
+ * - 页签内容区：左右出血 16dp、顶部 12dp、底部 24dp，由各页自行处理，
  *   内嵌模块页的 contentWindowInsets 清零（embedded 两态语义见各模块页）。
  *
- * 子页整屏提升：Pilot / Cordis 模块内子页打开时（经 [pilotContent] / [cordisContent]
- * 的 onSubPageVisible 上报），品牌顶栏与页签行整块收起、宿主底部导航同步隐藏，
- * 整屏让给子页；insets 让位随之切换——子页顶栏自让状态栏、子页内容区自让手势条
- * （模块侧 embedded / fullscreen 两态语义）。子页返回根页后壳层原样恢复。
+ * 子页整屏提升：Pilot / Cordis / 远程面板的模块内子页打开时（经 [pilotContent] /
+ * [cordisContent] / [remoteContent] 的 onSubPageVisible 上报），品牌顶栏与页签行整块收起、
+ * 宿主底部导航同步隐藏，整屏让给子页；insets 让位随之切换——子页顶栏自让状态栏、
+ * 子页内容区自让手势条（模块侧 embedded / fullscreen 两态语义）。子页返回根页后壳层原样恢复。
  */
 @Composable
 fun HomeScreen(
@@ -126,6 +134,13 @@ fun HomeScreen(
     runtimeInstalled: Boolean,
     nodeLayerInstalled: Boolean = true,
     bundledRuntimeAvailable: Boolean,
+    /**
+     * 外部请求的页签落位（远程面板的「打开远程面板」等语义动作）：非空且在
+     * 界内时把 Pager 落到该页签，随后经 [onRequestedTabConsumed] 回调消费。
+     * 仅此一条入参管道，页签切换的既有逻辑零改动。
+     */
+    requestedTabIndex: Int? = null,
+    onRequestedTabConsumed: () -> Unit = {},
     onNavigateToSettings: () -> Unit,
     onGetRuntimeOnline: () -> Unit,
     /**
@@ -158,7 +173,13 @@ fun HomeScreen(
         onBackToControl: () -> Unit,
         onSubPageVisible: (Boolean) -> Unit,
     ) -> Unit,
-    /** DSH 访问设置是否提升为整屏子页；宿主据此隐藏底部导航。 */
+    /** 远程页签内容（宿主注入，内嵌远程连接面板）。参数同 [pilotContent]。 */
+    remoteContent: @Composable (
+        isActive: Boolean,
+        onBackToControl: () -> Unit,
+        onSubPageVisible: (Boolean) -> Unit,
+    ) -> Unit,
+    /** 本地 DSH 访问是否提升为整屏子页；宿主据此隐藏底部导航。 */
     onSubPageVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -166,6 +187,9 @@ fun HomeScreen(
     var showSandboxStopDialog by remember { mutableStateOf(false) }
     var showDshStopDialog by remember { mutableStateOf(false) }
     var showAccessSettings by rememberSaveable { mutableStateOf(false) }
+    // 「局域网访问」子页：DSH 卡片「更多」菜单的第二入口，有
+    // 专整屏层级，与「本地 DSH 访问」同用一个整屏提升通道。
+    var showLanAccess by rememberSaveable { mutableStateOf(false) }
     var dshNeedsSandboxToast by remember { mutableStateOf(false) }
     var dshElapsedSeconds by remember { mutableLongStateOf(0L) }
 
@@ -190,11 +214,21 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(showAccessSettings, isActive) {
-        onSubPageVisibilityChanged(showAccessSettings && isActive)
+    LaunchedEffect(showAccessSettings, showLanAccess, isActive) {
+        onSubPageVisibilityChanged((showAccessSettings || showLanAccess) && isActive)
     }
     DisposableEffect(Unit) {
         onDispose { onSubPageVisibilityChanged(false) }
+    }
+
+    if (showLanAccess) {
+        BackHandler(enabled = isActive) { showLanAccess = false }
+        DshLanAccessScreen(
+            dshReady = dshReady,
+            onBack = { showLanAccess = false },
+            modifier = modifier,
+        )
+        return
     }
 
     if (showAccessSettings) {
@@ -208,32 +242,45 @@ fun HomeScreen(
         return
     }
 
-    // 三页签外壳：选中态由 Pager 持有（rememberPagerState 内部经 rememberSaveable
-    // 存档，配置变更不丢）。beyondViewportPageCount = 2 让三页全部常驻组合——
+    // 四页签外壳：选中态由 Pager 持有（rememberPagerState 内部经 rememberSaveable
+    // 存档，配置变更不丢）。beyondViewportPageCount = 3 让四页全部常驻组合——
     // 切走不销毁、状态不重置，页间滑动与 TabRow 指示器动画由组件自身承接，切换平滑无跳变。
     val pagerState = rememberPagerState(pageCount = { HomeTabCount })
     // 内嵌模块页首次到访才装配（Pilot 在其组合内装配通道容器、Cordis 在其组合内
-    // 校准适配开关），到访后保持常驻；未到访不产生任何模块初始化开销。
+    // 校准适配开关），到访后保持常驻；未到访不产生任何模块初始化开销。远程面板同批处理。
     var pilotVisited by rememberSaveable { mutableStateOf(false) }
     var cordisVisited by rememberSaveable { mutableStateOf(false) }
+    var remoteVisited by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(requestedTabIndex) {
+        val index = requestedTabIndex
+        if (index != null) {
+            if (index in 0 until HomeTabCount && index != pagerState.currentPage) {
+                scope.launch { pagerState.animateScrollToPage(index) }
+            }
+            onRequestedTabConsumed()
+        }
+    }
     LaunchedEffect(pagerState) {
         // settledPage：真正落定才记到访/切换激活——半拖又拖回不触发模块装配，
         // 前台呈现路由也不在动画中途翻转。
         snapshotFlow { pagerState.settledPage }.collect { page ->
             if (page == 1) pilotVisited = true
             if (page == 2) cordisVisited = true
+            if (page == 3) remoteVisited = true
         }
     }
 
-    // 子页整屏提升：每个页签各记一份子页可见性——模块的上报只写自己那一份，两个
-    // 常驻组合的页签互不覆盖（共用一份时，不活跃那个模块每轮上报都会把当前页的
-    // 整屏状态顶回壳内，页签行与底部导航会来回闪）。壳层收起与否只看落定页签那份；
-    // 页签切换不需要复位：子页打开期间页签行与横向翻页本就已收起。
+    // 子页整屏提升：每个页签各记一份子页可见性——模块的上报只写自己那一份，各常驻
+    // 组合的页签互不覆盖（共用一份时，不活跃那个模块每轮上报都会把当前页的整屏状态
+    // 顶回壳内，页签行与底部导航会来回闪）。壳层收起与否只看落定页签那份；页签切换
+    // 不需要复位：子页打开期间页签行与横向翻页本就已收起。
     var pilotSubPageVisible by remember { mutableStateOf(false) }
     var cordisSubPageVisible by remember { mutableStateOf(false) }
+    var remoteSubPageVisible by remember { mutableStateOf(false) }
     val subPageVisible = when (pagerState.settledPage) {
         1 -> pilotSubPageVisible
         2 -> cordisSubPageVisible
+        3 -> remoteSubPageVisible
         else -> false
     }
 
@@ -248,7 +295,7 @@ fun HomeScreen(
                 onNavigateToSettings = onNavigateToSettings,
                 modifier = Modifier.fillMaxWidth(),
             )
-            // 页签行：三页签等宽铺满整行（weight(1f)），背景与壳层同色；自绘页签单元——
+            // 页签行：四页签等宽铺满整行（weight(1f)），背景与壳层同色；自绘页签单元——
             // material3 Tab 的内建波纹铺满整个页签格且无法从外部关闭，改用
             // selectable + indication = null（无波纹）。除主色滑动下划线（指示器动画由
             // 组件承接）外，页签行不出现任何品牌绿：选中/未选中文字均用中性色。
@@ -302,7 +349,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            beyondViewportPageCount = 2,
+            beyondViewportPageCount = 3,
             // 子页整屏提升期间关掉手势翻页：页签行已收起，横向拖动应交给子页内容
             // 自己处理，而不是把用户甩到另一个页签（程序化跳页不受影响）。
             userScrollEnabled = !subPageVisible,
@@ -425,9 +472,26 @@ fun HomeScreen(
                         onRestart = { SandboxService.restartDsh(context) },
                         onOpenInBrowser = onOpenInBrowser,
                         onOpenBrowserMore = { showAccessSettings = true },
+                        onOpenLanAccess = { showLanAccess = true },
                     )
 
-                    // 系统状态：整机 CPU 占用、温度、内存、存储四项。采样只在「本页
+                    // 版本更新要点卡：开关开启且本版本未展示过时出现一次，
+                    // 点「关闭」写回当前 versionCode（本版本不再展示）。判定
+                    // 与持久化在 AppUpdateHighlightsState，视觉与相邻卡一致。
+                    if (AppUpdateHighlightsState.enabled &&
+                        AppUpdateHighlightsState.lastShownVersionCode < BuildConfig.VERSION_CODE
+                    ) {
+                        UpdateHighlightsCard(
+                            onDismiss = {
+                                AppUpdateHighlightsState.markShownForCurrentVersion(
+                                    context,
+                                    BuildConfig.VERSION_CODE.toLong(),
+                                )
+                            },
+                        )
+                    }
+
+                    // 系统状态：整机 CPU 占用、内存、存储三项。采样只在「本页
                     // 可见 + App 前台」时进行，纪律与开销说明见 SystemMetricsCard。
                     SystemMetricsCard(
                         active = isActive && pagerState.settledPage == 0,
@@ -445,13 +509,23 @@ fun HomeScreen(
                     }
                 }
 
-                // Cordis 是最后一个页签，其余下标只会是 0 / 1。
-                else -> if (cordisVisited) {
+                2 -> if (cordisVisited) {
                     TabBackGate(active = isActive && pagerState.settledPage == 2) {
                         cordisContent(
                             isActive && pagerState.settledPage == 2,
                             { scope.launch { pagerState.animateScrollToPage(0) } },
                             { visible -> cordisSubPageVisible = visible },
+                        )
+                    }
+                }
+
+                // 远程是最后一个页签，其余下标只会是 0 / 1 / 2。
+                else -> if (remoteVisited) {
+                    TabBackGate(active = isActive && pagerState.settledPage == 3) {
+                        remoteContent(
+                            isActive && pagerState.settledPage == 3,
+                            { scope.launch { pagerState.animateScrollToPage(0) } },
+                            { visible -> remoteSubPageVisible = visible },
                         )
                     }
                 }
@@ -735,6 +809,7 @@ private fun DshStatusCard(
     onRestart: () -> Unit,
     onOpenInBrowser: () -> Unit,
     onOpenBrowserMore: () -> Unit,
+    onOpenLanAccess: () -> Unit,
 ) {
     val statusText = stringResource(dshStatusTextRes(dshReady, dshError, dshUnresponsive, dshStarting))
     // 配色只随 异常 / 无响应 / 就绪 三档走；「启动中」只改文案，圆点与底色同「已停止」。
@@ -818,7 +893,8 @@ private fun DshStatusCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = Constants.DSH_BASE_URL,
+                            // 运行期地址（端口自适应）：确认地址变化即时随动。
+                            text = AppDshAddressState.baseUrl,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
@@ -834,27 +910,51 @@ private fun DshStatusCard(
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    OutlinedButton(
-                        shape = MaterialTheme.shapes.medium,
-                        onClick = onOpenBrowserMore,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        modifier = Modifier.height(28.dp),
-                    ) {
-                            Icon(
-                                imageVector = ImageVector.vectorResource(
-                                    CommonR.drawable.ic_adjustments_horizontal,
-                                ),
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
+                    // 「更多」改成弹出菜单：原有「本地 DSH 访问」与新增
+                    // 「局域网访问」两入口并列。菜单外框与 OutlinedButton 同规格。
+                    Box {
+                        var moreMenuOpen by remember { mutableStateOf(false) }
+                        OutlinedButton(
+                            shape = MaterialTheme.shapes.medium,
+                            onClick = { moreMenuOpen = true },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            modifier = Modifier.height(28.dp),
+                        ) {
+                                Icon(
+                                    imageVector = ImageVector.vectorResource(
+                                        CommonR.drawable.ic_adjustments_horizontal,
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.home_browser_more),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                        }
+                        DropdownMenu(
+                            expanded = moreMenuOpen,
+                            onDismissRequest = { moreMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.home_lan_title)) },
+                                onClick = {
+                                    moreMenuOpen = false
+                                    onOpenLanAccess()
+                                },
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = stringResource(R.string.home_browser_more),
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis,
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.home_browser_more_title)) },
+                                onClick = {
+                                    moreMenuOpen = false
+                                    onOpenBrowserMore()
+                                },
                             )
+                        }
                     }
                 }
             }

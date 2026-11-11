@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Русский перевод. Состав и порядок ключей соответствуют values/strings.xml. -->
+<resources>
+
+    <!-- 远程面板 · 本机清单首行 -->
+    <string name="remote_local_entry_title">Локальный DSH</string>
+
+    <!-- 远程面板 · 设备清单标题与设备重命名 -->
+    <string name="remote_devices_group_title">Сопряжённые устройства · %1$d</string>
+    <string name="remote_device_rename">Переименовать устройство</string>
+    <string name="remote_device_rename_label">Имя устройства</string>
+    <string name="remote_device_rename_save">Сохранить</string>
+
+    <!-- 远程面板 · 归属分组（确认卡归属下拉与设备/端点归属展示共用） -->
+    <string name="remote_group_none">Без группы</string>
+    <string name="remote_group_new">Новая группа</string>
+
+    <!-- 远程面板 · 空状态引导 -->
+    <string name="remote_empty_title">Нет сопряжённых устройств</string>
+    <string name="remote_empty_hint">Отсканируйте код сопряжения удалённого плагина DSH на компьютере или введите ссылку сопряжения вручную, чтобы добавить устройство.</string>
+
+    <!-- 远程会话表面 · 顶部微条 -->
+    <string name="remote_session_back_local">Вернуться к локальному DSH</string>
+    <string name="remote_session_open_panel">Открыть удалённую панель</string>
+    <string name="remote_session_switch">Переключить страницу</string>
+    <string name="remote_switch_local">Локальный DSH</string>
+    <string name="remote_switch_local_sub">Показать службу DSH, запущенную на этом устройстве</string>
+    <string name="remote_switch_empty">Пока нет сопряжённых удалённых страниц</string>
+    <string name="remote_session_refresh">Обновить</string>
+    <string name="remote_session_collapse">Свернуть панель</string>
+    <string name="remote_session_expand">Развернуть панель</string>
+    <string name="remote_session_local_name">Локальный DSH</string>
+    <string name="remote_session_status_ready">Подключено</string>
+    <string name="remote_session_status_loading">Загрузка</string>
+    <string name="remote_session_status_connecting">Подключение</string>
+    <string name="remote_session_status_failed">Ошибка подключения</string>
+    <string name="remote_session_status_disconnected">Отключено</string>
+
+    <!-- 远程会话表面 · 连接态覆盖层 -->
+    <string name="remote_session_connecting">Подключение к удалённой сессии…</string>
+    <string name="remote_session_failed">Не удалось подключить удалённую сессию</string>
+    <string name="remote_session_retry">Повторить</string>
+    <string name="remote_session_disconnected">Удалённая сессия отключена</string>
+    <string name="remote_session_reconnect">Переподключить</string>
+    <string name="remote_session_status_rejected">Учётные данные отклонены</string>
+    <string name="remote_link_open_failed">Не удалось открыть ссылку в браузере</string>
+
+    <!-- 远程面板 · 添加区 -->
+    <string name="remote_add_scan">Сканировать код сопряжения</string>
+    <string name="remote_add_manual">Ручной ввод</string>
+    <string name="remote_add_section_title">Добавить устройство</string>
+    <string name="remote_help_title">Как работает удалённое подключение</string>
+    <string name="remote_help_intro">Отсканируйте код или вставьте ссылку сопряжения, чтобы добавить устройство.</string>
+    <string name="remote_help_pt">Поддерживаемые плагины DSH</string>
+    <string name="remote_help_pocket_note">(исходный репозиторий, похоже, давно не обновлялся)</string>
+    <string name="remote_help_bridge_note">(рекомендуется)</string>
+    <string name="remote_help_pn_future">Скоро добавим адаптеры, чтобы подключить загрузки и другие удалённые функции.</string>
+    <string name="remote_help_pn_diy">Вы также можете сделать собственный удалённый плагин.</string>
+    <string name="remote_help_pn">Установите любой плагин на компьютер, откройте его мобильную/удалённую страницу и отсканируйте или вставьте ссылку.</string>
+    <string name="remote_help_at">А также веб-агенты</string>
+    <string name="remote_help_ax">WorkBuddy, MiniMax и другие веб-агенты тоже поддерживаются. Загрузка и скачивание файлов подключены к песочнице DSHBox.</string>
+    <string name="remote_help_ra">Подключить другого агента удалённо</string>
+    <string name="remote_help_rax">Можно подключить другого агента на том же компьютере, чтобы сбой одного не оставил вас без возможности исправить ситуацию. По нашим тестам рекомендуется zcode: у него официальный сетевой канал и довольно стабильная связь.</string>
+    <string name="remote_help_mt">Прокси и прямое</string>
+    <string name="remote_help_mp">Прокси: через этот телефон; поддерживает локальный HTTP и самоподписанные сертификаты.</string>
+    <string name="remote_help_md">Прямое: телефон открывает https-адрес напрямую. Кратчайший путь.</string>
+    <string name="remote_help_close">Закрыть</string>
+    <string name="remote_add_note">Отсканируйте код сопряжения плагина DSH на компьютере или вставьте ссылку с токеном</string>
+    <string name="remote_add_failed">Не удалось выполнить сопряжение: %1$s</string>
+    <!-- 远程面板 · 建档前确认卡 -->
+    <string name="remote_confirm_add_title">Добавить это устройство?</string>
+    <string name="remote_confirm_device_target">Выберите устройство, к которому относится это сопряжение</string>
+    <string name="remote_confirm_group_name_label">Название группы</string>
+    <string name="remote_confirm_generic_note">Обычная веб-страница (без выделенного плагина); она будет открыта через прокси как обычная страница.</string>
+    <string name="remote_confirm_endpoint_count">Будет добавлено каналов: %1$d</string>
+    <string name="remote_confirm_endpoint_count_update">Обновить каналов: %1$d</string>
+    <string name="remote_confirm_repair_choices_note">При повторном сопряжении сохраняются текущие режим сессии и настройки хранения. Их можно изменить в карточке устройства.</string>
+    <!-- 远程面板 · 手动输入 -->
+    <string name="remote_manual_title">Ручное сопряжение</string>
+    <string name="remote_manual_address_label">Ссылка сопряжения (с токеном или ключом, если есть)</string>
+    <string name="remote_manual_token_label">Токен (необязательно, добавляется как ?auth=)</string>
+    <string name="remote_manual_note_label">Заметка об устройстве (необязательно)</string>
+    <string name="remote_manual_confirm">Добавить устройство</string>
+    <!-- 远程面板 · 设备卡 -->
+    <string name="remote_device_expand">Развернуть устройство</string>
+    <string name="remote_device_collapse">Свернуть устройство</string>
+    <string name="remote_device_delete">Удалить устройство</string>
+    <string name="remote_device_delete_title">Удалить это устройство?</string>
+    <string name="remote_device_delete_message">Удаление «%1$s» убирает все его конечные точки и очищает сохранённые учётные данные устройства и данные страниц на этом устройстве. Отменить нельзя.</string>
+    <!-- One-line hint while a VPN/system proxy is active and private-address endpoints exist -->
+    <string name="remote_lan_vpn_warning">Обнаружен системный прокси или VPN; соединения с локальной сетью могут быть недоступны.</string>
+
+    <string name="remote_device_confirm_delete">Удалить</string>
+    <string name="remote_cancel">Отмена</string>
+    <string name="remote_confirm">Готово</string>
+    <string name="remote_endpoint_set_display">Сделать источником отображения</string>
+    <string name="remote_endpoint_edit">Изменить</string>
+    <string name="remote_endpoint_more">Действия с конечной точкой</string>
+    <string name="remote_endpoint_move">Переместить на устройство</string>
+    <string name="remote_endpoint_move_to_group">Переместить в группу устройств</string>
+    <string name="remote_endpoint_switch_group">Сменить группу устройств</string>
+    <string name="remote_endpoint_delete">Удалить эту конечную точку</string>
+    <string name="remote_endpoint_delete_title">Удалить эту конечную точку?</string>
+    <string name="remote_endpoint_delete_message">Из «%3$s» будет удалена конечная точка %1$s %2$s, её сохранённые учётные данные будут стёрты. Отменить нельзя.</string>
+    <string name="remote_endpoint_status_idle">Не подключено</string>
+    <string name="remote_endpoint_displaying">%1$s · На экране</string>
+    <!-- 远程面板 · 端点地址编辑 -->
+    <string name="remote_edit_endpoint_title">Изменить адрес конечной точки</string>
+    <string name="remote_edit_endpoint_address_label">Новый целевой URL</string>
+    <string name="remote_edit_endpoint_confirm">Сохранить</string>
+    <string name="remote_session_mode_label">Режим сессии</string>
+    <string name="remote_session_mode_proxied">Прокси</string>
+    <string name="remote_session_mode_direct">Напрямую</string>
+    <!-- 直连仅放行 https 端点（会话层门禁与卡片选项禁用双保险） -->
+    <string name="remote_direct_https_limitation">Прямой режим поддерживает только адреса https</string>
+    <!-- 远程面板 · 设置 -->
+    <string name="remote_settings_title">Настройки</string>
+    <string name="remote_settings_retention_label">Хранить неактивную сессию</string>
+    <string name="remote_settings_default_retention">Срок хранения по умолчанию · Глобально</string>
+    <string name="remote_settings_inactive_hint">Неактивные сеансы</string>
+    <string name="remote_settings_hot_label">Занятость горячего пула</string>
+    <string name="remote_settings_hot_usage">%1$d / %2$d</string>
+    <string name="remote_settings_hot_note">Страницы с режимом хранения, отличным от «Сразу», остаются в горячем пуле и не перезагружаются при возврате.</string>
+    <string name="remote_settings_release_all">Освободить всё сейчас</string>
+    <string name="remote_retention_immediate">Освобождать при переключении</string>
+    <string name="remote_retention_minutes">%1$d мин</string>
+    <string name="remote_retention_forever">Навсегда</string>
+    <string name="remote_retention_inherit">Наследовать (%1$s)</string>
+    <string name="remote_retention_trigger">Удержание: %1$s</string>
+    <string name="remote_retention_label">Политика удержания</string>
+
+    <!-- 远程面板 · 平板右栏端点详情 -->
+    <string name="remote_detail_empty">Выберите устройство слева, чтобы увидеть его конечные точки</string>
+        <string name="remote_device_endpoint_summary">Точки подключения · %1$d каналов</string>
+    <string name="remote_detail_endpoint_label">Точки подключения</string>
+    <string name="remote_detail_channel_count">%1$d каналов</string>
+    <!-- 远程面板 · 远程面板 · 通道标签 -->
+    <string name="remote_channel_lan">Локальная сеть</string>
+    <string name="remote_channel_public">Публичная</string>
+    <string name="remote_channel_tunnel">Туннель</string>
+    <string name="remote_channel_url">URL</string>
+    <!-- 远程面板 · 远程面板 · 端点插件类型标注（产品专名不翻译，仅 generic 走资源） -->
+    <string name="remote_parser_generic">Универсальный URL</string>
+    <!-- 远程面板 · 远程面板 · 重新配对 -->
+    <string name="remote_device_repair">Пересопряжение</string>
+    <string name="remote_device_repair_input">Ввести сопряжение заново</string>
+    <string name="remote_repair_description">Вставьте новую ссылку сопряжения для «%1$s»; старый одноразовый ключ станет недействительным.</string>
+    <!-- 远程面板 · 远程面板 · 地址编辑失败 -->
+    <string name="remote_edit_endpoint_invalid">Недействительная ссылка сопряжения</string>
+    <!-- 远程面板 · 远程面板 · 一次性凭据被拒 -->
+    <string name="remote_pairing_rejected_title">Ключ сопряжения недействителен</string>
+    <string name="remote_pairing_rejected">Одноразовый ключ сопряжения отклонён или уже использован. Выполните пересопряжение конечной точки в карточке устройства.</string>
+    <!-- 扫码器 · 扫码器 · 全屏子页 -->
+    <string name="remote_scan_title">Сканировать код сопряжения</string>
+    <string name="remote_scan_torch">Фонарик</string>
+    <!-- 扫码器 · 扫码器 · 权限流 -->
+    <string name="remote_scan_permission_denied">Доступ к камере отклонён. Можно запросить снова или ввести ссылку вручную.</string>
+    <string name="remote_scan_permission_permanent">Доступ к камере отключён окончательно. Введите ссылку сопряжения вручную.</string>
+    <string name="remote_scan_request_again">Запросить снова</string>
+    <string name="remote_scan_manual_fallback">Ввести вручную</string>
+    <!-- 扫码器 · 设备卡重扫 -->
+    <string name="remote_device_rescan">Пересканировать для обновления</string>
+    <!-- 扫码器 · 相机不可用与系统设置 -->
+    <string name="remote_scan_camera_unavailable">На этом устройстве нет доступной задней камеры или не удалось её запустить. Введите ссылку сопряжения вручную.</string>
+    <string name="remote_scan_open_settings">Открыть настройки системы</string>
+    <!-- 下载分支 · 结果页 -->
+    <string name="remote_download_saved">Сохранено в %1$s/%2$s</string>
+    <string name="remote_download_failed">Ошибка загрузки: %1$s</string>
+    <string name="remote_download_dir_unavailable">Каталог загрузок недоступен для записи</string>
+    <string name="remote_download_saved_hint">Если этот файл экспортирован из отправленной формы, можно вернуться на предыдущую страницу, чтобы продолжить.</string>
+    <string name="remote_download_back">Назад</string>
+    <string name="remote_download_title">Загрузки</string>
+    <string name="remote_download_share">Общая область: DSHBox/download-remote</string>
+    <string name="remote_download_system">Системные файлы: Внутренняя память/DSHBox/download-remote</string>
+    <string name="remote_download_empty">Загрузок пока нет</string>
+    <string name="remote_download_copy">Копировать путь</string>
+    <string name="remote_download_open_folder">Открыть папку</string>
+    <string name="remote_download_perm">Для сохранения в общую область нужен доступ ко всем файлам.</string>
+    <string name="remote_download_grant">Открыть настройки</string>
+    <string name="remote_download_fail_perm">Нет доступа к хранилищу: запись в общую область невозможна.</string>
+    <string name="remote_download_fail_origin">Загрузка заблокирована: адрес не совпадает с источником сеанса.</string>
+    <string name="remote_download_fail_http">Сервер отклонил запрос загрузки.</string>
+    <string name="remote_download_fail_io">Не удалось записать файл.</string>
+    <string name="remote_download_fail_dir">Каталог загрузок недоступен.</string>
+</resources>

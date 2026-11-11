@@ -1,8 +1,8 @@
 **English** | [简体中文](README.md)
 
-# DSHBox — Run DeepSeek Harness Locally on Android
+# DSHBox — DeepSeek Harness on Android: Run Locally or Connect Remotely
 
-<img width="1772" height="884" alt="DSHBox running DeepSeek Harness locally on Android phones and tablets" src="https://github.com/user-attachments/assets/a9622b15-a348-4c81-a708-3684a208e59e" />
+<img width="1772" height="884" alt="DSHBox running DeepSeek Harness locally or remotely on Android phones and tablets" src="https://github.com/user-attachments/assets/a9622b15-a348-4c81-a708-3684a208e59e" />
 
 [![Latest Release](https://img.shields.io/github/v/release/WSK-build/DSHBox?display_name=tag&sort=semver)](https://github.com/WSK-build/DSHBox/releases/latest)
 [![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](https://github.com/WSK-build/DSHBox/releases/latest)
@@ -13,7 +13,7 @@
 [![Community Discussion](https://img.shields.io/badge/DSH-Community%20Discussion-8250DF?logo=github)](https://github.com/deepseek-ai/deepseek-harness/discussions/5801)
 [![Website](https://img.shields.io/badge/Website-Official%20Site-10A37F?logo=github&logoColor=white)](https://wsk-build.github.io/DSHBox/)
 
-**DSHBox** is an open-source app that runs the full **DeepSeek Harness (DSH)** locally on Android phones and tablets. It brings DSH, PRoot, System WebView or embedded GeckoView, Debian and Node.js together with a terminal, file manager, AI browser assistant, phone assistant and optional developer tools to form a personal AI workbench. Root access and a separate Termux installation are not required for normal use.
+**DSHBox** is an open-source mobile app for **DeepSeek Harness (DSH)**. It can run DSH locally on your phone or tablet, or connect to DSH remotely, with a terminal, file manager, browser automation and phone control in one app — a personal AI workbench you can carry. No root or Termux required.
 
 ---
 
@@ -22,236 +22,285 @@
 | Item | Description |
 |---|---|
 | System requirements | Android 10+ · ARM64 |
-| Permissions | No root and no Termux are required for normal use. Root is optional and available only through the developer-mode channel. |
-| Available builds | **System WebView build**: smaller APK, reuses the device's system WebView. **Embedded Gecko build**: includes GeckoView 158 and does not depend on system WebView. |
-| Bundled components | DSH `0.2.1-rc.5` · PRoot · System WebView or GeckoView. Minimal Debian and Node.js are installed through online mirror selection or offline import on first run. |
-| First-run setup | Follow the setup guide to install minimal Debian and Node.js. Multiple mirrors, retries and offline import are supported. The System WebView build also checks the provider and document-start compatibility. |
-| **Which build should I use?** | Prefer the smaller System WebView build when the device WebView is current and works correctly. Use the embedded Gecko build when system WebView is old, vendor-modified, blank, or when a fixed rendering engine is preferred. Both APKs use the same package name and signing key; switching by overwrite installation preserves Debian, sandbox and user-data. |
+| Permissions | No root and no Termux for daily use; the Root channel in developer mode is an optional capability |
+| Release builds | **System WebView build**: smaller APK, reuses the phone's system WebView. **Embedded Gecko build**: ships with GeckoView 158 and does not depend on the system WebView |
+| Local execution | Provisions a PRoot + Debian sandbox on the device with bundled Node.js and the DSH `0.2.2-rc.1` runtime layer to run DSH locally |
+| Remote connection | Scan a QR code or paste a pairing link to connect to DSH on the same LAN or the public internet; supports proxy / direct connection with multi-device management and switching |
+| **First-run setup** | Follow the beginner guide to install the two runtime layers, minimal Debian and Node.js, step by step, with multi-mirror detection, retry on failure or offline import |
+| **Which package to choose** | **System WebView build:** when the system WebView is recent and works correctly (or you are able to upgrade the system WebView version), prefer the smaller System WebView package.<br />**Embedded Gecko build:** when the system WebView is old and hard to upgrade due to vendor customization — which can cause blank DSH pages, loading failures, workspace loading errors and other issues — choose the Gecko package.<br />Both APKs share the same package name and signature, can overwrite each other, and keep your data. |
 
-**[Download the System WebView or Embedded Gecko build](https://github.com/WSK-build/DSHBox/releases/latest)** → install by overwrite → launch the app → follow the guide to install the runtime through online mirrors or offline import → open DSH.
+**[Download the System WebView or embedded Gecko build](https://github.com/WSK-build/DSHBox/releases/latest)** → install by overwrite → launch the app → follow the guide to fetch the runtime (online multi-mirror sources, or offline import as before) → open DSH.
 
 ---
 
 ## What's new
 
-Current version: **v1.5.1** (2026-10-31) — **System WebView / embedded Gecko rendering · developer mode · plugin marketplace enhancements.**
+Current version: **v1.5.2** (2026-11-11) — **Remote connection · Local DSH LAN access · DSH 0.2.2-rc.1 · notification and interaction improvements.**
 
-1. Added **System WebView and embedded Gecko APK variants** that share the same DSH page and app UI. System WebView startup compatibility was extended, while GeckoView 158 provides an independent renderer for old or vendor-modified WebView environments.
-2. Added **developer mode**, with full ADB and Root channels independent of Pilot approvals and Shizuku. ADB can be mounted into the Debian sandbox while enabled and can connect to either a local ADB service or external devices.
-3. **Plugin marketplace and toolchain upgrades**: bundled pnpm 11.1.2, compatibility checks, install guards, installed-state handling and catalog refresh fixes. DSH's Add Plugin flow and bundled-plugin removal after third-party installs were fixed.
-4. **DSH compatibility and interaction fixes**: corrected link navigation overwriting the DSH page, login handoff, side-panel resources, configuration-file opening, 401 recovery, Gecko keyboard viewport behavior and low-WebView blank-page failures.
-5. **Website and release workflow upgrades**: the website offers both APKs, and Releases now output `dshbox-v1.5.1-system-release.apk` and `dshbox-v1.5.1-gecko-release.apk` with release-contract validation.
+1. Added **remote connection**: scan a pairing code or paste a pairing link to connect to DSH plugins and web Agents on the same LAN or the public internet; supports proxy / direct connection, multi-device management and fast switching;
+2. Added **local DSH LAN access**: devices on the same network can open the local DSH page through a LAN gateway, with access keys, QR codes and online-device viewing;
+3. **Bundled DSH upgraded to `0.2.2-rc.1`**: the layer content stays pure upstream and is provisioned through version arbitration;
+4. **Mobile page adaptation and port fixes**: the mobile page adaptation plugin (renamed) no longer interferes with page layout; the local DSH port adapts automatically instead of being pinned to 3080;
+5. **Notification and interaction improvements**: system notification actions are simplified to Start / Restart / Stop; Settings adds top notification bar and Enter key options; the floating ball hides against the screen edge, and the Gecko build can open the configuration file.
 
-See **[CHANGES.md](CHANGES.md)** for the full release history.
+See **[CHANGES.md](CHANGES.md)** for the complete changes in each version.
 
 ---
 
 ## Core features
 
-### Fully integrated DeepSeek Harness with dual rendering (v1.5.1)
+### 1. Remote connection (new in v1.5.2)
 
-- DSH `0.2.1-rc.5` is bundled with the APK and the layer remains unmodified upstream code. On first launch it is provisioned into `runtime-current/dsh` using **version arbitration**; layer replacement keeps one backup in `previous/dsh` and never touches user data.
-- **System WebView and embedded Gecko builds**: both variants share one DSH page, host navigation, file delivery, diagnostics and logs. Differences are isolated in the Renderer Adapter. Both APKs use `com.dshbox.app`, the same signing key, and preserve `filesDir` when installed over each other.
-- **Full-screen DSH workspace**: the DSH tab opens the local URL, resolves the launch token automatically, uses a mobile user agent, handles keyboard and visual-viewport behavior and supports pinch-to-zoom. A draggable floating control provides refresh and shortcuts to Home, Files, Terminal and Browser, while Home retains the Browser and More entries.
-- **System WebView compatibility**: required startup APIs are installed before the DSH main script through a single document-start injection. Providers that support document-start remain usable; providers without that capability are blocked with an explicit upgrade message.
-- **Embedded GeckoView 158**: DSH runs with a bundled rendering engine and never silently falls back to system WebView. The Gecko path handles DSH login popups, external links, 401 recovery, file selection, document status, the side panel and keyboard viewport differences.
-- **DSH access settings**: the Home DSH card opens a full-screen access panel for viewing and copying the tokenized URL, changing external-link behavior, copying connection information and checking service uptime.
-- **Runtime hard-link compatibility shim**: Android app-data filesystems (FBE/FUSE) reject hard links, while DSH uses `link()` to publish a file without overwriting an existing one. This can break session persistence, file tools and attachment publishing. DSHBox preloads a shim with `node --import` and replaces `node:fs/promises.link`; when the platform rejects a hard link, it falls back to a content copy that retains no-overwrite semantics.
-- **No DSH source changes**: compatibility code lives in the app, renderer adapters, bundled extensions and runtime wiring. The bundled DSH layer remains pure upstream code.
-- The foreground-service notification provides Start / Restart / Stop shortcuts. Reloads and reauthentication always use the current launch token, so a token change after restart or health recovery is handled correctly.
+The Home page gains a new “Remote” tab for connecting to DSH running on a computer or other devices. Remote sessions share the same host, file-delivery and diagnostics capabilities as local DSH.
 
-### AI browser assistant (Browser, added in v1.5.0)
+- **Scan / paste pairing**: scan the pairing code shown by the desktop remote plugin, or paste a pairing link containing a token; a confirmation card is shown before pairing, and the device profile is created only after confirmation.
+- **Adapted plugins**: dsh-remote-web-gateway, dsh-full-remote, dsh-bridge, dsh-pocket, generic URL tickets, the dsh-Remote scheme, ChongYep, saya-ch / dsh-mobile, plus account-based direct-connection entries such as ZCode workspace and DSH Remote.
+- **Proxy and direct connection**: proxy mode forwards through the phone's local loopback and works with plaintext LAN traffic and self-signed certificates; direct mode lets the renderer access HTTPS addresses directly with a shorter path. The two modes can be switched per endpoint.
+- **Multi-device management**: devices are organized into groups and can be created, renamed, moved between groups and deleted; each endpoint stores the target address, channel type, session mode and retention policy.
+- **Stable isolation**: each device is bound to its own loopback IP, and each endpoint gets a stable port that is persisted; deleting a device recycles the slot and retires the port.
+- **Session retention**: supports a default tier, per-endpoint overrides and a “permanent” tier; the hot pool keeps pages within its capacity, so leaving and returning does not reload a session.
+- **External links and attachments**: links to the same upstream open in place within a remote page, while off-site http(s) links and page-open requests go to the system browser; file selection reuses the local seven-source attachment panel.
+- **Remote downloads**: page downloads are collected under `DSHBox/download-remote`, with a bottom downloader, result notifications, and open-file / open-folder actions; when a cross-origin `<a download>` hits an approved file CDN, the navigation is canceled and handed to the downloader.
+- **dsh-mobile / saya-ch**: parses JSON descriptors and URL pairing links and verifies the instance fingerprint and session CA; native-pair exchanges the session Cookie and CSRF token, device credentials persist and native-renew renews them automatically; iroh transport addresses are explicitly rejected, with guidance to switch to LAN or Cloudflare mode.
+- **Web Agents**: web Agents such as WorkBuddy and MiniMax can connect as remote pages; WorkBuddy downloads support Tencent Cloud object-storage CDN tenant prefixes.
+- **Six-language UI**: the remote panel, pairing, QR scanning, settings, error messages and downloader are available in Chinese, English, Arabic, Spanish, French and Russian.
 
-An independent embedded browser workspace exposes **24 tools** to DSH through the bundled `browser-use` plugin and sandbox CLI. It is provisioned by default for new users and can be controlled separately through the DSH browser automation switch on Home's Cordis tab.
+### 2. Fully embedded local DeepSeek Harness with dual rendering
 
-- **Web interaction**: search, navigation, multiple-page management, content reading, element location, clicks, typing, scrolling and condition-based waits. Search engines include Bing, Google and Baidu, with Bing as the default.
-- **Selection feedback and local previews**: select an element or area and submit its screenshot and a comment to the bound DSH conversation. Use the CLI to serve HTML and other sandbox files through a local static server, or register an existing service, then preview it in Browser and send feedback for changes.
-- **Screenshots and debugging**: capture web pages in the foreground or background. If ordinary background capture fails, a CDP fallback is attempted sequentially only when advanced debugging is enabled; otherwise, the tool returns an explicit explanation. Advanced debugging provides DOM inspection, console access, script evaluation, network capture and HAR export. Request interception, modification and replay require separate authorization.
-- **Files and records**: persistent history, bookmarks, page and download management. AI can prepare files for upload, but user approval is required before handing them to the web page. Task records can be viewed, edited or deleted, and a continuation summary can be sent to AI.
-- **Control and interface**: taking over from AI requires confirmation; when AI control is disabled, AI can request authorization. Browser follows the app's theme and six-language setting, supports mobile/desktop/wide-screen modes and a configurable idle timeout, and offers a quick return to DSH by tapping the AI indicator.
+#### (1) DeepSeek Harness fully embedded local runtime
 
-Browser handles **embedded web pages**; Pilot handles **native phone apps**. DSH chooses which tool to call. Complex task recovery across pages, long-running streamed responses and some media and site compatibility scenarios remain incomplete. Full automation is not guaranteed for every task.
+- DSH `0.2.2-rc.1` ships inside the APK and the layer content stays pure upstream. On first launch it is provisioned into `runtime-current/dsh` through **version arbitration**; when the layer is replaced, the old layer is backed up once to `previous/dsh`, and user data is never touched.
+- **Runtime hard-link compatibility shim**: Android app-data partitions (FBE/FUSE) reject hard links, while DSH uses `link()` as its primitive for publishing files without overwriting, which breaks session persistence, file tools and attachment publishing. At startup the app replaces `node:fs/promises.link` via `node --import`; when the platform refuses the hard link, it falls back to a content copy that preserves the no-overwrite semantics.
+- **Zero DSH source changes**: compatibility logic lives in the app, the renderer adapter, bundled extensions and runtime wiring; the bundled DSH layer keeps upstream files and business logic unchanged.
+- **Full-screen DSH workspace**: the DSH tab resolves launchToken automatically on the local address, uses a mobile user agent, handles keyboard and visual viewport, and supports pinch-to-zoom; a draggable floating ball still provides refresh plus quick switching to Home, Files, Terminal and Browser, and Home keeps the “Browser” and “More” entries.
 
-### Phone assistant (Pilot, added in v1.4.0)
+#### (2) DeepSeek Harness access settings
 
-A built-in **catalog of 39 phone-control capabilities** connects sandboxed DSH with the Android app layer through a **file-based mailbox channel**, without network transport or shared memory. It uses a two-layer design: UI adaptation and a core platform. The core is independently published under **Apache-2.0** in [interlock-relay](https://github.com/WSK-build/interlock-relay); this repository integrates it and provides the UI adaptation.
+- **DSH local access settings**: the Home DSH card opens a full-screen access settings page to view and copy the full tokenized address, configure how links open externally, copy connection information and check uptime. Before local DSH starts, available ports are probed instead of pinning 3080; the page, notifications and the LAN gateway all follow the actual address.
+
+- **DSH LAN access settings:**
+
+  a. LAN gateway: devices on the same network can open the local DSH page; supports an access key, addresses with or without the key, a QR code, the number of online devices, and “Disconnect all and reset the key”.
+
+  b. Access control: persisted keys, constant-time comparison, gate-cookie signature verification and rate limiting after failures; after a key rotation, old links and old sessions become invalid at the same time.
+
+  c. Network adaptation: detects and binds the Wi-Fi private address; when a system VPN occupies the network, it bypasses to a non-VPN network with a notice.
+
+- The foreground-service notification carries Start / Restart / Stop quick actions;
+
+- Page refreshes and reauthentication always use the current launchToken, so after DSH restarts or the health loop rotates the token, requests no longer go to the old address.
+
+#### (3) WebView dual rendering
+
+- **System WebView build / embedded Gecko build**: both release variants share a single DSH page plus one implementation of host navigation, file delivery, diagnostics and logging, with differences isolated in the Renderer Adapter; both APKs are `com.dshbox.app` with the same signature and can overwrite each other while preserving `filesDir`.
+- **System WebView compatibility**: APIs required at startup are filled in before the DSH main script runs, entering the page through a single document-start injection; engines that support document-start keep reusing the system WebView, while engines that do not explicitly block navigation and prompt for an upgrade.
+- **Embedded GeckoView 158**: fully uses the bundled rendering engine, with no dependency on the system WebView and no silent fallback; it handles DSH account popups, external links, 401s, file selection, page state, the side panel, keyboard viewport and other differences.
+
+### 3. Embedded AI automation browser (Browser)
+
+An independent embedded browser workspace exposes **24 tools** to DSH through the bundled `browser-use` plugin and the sandbox CLI. It is provisioned by default for new users and can be controlled independently through the “DSH browser automation” switch on the Home Cordis tab.
+
+- **Web interaction**: search, navigation, multi-page management, content reading, element location, clicks, typing, scrolling and conditional waits; search engines can be Bing, Google or Baidu, with Bing as the default.
+- **View selection:** choose between a mobile view and a desktop view.
+- **Selection feedback and local previews**: select a web element or region and submit its screenshot and comments to the bound DSH session; HTML and other files in the sandbox can be served through a local static server started via the CLI, or an existing service can be registered, then previewed in Browser with change feedback.
+- **Screenshots and debugging**: supports foreground and background page captures; if an ordinary background capture fails, the CDP fallback is tried serially only when advanced debugging is enabled, otherwise an explicit message is returned. Advanced debugging provides DOM, console, script evaluation, network capture and HAR export; request interception, modification and replay require separate authorization.
+- **Files and records**: persistent history, bookmarks, multi-page and download management; AI can prepare files for upload and hand them to the web page after user approval. Task records can be viewed, edited and deleted, and a continuation summary can be sent to AI.
+- **Control and interface**: taking over from AI requires confirmation, and AI can request authorization when AI control is off; supports theme and six-language following, mobile / desktop / wide-screen modes, a configurable idle-close time, and a quick return to DSH by tapping the AI indicator.
+
+Browser handles **embedded web pages** and Pilot handles **native phone apps**, with DSH choosing which to call. Complex cross-page task recovery, long-running streamed responses and some media and site compatibility scenarios are still being improved; full automation is not guaranteed for every task.
+
+### 4. Phone control (Pilot)
+
+#### (1) A safe, controlled phone-assistant channel (the app provides approval interception)
+
+A built-in **catalog of 39 phone-control capabilities** and a **mailbox channel** between the embedded sandbox and the Android app layer (file delivery, no network, no shared memory) let sandboxed DSH control and connect to the phone safely and under control. It is embedded with a two-layer structure of “UI adaptation + core platform”; the core is published independently under **Apache-2.0** in the [interlock-relay](https://github.com/WSK-build/interlock-relay) repository, and this repository calls it and provides the UI adaptation.
 
 | Execution backend (three) | Description |
 |---|---|
-| Accessibility | AI directly interacts with the foreground screen: taps, swipes, long presses and more |
-| Shizuku privileges | System shell-level (ADB) access; dangerous operations such as deletion are restricted, while some permissions must be explicitly enabled by the user at their own risk |
-| Platform APIs | Invokes capabilities through standard system interfaces |
+| Accessibility mode | AI directly controls the screen in the foreground: taps, swipes, long presses and more |
+| Shizuku privileged mode | Opens system shell-level (adb) permissions; dangerous operations such as deletion are strictly restricted, and some permissions are left for users to enable at their own risk |
+| Direct platform calls | A set of capability calls through normal system channels |
 
 | Execution mode (two) | Description |
 |---|---|
-| Foreground | Visible interaction through accessibility or platform APIs |
-| Background virtual display | AI operates in the background while the user continues using the device; limitations imposed by some apps may require fallback to foreground operation |
+| Foreground | Visible, direct operation, paired with the accessibility / direct-platform backends |
+| Background virtual display | The user keeps using the device in the foreground while AI operates in the background; automatically degrades to foreground operation under some apps' restrictions |
 
-- **Approval and interaction controls**: each execution path is governed by per-capability settings: Deny / Ask for approval / Full access, with dialogs for user interaction.
-- **Floating questions**: after the user leaves DSHBox, AI can ask a question through a floating window. The user can select options, reject all options or ask for the question to be rephrased.
-- **Native DSH tools**: the bundled `@local/mobile-pilot` plugin provides `phone_*` tools that the agent can call directly through the core mailbox mechanism. Enable it through the DSH phone connection switch in Cordis.
+- **Approval and interaction constraints**: every path above is constrained; per capability you can choose Deny / Ask for approval / Full access, interacting through dialogs.
+- **Floating-window questions**: when the user leaves the DSHBox page, AI can raise a floating window to ask questions; the user can select options, reject them all, or ask for the question again.
+- **Native tools for DSH**: the bundled `@local/mobile-pilot` plugin provides a set of `phone_*` tools so the agent can call our core mailbox mechanism directly. This plugin can be toggled freely under “DSH phone connection” in Cordis.
 
-### Developer mode (added in v1.5.1)
+#### (2) Developer mode (ADB + root, permissions fully handed to the user)
 
-Open **Developer mode** from Pilot. It provides full capabilities for advanced users and is separate from Pilot's controlled approval system:
+A separate “Developer mode” panel is reachable from Pilot. It provides full capabilities aimed at advanced users and is not part of the Pilot phone assistant's controlled approval system:
 
 | Channel | Capabilities and limits |
 |---|---|
-| ADB | When enabled, a complete ADB client and its dependencies are mounted into the Debian sandbox and removed when disabled. Supports local services, wireless-debugging pairing, external-device debugging, ports and custom keys. |
-| Root | Uses the device's existing `su` implementation and provides the `android-root` CLI in the guest. Supports access codes, repeated-failure lockout, Unix/TCP transports and permission prechecks. |
+| ADB | When the switch is on, a complete ADB client and its dependencies are mounted into the Debian sandbox and removed when off; supports the local service, wireless-debugging pairing, external-device debugging, ports and custom keys. |
+| Root | Uses the device's existing `su` implementation and provides an `android-root` CLI in the guest; supports access codes, failure lockout, Unix/TCP transports and permission prechecks. |
 
-- **Separate from the phone assistant**: ADB and Root do not pass through Pilot's per-capability Deny / Ask / Full access approvals or action restrictions. After enabling a channel, the user chooses how to use it and is responsible for debugging, system and Root operations and their consequences. Pilot retains its controlled, approval-based permissions.
-- **Separate from Shizuku**: developer-mode ADB does not depend on Shizuku and can serve as an alternative for some Shizuku compatibility gaps or unresolved issues. Switches, keys, server configuration and process lifetime are independent.
-- **External devices**: this ADB client can connect both to the local ADB service and to other devices over the network. Disabling the channel removes the command entry point, server access and sandbox mount.
-- **Before enabling**: wireless debugging must be supported and the networks must be reachable. Root requires a usable `su` implementation and may vary across Magisk, KernelSU, APatch, hiding policies and vendor ROMs.
+- **Separate from the phone assistant**: ADB / Root do not go through Pilot's per-item Deny / Ask for approval / Full access approvals, permission tiers or action interception. After enabling a switch, users decide its use themselves and are responsible for their own debugging, system or Root operations and their consequences; the original phone-assistant channel keeps its controlled permissions and approval protection.
+- **Separate from Shizuku**: developer-mode ADB does not depend on Shizuku and can serve as an alternative path for some Shizuku compatibility gaps or unresolved issues; the two keep independent switches, keys, server configuration and lifecycles.
+- **External-device debugging**: this ADB can connect not only to the phone's local service but also to other devices over the network. Once the ADB channel is off, the related commands, server entry points and mounts are withdrawn from the sandbox.
+- **Before you use it**: wireless debugging requires the device to support the capability and the networks to be reachable; Root requires an existing usable `su` and may be affected by Magisk, KernelSU, APatch, hiding policies and vendor ROM differences.
 
-### Plugin management and marketplace (added in v1.4.0, enhanced in v1.5.1)
+### 5. Plugin management and marketplace
 
-Access plugin management from Home's Cordis tab:
+Entered from the Home Cordis tab, plugin-related capabilities are managed in one place:
 
 | Capability | Description |
 |---|---|
-| Bundled DSHBox plugin switches | DSH mobile page adaptation (`dsh-mobile-adapt`), DSH phone connection (`mobile-pilot`) and DSH browser automation (`browser-use`). Enabled by default for new users; upgrades preserve an explicit disabled setting. Provisioning and updates are coordinated with DSH readiness. |
-| Official DSH plugins | Switches for official features disabled upstream by default, such as the side-panel browser |
-| Absolute safe mode | Starts without third-party plugins to recover from plugin-induced DSH crashes |
-| Plugin loading records | Records grouped by startup for troubleshooting |
-| Crash-recovery assistance | The terminal agent **opencode** can be installed, updated or removed with one tap. Run `opencode` in the terminal to diagnose and fix issues using natural language. |
-| Plugin marketplace | App-level browsing, search, compatibility checks, install guards and third-party plugin installation, updating and removal |
-| Installed plugins | Local installed items are shown first while the remote catalog loads asynchronously. States distinguish active, restart required, pending disable, host denied, incompatible and broken, avoiding a full-page wait on weak networks. |
-| Bundled-plugin protection | Mobile adaptation, Pilot and browser-use are registered as profile dependencies and are no longer removed when pnpm recalculates `node_modules` after a third-party install, update or deletion. |
+| Bundled DSHBox plugin switches | “DSH mobile page adaptation” (`dsh-mobile-adapt`), “DSH phone connection” (`mobile-pilot`) and “DSH browser automation” (`browser-use`); provisioned by default for new users, upgrades preserve explicitly disabled settings, and provisioning and updates follow DSH readiness. |
+| Official DSH plugins | Switches for official entries disabled upstream by default (such as the side-panel built-in browser) |
+| Safe mode | Starts without loading any third-party plugin, used to recover startup when a third-party plugin crashes DSH |
+| Plugin loading records | View plugin loading per startup segment for troubleshooting |
+| Crash-recovery assistance | The built-in terminal agent **opencode**, with one-tap install / update / uninstall; type `opencode` in the terminal to launch the TUI and complete fixes through natural-language interaction |
+| Plugin marketplace | Lives in the app layer, offering category browsing, search, compatibility checks, install guards and third-party plugin install / update / delete entry points |
+| Installed plugins | Shows the local manifest first, then asynchronously loads the remote catalog; distinguishes active, takes-effect-after-restart, pending-disable, host-denied, incompatible and broken states, avoiding a whole-page wait on weak networks |
+| Bundled-plugin protection | Mobile adaptation, Pilot and browser-use are written into profile dependencies; after third-party plugins are installed, updated or deleted, they are not pushed out when pnpm recomputes `node_modules` |
 
-The marketplace uses two live data sources: **awesome-dsh-plugin** and **[awesome-dsh-mobile-plugins](https://github.com/WSK-build/awesome-dsh-mobile-plugins)**. The latter was created by DSHBox specifically to expand the mobile DSH plugin ecosystem; contributions through pull requests are welcome.
+The marketplace ships with two live data sources: **awesome-dsh-plugin** and **[awesome-dsh-mobile-plugins](https://github.com/WSK-build/awesome-dsh-mobile-plugins)**. The latter is a repository created by DSHBox specifically for the mobile DSH plugin ecosystem; users can submit PRs to help build the ecosystem together.
 
-- **Bundled pnpm 11.1.2**: ships with a Corepack cache and probes the official npm registry plus mirrors in mainland China. The same pnpm store, registry and Corepack configuration is used by DSH, the official Add Plugin entry, the marketplace and the terminal.
-- **Official Add Plugin works end to end**: package names and links now resolve metadata, install and uninstall correctly. Missing `pnpm`, rejected registry arguments and inconsistent store paths were fixed.
-- **State labels reflect when a change takes effect**: enable or disable operations that require a DSH restart display “restart required”. Host-denied, incompatible, base-library and marketplace-internal items no longer show switches that cannot succeed.
-- **Compatibility boundary**: the marketplace checks known host-version, package-carrier and dependency issues, but cannot guarantee that every third-party plugin works with every DSH release. Back up before upgrading to an Alpha; downgrading to an RC may cause conversation-data incompatibility.
+- **Bundled pnpm 11.1.2**: ships with a Corepack cache and preset probes of the official npm registry and mainland-China mirrors; the pnpm store, registry and Corepack environment use one shared configuration across DSH, the official “Add Plugin” entry, the marketplace and the terminal.
+- **The official “Add Plugin” flow is connected**: entering a package name or link pulls plugin metadata and supports install and uninstall; fixed missing `pnpm`, rejected registry arguments and inconsistent store paths.
+- **Installed states show when they take effect**: entries that need a DSH restart to apply after enabling or disabling show “takes effect after restart”, and non-operable items such as host-denied, incompatible, base-library and the marketplace itself no longer show dead switches.
+- **Compatibility boundary**: the marketplace checks known host-version, carrier and dependency issues in advance, but cannot guarantee every third-party plugin works on every DSH version. Back up before upgrading to an Alpha; falling back from an Alpha to an RC may cause conversation-data compatibility issues.
 
-### DSH mobile and dual-renderer adaptation (v1.5.1)
+### 6. DSH mobile and dual-renderer adaptation
 
-The bundled DSH is now **0.2.1-rc.5**. System WebView and Gecko share one DSH page and host implementation. Adaptation is limited to the app, renderer adapters, bundled page-compatibility assets and extensions; **DSH source code and business logic remain unchanged**:
+The bundled DSH is upgraded to **0.2.2-rc.1**. The System WebView and Gecko rendering paths share the same DSH page and host logic; adaptation is concentrated in the app, the Renderer Adapter, bundled page-compatibility assets and extensions, with **no modifications to DSH source code or business logic**:
 
-| Component | Mobile difference or issue | Handling |
+| Component | Mobile difference or break point | Handling |
 |---|---|---|
-| System WebView startup | Older providers lack standard APIs required by DSH or do not support document-start | Required APIs are supplied before the DSH main script; providers that cannot guarantee a safe startup phase are blocked with an upgrade message |
-| Gecko page bridge | GeckoView does not expose the same callbacks and extension environment as System WebView | Bundled extensions, document-status messages, navigation generations and native events provide the required behavior |
-| Login | DSH opens a blank popup and receives the authorization URL asynchronously | Both renderers recognize popups only from a trusted DSH source. Browser authorization is handed to the system default browser |
-| Links inside DSH | Loading a link in the main frame can replace the active DSH workspace, while side-panel iframes must remain embedded | “Default browser” sends top-level cross-origin HTTP(S) links to the system browser. “In-app side panel” targets keep their iframe behavior |
-| 401 and reauthentication | Concurrent navigation, redirects and late callbacks can attribute state to the wrong document | Navigation nonces, response-header state and document status are correlated; results from old generations are discarded |
-| Attachments | File-picker callbacks, multiple selection and source detection require native integration | Photos, video, gallery, phone files, audio, workspace and shared-area sources are supported; results are deduplicated and stale `accept` sentinels are cleared |
-| Voice input | WebView recording requires an additional audio-settings permission | Required permissions are declared and connected to DSH voice input |
-| Side-panel file preview | Authorities in nonstandard schemes may parse differently across engines | `dsh-resource://` parsing is completed in the app with consistent System and Gecko behavior |
-| Open configuration file | The old page-interception path failed when the plugin was disabled or timing changed | The runtime exposes an `xdg-open` link that opens DSHBox's configuration viewer; existing files are never overwritten |
-| Keyboard and top bar | Gecko may shift the layout viewport when the keyboard opens | Only the Gecko path compensates for the remaining visual-viewport difference and pins the conversation top bar; System WebView keeps its original behavior |
-| Side-panel terminal | The guest `passwd` lacks the runtime UID and `os.userInfo()` can fail | The current UID is added to guest `passwd` at runtime |
-| Side-panel browser | The relevant official plugin is disabled upstream by default | A switch in plugin management enables it after DSH restarts |
-| Photos / video recording | DSH needs system camera and recording entry points | File-input accept sentinels route the request to the system camera or recorder |
-| Page diagnostics | Load completion is not the same as readiness, and main-thread APIs do not prove Worker support | Diagnostics records document, main-thread, Worker, Gecko and page state separately without presenting unsupported behavior as working |
+| System WebView startup | Older engines lack standard APIs DSH depends on, or have no document-start capability | Required capabilities are filled in before page scripts run; providers that cannot safely enter the pre-startup phase are explicitly blocked with an upgrade prompt |
+| Gecko page bridge | GeckoView does not have the same callbacks and extension environment as System WebView | Bundled extensions, a page-state bridge, navigation generations and native events provide the capabilities DSH needs |
+| Account login | DSH first opens a blank popup and then asynchronously obtains the authorization URL; engines handle it differently | Both System and Gecko recognize popups under trusted DSH origins; browser authorization is handed off to the system default browser |
+| Links inside DSH | Loading a link directly in the main frame would overwrite the current workspace; side-panel iframes must be preserved | “Default browser” hands top-level non-same-origin HTTP(S) to the system browser; “in-app side panel” targets keep their iframe and are not wrongly intercepted |
+| 401 and re-login | Concurrent navigations, redirects and late callbacks can attribute state to the wrong document | Navigation nonce, response-header state and document state are correlated with the current generation; results from old generations are dropped |
+| Attachment upload | File selection, multi-select and source determination need native wiring | Provides camera, video recording, gallery, phone files, audio, workspace and shared area; multi-select results are deduplicated and `accept` sentinels are cleaned up |
+| Voice input | WebView recording needs an extra audio-settings permission | The required permission is declared and wired into DSH voice input |
+| Side-panel file preview | Authority/host parsing of non-standard schemes differs across engines | `dsh-resource://` parsing is completed at the app layer; System and Gecko share the same semantics |
+| “Open configuration file” | The old approach relied on page interception and failed when the plugin was off or timing shifted | The runtime provides a native `xdg-open` link and the app opens the configuration-file viewer; existing files are not overwritten |
+| Keyboard and top bar | Gecko may push the whole layout viewport up when the keyboard opens | Only Gecko gets the visual-viewport difference compensated and the conversation top bar pinned; System WebView keeps its original behavior |
+| Side-panel terminal | The guest `passwd` lacks the runtime uid and `os.userInfo()` can fail | The current uid is patched into the guest `passwd` at runtime |
+| Side-panel browser | The corresponding official plugin is disabled upstream by default | A switch is provided in the plugin management panel, taking effect after DSH restarts |
+| Photos / video recording | The DSH page needs system camera / recording entry points | The `onShowFileChooser` accept sentinel routes to the system capture UI |
+| Page diagnostics | Load completion does not mean the page is ready, and main-thread capability is not Worker capability | Diagnostics record document, main-thread API, Worker, Gecko and page state separately, never faking “supported” |
 
-Device Back handling, autofocus suppression, floating shortcuts and the attachment source picker continue from v1.5.0. v1.5.1 moves plugin-dependent URL parsing and configuration-file opening into the host, while explicitly limiting Gecko keyboard behavior to the Gecko path so System WebView is not affected.
+The device Back key, autofocus, floating quick switching and the attachment source panel carry over the capabilities completed in v1.5.0. v1.5.1 further moved URL parsing, configuration-file opening and Gecko keyboard handling — which were tied to plugin switches — into the app or explicitly limited them to the Gecko branch, so System WebView is no longer disturbed by Gecko-specific logic.
 
-### Layered PRoot runtime (no root required)
+### 7. File manager
 
-Four layers are provisioned independently. The PRoot userspace sandbox is separate from the Android host; runtime layers and user data (`user-data/` → guest `/root/projects`) are stored separately:
+- **Areas**
+
+| Area | Function |
+| -------- | ---- |
+| Sandbox files | The entire Debian sandbox filesystem |
+| Workspace `/root/projects` | An app-private directory reserved for the DSH workspace; its contents are always protected and never cleared by sandbox resets |
+| Shared area `/root/share` | After authorization, creates or reuses the **DSHBox** folder in the phone's public storage; the system shared-file directory where the user can, in a controlled way, pick other public system directories and mount them under separate names into the sandbox shared area; **unmounting only removes the association and never deletes the source directory or files**. Contents of public shared directories are not automatically deleted when the app is uninstalled or reinstalled |
+
+- **Directories and views**: workspace `/root/projects`, the sandbox root (with the node and DSH layers overlaid) and shared-area entries; breadcrumb navigation, list / grid views, sorting by name / time / size, folder creation and multi-select batch operations
+- **New file** (added in v1.4.0): create an empty file directly in the current directory
+- **Install into the sandbox** (added in v1.4.0): select a `.deb` to unpack and install it into the sandbox directly
+- **Move to a chosen folder**: a full-screen destination picker (sandbox / workspace switching, folder creation, the source and its descendants grayed out to prevent cycles, cross-mount-point destination hints); three conflict strategies (overwrite / skip / auto-rename + apply to all remaining); same-volume `renameTo` first with copy fallback on failure (permission bits / timestamps preserved); “Rename” uses the same engine
+- **Import**: multi-select batch file import and archive extraction import, per-item conflict decisions, cancellation and a completion summary; fixed ZIP Chinese-name encoding, encrypted ZIPs explicitly rejected
+- **Export**: multi-select export to a directory (SAF), or package as ZIP
+- **External receiving and sharing** (added in v1.5.0): accepts files other apps send via “Share to” or “Open with another app” and lets you pick a save location, supporting multiple files and plain text; the file menu can directly raise the system share sheet, separate from the export function
+- **Global search**: across sandbox + workspace, searching filenames and contents at once, with matching snippets in results
+- **Risk protection**: system directories / node / DSH layers / `.dsh` are labeled by risk level, with strong confirmation before write operations
+
+- **Universal file viewer / editor** — a three-tier classification of magic bytes + content sniffing + extension ensures every file has an interface:
+
+| Type | Capabilities |
+|---|---|
+| Text / code | Sora Editor editing (line numbers / undo-redo / search / soft wrap), highlighting for json / yaml / shell / python / js / java+kotlin; encoding auto-detection + manual switching, forced read-only for lossy decoding; large-file tiers (≤2MB editable · 2–10MB editable after confirmation · >10MB read-only tail window); atomic save + external-change detection + unsaved-change interception |
+| Images | Pinch-to-zoom / double-tap zoom, strip loading for extra-long images, GIF / animated WebP, AVIF (Android 12+) |
+| PDF | Native paginated rendering; encrypted PDFs accept a password on Android 15+, older versions are guided to open externally |
+| Archives | zip / jar / apk / epub and tar-family read-only browsing (collapsible directories, encrypted-entry markers), in-archive text previews, single-entry / all export; Chinese ZIP names are not garbled; 7z / RAR info cards + external open |
+| Hex | Offset / Hex / ASCII three columns, 64KB-block random reads, entropy estimation |
+| Office | docx / xlsx plain-text extraction read-only; doc / xls / ppt info cards + external open |
+| Markdown / HTML / SVG | md source editing + Markwon preview (tables included); html / svg offline WebView rendering (JS disabled, network disabled, destroyed on exit) |
+| Unknown / binary | Hex viewing + file info card; external open / edit / share / export as fallback |
+
+### 8. Terminal
+
+- Multiple windows: a sandbox terminal (full PRoot Debian environment with bash / vim / htop / node / npm / apt / git / python3 / ssh working out of the box) / a restricted-shell fallback, with a floating control panel to create / switch / close
+- **Direct DSH CLI access** (added in v1.4.0): run the official `dsh` commands (web / headless / tui / plugin) directly in the sandbox, the same DSH and the same profile as the web page
+- **Developer-mode commands**: after enabling the corresponding switch, the full `adb` is available in the sandbox; when the Root channel is on and the device is authorized, `android-root` is available. Turning a switch off removes the corresponding command entry
+- **Bundled utility fill-in** (added in v1.4.0): system tools AI commonly needs for tasks, such as `jq`, `sqlite3`, `patch`, `nano` and `strings` (binutils); the tool bundle **self-heals** — if tools are found missing after a layer swap or upgrade, they are reinstalled automatically, with no need to clear data and start over
+- A two-row auxiliary key bar (ESC / TAB / HOME / END / sticky CTRL / paste / arrow keys / page keys / backspace / delete, DECCKM-aware), with pinch-to-zoom font size 8–40sp
+- Based on Termux terminal-emulator / terminal-view (v0.118.0, unmodified) + the in-house `terminal-session` layer
+
+### 9. Settings page
+
+#### (1) DSH version selection and runtime management (DSH versions are freely selectable, never locked)
+
+| Feature | Description |
+|---|---|
+| Update DSH (online) | Probes versions and latency across the npm official / Alibaba / Tencent Cloud / Huawei Cloud mirrors in parallel → pick a mirror and version (downgrades need a second confirmation) → npm in the sandbox pulls the full dependency tree → the layer is swapped and restarted automatically; runs in the background, live logs, cancellable (SIGKILL to the process tree) |
+| Update DSH (offline import) | Single-file layer packages `.tar.zst / .tar.gz / .tar / .tgz` (or a zip containing a layer package), staged extraction → shape validation → atomic layer swap, leaving no half-finished artifacts on failure |
+| Install the runtime online | Probes mirrors separately for the **Node layer / minimal Debian layer** (reachability and latency), downloads, verifies GPG signatures, trims and assembles into layers; step-by-step progress, cancellable, with failures categorized by cause (mirror missing packages / verification failure / insufficient space, etc.); any layer can be reset at any time |
+| Import a runtime package offline | Replaces base / node / android-side as a whole package, with per-layer SHA-256 verification and one `previous/` copy for rollback (see below); since v1.4.0 it is not distributed inside the APK but is still provided separately on the Release page, equivalent to the online path. |
+
+#### (2) Diagnostics and logs
+
+DSH / sandbox / guest command logs can be scrolled, copied and exported; rendering diagnostics distinguish the System provider, Gecko version, page document state, main-thread APIs, the Worker environment and known visual capabilities, and never treat load completion or a version number alone as proof that the page is usable
+
+#### (3) Storage usage and cleanup
+
+- Usage is measured the same way the system does (allocated blocks, hard-link deduplication, app caches included); it refreshes automatically when Settings opens and can be refreshed manually
+- Cleanup items are checked independently: app cache / guest temporary files (only entries older than 24h are cleaned while running) / runtime logs (truncated) / apt download caches; rollback backups are optional with an explicit warning
+- Cleanup is mutually exclusive with background installation / import and never touches `user-data/.dsh` or the runtime layers themselves
+
+### 10. Localization
+
+- Fully localized interface: the six official UN languages — English / 简体中文 / العربية / Español / Français / Русский; follows the system by default and falls back to English for unsupported languages
+- Settings → Appearance adds a “Language” selector: six languages + follow system, effective immediately on selection with no restart; notifications, dialogs, terminal menus and more all switch with the language
+- Quantity strings follow each language's plural rules (6 forms in Arabic / 4 in Russian, etc.); technical numbers such as file sizes, timestamps and hex offsets stay in Western digits
+- Layout direction: globally always LTR (Arabic text renders normally via Unicode bidi); page navigation and layout are not mirrored as a whole
+- A built-in i18n consistency gate (keys / placeholders / plural forms / hardcoded-string scanning) validates the six-language resources in CI
+
+### 11. Layered PRoot runtime (no root required)
+
+Four layers are provisioned independently; the PRoot userspace sandbox is isolated from the Android host, and the runtime and user data (`user-data/` → guest `/root/projects`) never write into each other:
 
 | Layer | Contents | Guest mount point |
 |---|---|---|
 | base | Minimal Debian 13 (trixie) rootfs | `/` (rootfs) |
 | node | Node.js 24 (npm / npx / corepack) | `/usr/local` |
-| dsh | DeepSeek Harness `0.2.1-rc.5` (unmodified upstream npm package) | `/opt/dshapp/runtime` |
-| android-side | PRoot / loader / shmem on the Android side | — |
+| dsh | DeepSeek Harness `0.2.2-rc.1` (npm package, pure upstream) | `/opt/dshapp/runtime` |
+| android-side | PRoot / loader / shmem (host side) | — |
 
-- Sandbox keepalive and DSH run as two independent PRoot processes. Shutdown enumerates the process tree through `/proc` and sends SIGKILL to children first to avoid orphan processes and occupied ports.
-- Each layer carries SHA-256 verification metadata. Integrity is checked layer by layer at startup so damaged layers can be identified and reinstalled.
-- Since v1.4.0, **the `base` and `node` layers are no longer bundled in the APK**, which contains only `dsh` and `android-side`. Install them through online runtime installation, with mirror selection and reset options for minimal Debian and Node.js, or import the complete offline package. Online assembly removes unnecessary language packs and documentation to reduce storage use.
-
-### System file sharing area (added in v1.5.0)
-
-- After permission is granted, DSHBox creates or reuses a **DSHBox** folder in the phone's public storage. The file manager, DSH, sandbox and terminal access the same local files, which can also be transferred through other apps or a computer.
-- Other public directories can be selected and mounted under separate names in the sandbox sharing area. Both the file manager and attachment source picker provide access. Restart the relevant running sessions as prompted to apply new mounts.
-- **Unmounting removes only the mount reference, not the source directory or its files.** Uninstalling or reinstalling the app does not automatically remove files in public shared directories. Reinstallation requires permission to be granted again and additional mounts to be configured again. Deliberately deleting files still takes effect.
-
-### File manager (major improvements in v1.2.0)
-
-- **Directories and views**: workspace `/root/projects`, sandbox root with the Node and DSH layers overlaid, and shared-area access; breadcrumb navigation, list/grid views, sorting by name/time/size, folder creation and multi-select batch operations
-- **New files** (added in v1.4.0): create an empty file directly in the current directory
-- **Install into the sandbox** (added in v1.4.0): select a `.deb` file to extract and install it into the sandbox
-- **Move to a selected folder**: full-screen destination picker with sandbox/workspace switching and folder creation; the source and its descendants are disabled to prevent cycles, with warnings for destinations across mount points. Conflicts support overwrite / skip / automatic rename and Apply to all remaining items. Same-volume `renameTo` is preferred, falling back to copying with permissions and timestamps preserved; renaming uses the same engine.
-- **Import**: multiple-file and archive imports, per-item conflict decisions, cancellation and completion summaries; corrected ZIP filename decoding for Chinese names, with encrypted ZIP files explicitly rejected
-- **Export**: export selected files to a directory through SAF, or package them into ZIP
-- **Incoming files and outbound sharing** (added in v1.5.0): accept files through other apps' Share or Open with actions and choose a destination; multiple files and plain text are supported. The file menu can open the system share sheet independently of Export.
-- **Global search**: search filenames and contents across the sandbox and workspace, with matching snippets
-- **Risk controls**: system directories, the Node and DSH layers, and `.dsh` are marked by risk level; write operations require explicit confirmation.
-
-- **Universal file viewer/editor**: classification by magic bytes, content inspection and extension ensures every file has an appropriate view or fallback.
-
-| Type | Capabilities |
-|---|---|
-| Text / code | Sora Editor with line numbers, undo/redo, search and wrapping; syntax highlighting for JSON, YAML, shell, Python, JS, Java and Kotlin; encoding detection and manual selection, with read-only mode forced for lossy decoding. Size tiers: ≤2 MB editable; 2–10 MB editable after confirmation; >10 MB read-only tail window. Atomic saves, external-change detection and unsaved-change prompts. |
-| Images | Pinch-to-zoom and double-tap zoom; tiled loading for very tall images; animated GIF/WebP; AVIF on Android 12+ |
-| PDF | Native page rendering; password entry for encrypted PDFs on Android 15+, with external-app guidance on older versions |
-| Archives | Read-only ZIP/JAR/APK/EPUB and TAR-family browsing, collapsible directories and encrypted-entry indicators; text previews and single-entry/all-entry export; correct Chinese ZIP filenames; information cards and external opening for 7z/RAR |
-| Hex | Offset / hexadecimal / ASCII columns, random access in 64 KB blocks and entropy estimation |
-| Office | Read-only text extraction from DOCX/XLSX; information cards and external opening for DOC/XLS/PPT |
-| Markdown / HTML / SVG | Markdown source editing and Markwon preview with tables; offline HTML/SVG rendering in a WebView with JavaScript and network access disabled, destroyed on exit |
-| Unknown / binary | Hex view and file information; external opening/editing, sharing and export as fallbacks |
-
-### Updates and imports (Settings)
-
-| Feature | Description |
-|---|---|
-| Update DSH online | Probe npm's official registry and Alibaba, Tencent Cloud and Huawei Cloud mirrors for versions and latency → select a mirror and version, with a second confirmation for downgrades → fetch the full dependency tree through npm in the sandbox → replace the layer and restart automatically. Runs in the background with live logs and cancellation that kills the process tree. |
-| Update DSH by offline import | Accept a single layer archive: `.tar.zst / .tar.gz / .tar / .tgz`, or a ZIP containing a layer archive. Extract to staging, validate the layout and replace atomically; failures leave the original intact. |
-| Install the runtime online | Probe mirrors separately for the **Node** and **minimal Debian** layers for availability and latency, then download, verify GPG signatures, trim and assemble the layer. Provides step-by-step progress, cancellation and error categories such as missing mirror packages, verification failures and insufficient space; any layer can be reset. |
-| Import a runtime package offline | Replace base / node / android-side with per-layer SHA-256 verification and one backup in `previous/` for rollback, as described below. Since v1.4.0, the package is distributed separately on the Release page rather than bundled in the APK, as an alternative to online installation. |
-| Plugin management / marketplace | Access through Home's Cordis tab: marketplace browsing and installation, installed-plugin management, official plugin switches, absolute safe mode, loading records and opencode recovery assistance. See the plugin section and compatibility notice above. |
-| Diagnostics and logs | DSH, sandbox and guest-command logs can be scrolled, copied and exported. Renderer diagnostics distinguish System provider, Gecko version, document state, main-thread APIs, Worker environment and known visual limitations. Load completion or an engine version alone is not treated as proof that DSH is usable |
-| Feedback | GitHub Star and issue-reporting entries; each explains the action before opening the destination |
-
-### Storage usage and cleanup
-
-- Storage accounting follows system conventions, using allocated blocks, deduplicating hard links and including app caches; it refreshes when Settings opens and can be refreshed manually.
-- Cleanup categories can be selected separately: app cache, guest temporary files (only items older than 24 hours while running), truncated runtime logs and apt download caches. Rollback backups are optional and carry an explicit warning.
-- Cleanup and background installation/import are mutually exclusive. Cleanup never touches `user-data/.dsh` or the runtime layers themselves.
-
-### Terminal
-
-- Multiple sessions: a sandbox terminal with the full PRoot Debian environment and tools such as bash, vim, htop, node, npm, apt, git, python3 and ssh; a restricted shell fallback; a floating panel for creating, switching and closing sessions
-- **Direct DSH CLI access** (added in v1.4.0): run the official `dsh` commands (web / headless / tui / plugin) in the sandbox, using the same DSH installation and profile as the web interface
-- **Developer-mode commands**: enabling the ADB channel exposes the complete `adb` client in the sandbox. When the Root channel is enabled and the device grants access, `android-root` is also available. Disabling a channel removes its command entry point
-- **Bundled utility tools** (added in v1.4.0): `jq`, `sqlite3`, `patch`, `nano` and `strings` from binutils for common AI-driven tasks. The tool bundle is **self-healing**: missing tools are restored after layer replacement or upgrades without clearing app data.
-- Two rows of extra keys: ESC / TAB / HOME / END / sticky CTRL / Paste / arrow keys / Page Up and Down / Backspace / Delete, with DECCKM awareness; pinch to adjust the font from 8–40 sp
-- Based on Termux terminal-emulator / terminal-view (v0.118.0, unmodified) and the custom `terminal-session` layer
-
-### Localization (v1.3.0)
-
-- The interface supports all six UN official languages: English / 简体中文 / العربية / Español / Français / Русский. It follows the system by default and falls back to English for unsupported languages.
-- Settings → Appearance provides a language selector with six languages plus Follow system. Changes take effect immediately without restarting, including notifications, dialogs and terminal menus.
-- Quantity text follows each language's plural rules, including six forms in Arabic and four in Russian. Technical numbers such as file sizes, timestamps and hex offsets retain Western digits.
-- Layout stays LTR globally. Arabic text follows Unicode bidirectional rendering without mirroring the whole navigation layout.
-- Built-in i18n consistency checks validate keys, placeholders, plural forms and hardcoded strings; CI checks all six language resource sets.
+- The sandbox keepalive and DSH are two independent PRoot processes; on shutdown the whole process tree is enumerated via `/proc` and children get SIGKILL first, leaving no orphans and no occupied ports
+- Each layer carries a SHA-256 sentinel; integrity is verified layer by layer at startup, so damage can be identified and layers reinstalled
+- Since v1.4.0, **the `base` and `node` layers are no longer bundled in the APK** (it contains only `dsh` and `android-side`): they are installed through “Install the runtime online” (minimal Debian layer / Node.js layer, multiple selectable mirrors, resettable) or “offline import of the full package”. Online-assembled layers trim unnecessary language packs, documentation and other unrelated components (the “minimal Debian”), for a smaller footprint
 
 ## Interface (five bottom tabs)
 
 | Tab | Features |
 |---|---|
-| Home | Control / Pilot / Cordis sub-tabs: sandbox and DSH status, Start / Restart / Stop, system metrics, phone assistant, developer-mode entry and plugin management. Settings is in the upper-right corner. |
-| Files | Workspace / sandbox / shared-area browsing, move / rename / delete, multi-select operations, import / export / sharing, incoming files, viewers/editors, search/sort, new files/folders and `.deb` installation |
-| DSH | Loads `http://127.0.0.1:3080` through System WebView or embedded GeckoView, with automatic authentication, keyboard and page compatibility, floating refresh and shortcuts for switching modules |
-| Terminal | Multiple sessions, extra keys, control panel and direct `dsh` CLI access |
-| Browser | Embedded browser and AI web assistant, element/area feedback, local previews, history/bookmarks/downloads and debugging settings |
+| Home | Four sub-tabs — Control / Pilot / Cordis / Remote: sandbox and DSH status control, system status, the phone-control entry, plugin management and remote connection; the Settings entry is at the upper-right corner |
+| Files | Workspace / sandbox / shared-area browsing, move / rename / delete, multi-select batch operations, import / export / share, external file receiving, viewer / editor, search / sort, new files / folders, and `.deb` installation into the sandbox |
+| DSH | Loads `http://127.0.0.1:3080` with System WebView or embedded GeckoView, with automatic authentication, keyboard and page compatibility, floating-ball refresh and quick module switching; also hosts remote connection pages |
+| Terminal | Multi-window terminal, auxiliary key bar, control panel, and direct `dsh` CLI execution |
+| Browser | Embedded browser and AI web assistant, element / region feedback, local web previews, history / bookmarks / downloads and debugging settings |
 
-Settings has moved to Home's upper-right corner and retains appearance options (theme/language), storage and cleanup, app updates, DSH/runtime updates and imports, diagnostics, feedback and About.
+Settings has moved to the upper-right corner of Home and keeps Appearance (theme / language), storage and cleanup, app updates, DSH and runtime updates / imports, diagnostic logs, feedback and About.
 
 ## Known limitations
 
-- **System WebView support depends on provider capabilities**: some tested WebView 101 and 124 environments can complete the main DSH workflows. Providers without document-start or the required standard APIs are blocked with an upgrade message. A WebView version number alone does not guarantee that every DSH page works.
-- **Worker / PDF support is separate from the main page**: System WebView Workers use an independent environment. The current app diagnoses Worker capability but does not inject Worker compatibility shims. PDF, Excel and other high-version Worker paths may require a newer WebView or the embedded Gecko build.
-- **Both APKs cannot be installed at the same time**: the System WebView and Gecko builds use the same package name and signing key and replace each other. Switching variants does not erase Debian, sandbox, user-data or workspaces.
-- **Developer mode is an advanced capability**: ADB and Root bypass Pilot approvals. Users must understand the risks of wireless debugging, external-device access and Root commands and are responsible for their actions. `su`, wireless debugging, hiding policies and authorization behavior may differ across ROMs.
-- **Plugin compatibility depends on both the host and the plugin**: the marketplace checks known host capabilities, package carriers and dependencies, but cannot guarantee every third-party plugin works with every DSH release.
-- **Gecko content-script injection differs on some new Android versions**: current login, external-link, configuration-file and navigation paths use native events, extension status messages or runtime links. Any future feature requiring direct page main-world injection must be revalidated on those systems.
-- **Back up before upgrading to an Alpha**: downgrading from an Alpha to a stable RC may cause conversation-data incompatibility.
+- **System WebView compatibility depends on provider capabilities**: parts of the WebView 101 / 124 environments have been tested and can complete the main DSH page flows; older engines lacking document-start or the required standard APIs are blocked from entering with an upgrade prompt. A system WebView version number alone does not guarantee every page works.
+- **Worker / PDF support is not the same as main-page compatibility**: System WebView Workers use an isolated environment; for now diagnostics are provided but no Worker compatibility patches are injected. PDF, Excel or flows depending on newer Worker APIs may need a WebView update, or the embedded Gecko build.
+- **The two APKs cannot be installed at the same time**: the System WebView and Gecko builds share a package name and signature and can only overwrite each other; installing the other build does not wipe Debian, the sandbox, user-data or created workspaces.
+- **Developer mode is an advanced capability**: ADB / Root bypass the Pilot approval system. Users should understand the risks of wireless debugging, external-device access and Root commands and bear the consequences of their own operations. `su`, wireless debugging, hiding and authorization behavior can differ across ROMs.
+- **Plugin compatibility is decided jointly by the host and the plugin**: the marketplace checks known host capabilities, carriers and dependency differences, but cannot guarantee every third-party plugin installs or runs on all DSH versions.
+- **Remote connection depends on the peer plugin and the network**: the corresponding remote plugin must be installed and enabled on the computer; proxy mode requires the phone to reach the peer address, and direct mode supports HTTPS only. Login, Cookie and download behavior may differ across plugins.
+- **iroh transport is not supported yet**: iroh addresses of saya-ch / dsh-mobile are explicitly rejected; please use LAN or ordinary HTTPS modes such as Cloudflare instead.
+- **Remote downloads have origin restrictions**: only same-origin or approved file CDNs are handed to the downloader; other cross-origin downloads may still be handled by the page or the system.
+- **LAN access requires the same subnet and the key**: the phone and the computer must be on the same LAN, DSH must be ready, and the current access key must be held; after a key reset, old links and old sessions become invalid.
+- **Gecko static content scripts have platform differences on a few new systems**: the login, external-link, configuration-file and navigation critical paths that currently need bridging already use native events, the extension state bridge or runtime links; any future feature that injects into the page main world will still need revalidation.
+- **Back up before upgrading to an Alpha**: after upgrading from a stable RC to a DSH Alpha, falling back to the RC may cause conversation-data compatibility issues.
+
 
 ## Build from source
 
@@ -262,7 +311,7 @@ Settings has moved to Home's upper-right corner and retains appearance options (
 | Gradle | Wrapper 9.5.0 (AGP 9.3.1 · Kotlin/Compose compiler plugin 2.4.20) |
 | Kotlin | Compiler 2.4.20; language/API level pinned to 2.2; JVM target 17 |
 
-> The large runtime layers are **not in this repository**. Because of their size, they are distributed as separate GitHub Release assets. Obtain `../runtime/` before building; see the next section.
+> The large runtime layers are **not in this repository**; because of their size, they are published as separate GitHub Release assets instead (see the next section). Obtain `../runtime/` before building.
 
 ```bash
 ./gradlew :app:testDebugUnitTest
@@ -270,60 +319,62 @@ Settings has moved to Home's upper-right corner and retains appearance options (
 pwsh tools/assemble_release_apks.ps1
 ```
 
-The release archive step produces:
+The release archiving step outputs:
 
 - `apk/dshbox-v<version>-system-release.apk`
 - `apk/dshbox-v<version>-gecko-release.apk`
 
-It then runs the release contract, validating DSH compatibility assets, Gecko extension permissions, script hashes, package identity and signing.
+The archiving script then runs the release contract gate, checking both APKs' DSH compatibility assets, Gecko extension permissions, script hashes, package name and signing.
 
 | Module | Responsibility |
 |---|---|
-| `app` | UI for five tabs, DSH access settings, viewers, Settings, diagnostics and updates; both renderer variants; foreground service; online updates and runtime installation |
-| `dsh-renderer` | `api`: shared renderer contract, navigation authentication and file delivery; `system`: System WebView compatibility and capability probes; `gecko`: GeckoView 158 rendering, extensions, popups and file selection |
-| `sandbox-manager` | Layer provisioning, PRoot process management, DSH version arbitration and updates, import, verification and cleanup |
-| `common` | Constants, npm mirrors, version comparison and log redaction |
+| `app` | All UI (the 5 tabs, DSH access settings, viewers, settings / diagnostics / updates pages), both rendering variants, the foreground service, online update orchestration and runtime acquisition |
+| `remote-connection` | Remote connection: device/endpoint profiles, loopback proxy and direct sessions, pairing parsing, QR scanning, the remote panel and session display slots, the downloader |
+| `dsh-renderer` | `api`: the shared rendering contract, navigation authentication and file delivery; `system`: System WebView compatibility and capability probes; `gecko`: GeckoView 158 rendering, extensions, popups and file selection |
+| `sandbox-manager` | Layered runtime provisioning, PRoot process management, DSH layer arbitration and updates, import / verification / cleanup |
+| `common` | Constants, npm mirrors, version comparison, log redaction |
 | `bridge` | WebView JS Bridge security framework (reserved stub) |
-| `terminal-session` | Session management, multiple terminals and PRoot terminal command construction |
+| `terminal-session` | The terminal session layer (multi-window, PRoot terminal command construction) |
 | `terminal-view` / `terminal-emulator` | Termux terminal libraries (v0.118.0, unmodified) |
-| `plugin-manager` | Plugin provisioning, marketplace catalog retrieval, compatibility checks and install guards; official plugin switches, absolute safe mode, loading records and opencode recovery assistance |
-| `pilot` (`interlock-relay-core` + `dshbox-adapter` + `developer-access`) | Phone-assistant core and UI adaptation; developer-mode ADB, Root, wireless pairing, devices, keys and channel UI |
-| `browser` (`browser-api` / `browser-runtime` / `browser-bridge` / `browser-devtools`) | Browser contracts, WebView session runtime, sandbox tool bridge and controlled advanced debugging; UI integration is provided by app |
+| `plugin-manager` | Plugin management: provisioning control, the marketplace (catalog retrieval / compatibility checks / install guards), official plugin switches, absolute safe mode, plugin loading records and crash-recovery assistance (opencode) |
+| `pilot` (`interlock-relay-core` + `dshbox-adapter` + `developer-access`) | The phone-assistant core and UI adaptation; developer-mode ADB, Root, wireless pairing, devices, keys and channel panels |
+| `browser` (`browser-api` / `browser-runtime` / `browser-bridge` / `browser-devtools`) | Browser contracts, the WebView session runtime, sandbox tool bridging and controlled advanced debugging; UI integration lives in app |
 
-Runtime-layer build scripts are in `runtime-bundle/`. The layer `tar.zst` archives are produced by `build_base.sh`, `build_node.sh` and `build_android_side.sh` on Linux/WSL2. See `docs/BUILD_RUNBOOK.md` for build instructions and `tools/pipeline_dryrun.sh` for preflight checks. When building from source, you must first extract the `android-side` layer from the runtime archive published in a GitHub Release and place it at `runtime/android-assets/runtime/android-side.tar.zst`; otherwise the resulting APK lacks the required layer and cannot install a working runtime.
+Runtime-layer build scripts are in `runtime-bundle/` (each layer's `tar.zst` is built by `build_base.sh` / `build_node.sh` / `build_android_side.sh` on Linux/WSL2); the build manual is `docs/BUILD_RUNBOOK.md` and the preflight script is `tools/pipeline_dryrun.sh`. Note: when building from source, developers must first extract the `android-side` layer from the runtime archive published with a Release and place it at `runtime/android-assets/runtime/android-side.tar.zst` required by the build; otherwise the compiled APK lacks that runtime layer and cannot install the runtime properly.
 
-The Release page also provides a complete offline runtime package containing base / node / android-side, separate from the APK. Since v1.4.0, the APK bundles only the `dsh` and `android-side` layers; `base` and `node` are assembled through online runtime installation or imported from that offline package.
+Note: the Release page also ships a packaged full runtime bundle with each version (three layers: base / node / android-side, separate from the APK) that can be downloaded and used directly. Since v1.4.0 the APK embeds only the `dsh` and `android-side` layers; `base` and `node` no longer go into the package and are either assembled on the fly by “Install the runtime online” or imported offline from that bundle.
 
 ## Large runtime files (not in this repository)
 
 | Path in the distribution | Contents |
 |---|---|
-| `runtime/android-assets/runtime/android-side.tar.zst` | Android-side PRoot / loader / shmem and a `.sha256` sidecar; **bundled in the APK** |
-| `runtime/android-assets/dsh/0.2.1-rc.5.tar.zst` | DSH layer and `.sha256`; unmodified upstream code, **bundled in the APK** |
-| `runtime/offline-baseline/{base,node}.tar.zst` | Debian and Node layers with individual `.sha256` sidecars and `runtime-profile.json`; **not in the APK**, supplied in the offline package |
-| `runtime/dshapp-runtime-debian-arm64-0.1.0.zip` | Complete runtime package for offline import |
+| `runtime/android-assets/runtime/android-side.tar.zst` | Host-side PRoot / loader / shmem with a `.sha256` sidecar (**bundled in the APK**) |
+| `runtime/android-assets/dsh/0.2.2-rc.1.tar.zst` | DSH layer + `.sha256` (pure upstream, unpatched; **bundled in the APK**) |
+| `runtime/offline-baseline/{base,node}.tar.zst` | Debian and Node layers, each with a `.sha256` sidecar and `runtime-profile.json`; **not in the APK**, delivered as part of the offline bundle |
+| `runtime/dshapp-runtime-debian-arm64-0.1.0.zip` | The externally delivered full runtime package (for offline import) |
 
-- Asset inclusion: `app/build.gradle.kts` uses `assets.directories.add("../../runtime/android-assets")` to reference the distribution directory, packaging its contents under `assets/runtime/*` and `assets/dsh/*`.
-  - **Only files inside the directories configured by `assets.directories.add` are included.** Moving `base` and `node` to `runtime/offline-baseline/` keeps them outside the APK. Inspection of the runtime assets confirms that the APK contains `assets/dsh/*` and `assets/runtime/android-side.tar.zst`.
-- Build prerequisite: obtain `runtime/` before `assembleSystemWebViewRelease` and `assembleGeckoRelease`; without it, the required runtime assets cannot be bundled. Since v1.4.0, this prerequisite applies to the bundled `dsh` and `android-side` layers.
-- Signing configuration (`keystore.properties` and `local.properties`) is not included in the repository. Use `tools/create_keystore.sh` to create a development signing key; without release signing configuration, release builds fall back to debug signing.
+- Inclusion: `app/build.gradle.kts` references the distribution directory via `assets.directories.add("../../runtime/android-assets")`, embedding its contents into `assets/runtime/*` and `assets/dsh/*` at build time
+  - The rule is right in that line: **only files placed in the directories pointed to by `assets.directories.add` get packaged**; once `base` / `node` moved to `runtime/offline-baseline/`, they are no longer bundled. Inspection of the APK matches — it contains only `assets/dsh/*` and `assets/runtime/android-side.tar.zst`
+- Build prerequisite: obtain `runtime/` before `assembleSystemWebViewRelease` / `assembleGeckoRelease`; if the directory is missing, the full runtime cannot be embedded. Since v1.4.0 this prerequisite applies only to the `dsh` and `android-side` layers
+- Signing keys (`keystore.properties`, `local.properties`) are not in the repository: use `tools/create_keystore.sh` to create your own development signing; without configuration, release builds fall back to debug signing
 
-## Offline runtime import
+## Offline runtime package import
 
-- Distribution: a single `dshapp-runtime-debian-arm64-0.1.0.zip` file, selected through the offline runtime import option in Settings; available alongside online installation
-- Layout and formats: outer ZIP/TAR archives and layer archives in `.tar.zst / .tar.gz / .tar / .tgz / .bz2 / .xz`, detected by magic bytes; one enclosing directory prefix and TAR containers holding layer archives are supported
-- Verification: per-layer SHA-256 checks against sidecars and `runtime-profile.json`, plus Zip-Slip protection; damaged, truncated or encrypted packages return readable errors
-- Replacement: previous layers move to `previous/`, retaining one rollback copy; the DSH layer and `user-data/.dsh` remain untouched.
-- Offline DSH updates use the separate DSH offline update option with a single-layer archive such as `0.2.1-rc.5.tar.zst`; online updates remain available.
+- Distribution: a single `dshapp-runtime-debian-arm64-0.1.0.zip` file (published on the Release page), selected through the “Import a runtime package offline” option in Settings; coexists with “Install the runtime online”
+- Layout and formats: an outer zip / tar; layer archives in `.tar.zst / .tar.gz / .tar / .tgz / .bz2 / .xz` (identified by magic bytes), with support for one directory prefix and outer tar containers holding layer archives
+- Verification: per-layer SHA-256 (sidecars cross-checked against `runtime-profile.json`) + Zip-Slip protection; damaged / truncated / encrypted packages return readable errors
+- Replacement: the old layers move into `previous/` (one copy for rollback); the DSH layer and `user-data/.dsh` are never touched
+- Offline DSH updates use the single-file layer package of “Update DSH (offline import)” (e.g. `0.2.2-rc.1.tar.zst`), alongside online updates.
 
-## User Communication & Feedback:  
-- **QQ Group**: 2163082322  
-- **Bilibili Account**: Search for "文大师啵啵"  
-- **Bug Reports**: [GitHub Issues](https://github.com/WSK-build/DSHBox/issues)
+## User communication and feedback
+
+- **QQ group**: 2163082322
+- **Bilibili account**: search for “文大师啵啵”
+- **Issue reports**: [GitHub Issues](https://github.com/WSK-build/DSHBox/issues)
 
 ## License
 
-This project is licensed under **GPL v3**; see [LICENSE](LICENSE). Third-party components retain their own licenses. See `THIRD_PARTY_NOTICES.md` for details:
+This project is licensed under **GPL v3**; see [LICENSE](LICENSE). Third-party components retain their own licenses; see `THIRD_PARTY_NOTICES.md` for details:
 
 - PRoot (GPL-2+) · talloc (LGPL-3+) · Debian rootfs (individual packages' Debian copyright files)
 - DeepSeek Harness / Cordis (MIT) · Node.js (MIT)
@@ -333,6 +384,6 @@ This project is licensed under **GPL v3**; see [LICENSE](LICENSE). Third-party c
 - sora-editor (LGPL-2.1-or-later, unmodified AAR) · Markwon (Apache-2.0) · commons-compress (Apache-2.0) · zstd-jni (BSD-2-Clause for the JNI wrapper; BSD-3-Clause for the Zstandard core)
 - interlock-relay-core (Apache-2.0, independently published phone-assistant platform, source distributed with this repository) · Shizuku (MIT, the phone assistant's shell-identity execution backend)
 
-The three DSHBox plugins, `dsh-mobile-adapt`, `mobile-pilot` and `browser-use`, each include a complete LICENSE and NOTICE and declare **GPL-3.0-only**. Third-party dependencies retain their original licenses. Bundled license documents are available offline under Settings → About → Open-source licenses; see [`licenses/README.md`](licenses/README.md) for origins and source rebuild instructions.
+The three in-house plugins, `dsh-mobile-adapt`, `mobile-pilot` and `browser-use`, each include a complete LICENSE and NOTICE and declare **GPL-3.0-only**; third-party dependencies retain their original licenses. Bundled license documents are available offline under Settings → About → Open-source licenses; see [`licenses/README.md`](licenses/README.md) for origins and source rebuild instructions.
 
-**Brand assets are not covered by those license grants.** The app name, app icon and DSHBox-owned in-app graphics listed in [`TRADEMARK.md`](TRADEMARK.md) remain the exclusive property of the rights holder, with all rights reserved. They may not be used for modified or derivative versions without permission, or as identifiers likely to cause confusion.
+**Brand assets are not covered by the license grants above.** The app name, app icon and DSHBox-owned in-app brand graphics (listed in [`TRADEMARK.md`](TRADEMARK.md)) remain the exclusive property of the project's rights holder, with all rights reserved; they may not be used for modified or derivative versions without permission, or as identifiers likely to cause confusion.

@@ -204,7 +204,7 @@
     <string name="pm_market_state_rebuild">Copiar y reconstruir</string>
     <string name="pm_market_state_rebuilt">Archivo de estado reconstruido; el original se guardó como copia.</string>
     <string name="pm_adapt_section_title">Plugins de adaptación de DSHBox</string>
-    <string name="pm_adapt_mobile">Adaptación de página móvil de DSH</string>
+    <string name="pm_adapt_mobile">Adaptación de la interacción de página de DSH</string>
     <string name="pm_adapt_mobile_pilot">Conectar el teléfono a DSH</string>
     <string name="pm_browser_adapter_title">Automatización Browser de DSH</string>
     <string name="pm_browser_assembled">Adaptador de Browser instalado</string>

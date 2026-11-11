@@ -82,6 +82,9 @@ abstract class GeneratePageCompatConfig : DefaultTask() {
             /*
              * Generated from common Constants.DSH_DEFAULT_HOST/PORT.
              * The shared page compatibility script verifies this exact origin.
+             * Known limitation: the DSH Enter key switch is not carried here —
+             * the page layer keeps its built-in "send" behaviour for gecko;
+             * revisit together with the DSH keybinding review.
              */
             (function () {
               'use strict';

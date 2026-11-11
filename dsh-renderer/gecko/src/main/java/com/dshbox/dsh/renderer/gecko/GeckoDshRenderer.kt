@@ -11,8 +11,10 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
 import com.dshbox.dsh.renderer.api.DshAsyncRequestId
+import com.dshbox.dsh.renderer.api.DshDownloadRequest
 import com.dshbox.dsh.renderer.api.DshLoadDispatchResult
 import com.dshbox.dsh.renderer.api.DshLoadRejectionReason
+import com.dshbox.dsh.renderer.api.DshMainFrameDecision
 import com.dshbox.dsh.renderer.api.DshNativeDocumentAttribution
 import com.dshbox.dsh.renderer.api.DshNativeRef
 import com.dshbox.dsh.renderer.api.DshOriginPolicy
@@ -28,6 +30,7 @@ import com.dshbox.dsh.renderer.api.DshRendererHost
 import com.dshbox.dsh.renderer.api.DshRendererTheme
 import com.dshbox.dsh.renderer.api.DshSelectedFile
 import com.dshbox.dsh.renderer.api.DshWebPermission
+import com.dshbox.dsh.renderer.api.resolveMainFrameNavigation
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
@@ -35,6 +38,7 @@ import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebRequestError
+import org.mozilla.geckoview.WebResponse
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -48,7 +52,8 @@ internal class GeckoDshRenderer(
     override val capabilities: DshRendererCapabilities,
 ) : DshRenderer {
     private val context = hostContext.applicationContext
-    private val originPolicy = DshOriginPolicy.create(config.trustedBaseOrigin)
+    private val originPolicy =
+        DshOriginPolicy.create(config.trustedBaseOrigin, config.mainFrameNavigation)
     private val internalSchemes = config.internalSchemes.mapTo(mutableSetOf()) {
         it.lowercase(Locale.ROOT)
     }
@@ -88,6 +93,15 @@ internal class GeckoDshRenderer(
     private var expectedHostNavigationUri: String? = null
     private var statusBridgeState = StatusBridgeState.INSTALLING
     private val popupSessions = linkedSetOf<GeckoSession>()
+
+    /**
+     * 页面触发下载的宿主监听（仅直连会话安装）：[ContentDelegate.onExternalResponse]
+     * 把 Gecko 判定为「外部响应/下载」的响应转成 [DshDownloadRequest] 回调。
+     * volatile：监听由宿主在主线程安装，onExternalResponse 亦在主线程投递，
+     * release 时置 null 后引擎回调一律静默丢弃。
+     */
+    @Volatile
+    private var downloadListener: ((DshDownloadRequest) -> Unit)? = null
 
     private val statusCorrelator = GeckoNavigationStatusCorrelator(
         isTrustedUrl = originPolicy::isTrusted,
@@ -164,18 +178,41 @@ internal class GeckoDshRenderer(
             ): GeckoResult<AllowOrDeny>? {
                 if (!isActiveForEngine()) return GeckoResult.deny()
 
+                // 导航型下载：跨源 <a download> 在引擎里退化为普通导航，
+                // 文件响应会让文档停留在加载态且不产生外部响应。
+                // 命中已批准的文件 CDN 时取消导航，转宿主下载器。
+                if (downloadListener != null &&
+                    config.downloadUrlPredicate?.invoke(request.uri) == true
+                ) {
+                    deliverDownloadRequest(request.uri, null, null)
+                    return GeckoResult.deny()
+                }
+
                 val uri = runCatching { Uri.parse(request.uri) }.getOrNull()
                 val scheme = uri?.scheme?.lowercase(Locale.ROOT)
-                if ((scheme == "http" || scheme == "https") &&
-                    !originPolicy.isTrusted(request.uri) &&
-                    isTrustedDocument(currentDocumentUrl) &&
-                    (request.target ==
-                        GeckoSession.NavigationDelegate.TARGET_WINDOW_CURRENT ||
-                        request.target ==
-                        GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW)
+                // 主框架导航判定收口在 api 纯函数（默认策略 = 既有行为，
+                // AnyHttps 仅供直连会话放宽口径；http/其它 scheme 仍走既有
+                // 外放判定）
+                if (request.target ==
+                    GeckoSession.NavigationDelegate.TARGET_WINDOW_CURRENT ||
+                    request.target ==
+                    GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW
                 ) {
-                    emit(DshRendererEvent.ExternalUrlRequested(request.uri))
-                    return GeckoResult.deny()
+                    when (
+                        resolveMainFrameNavigation(
+                            mainFrameNavigation = config.mainFrameNavigation,
+                            scheme = scheme,
+                            targetTrusted = originPolicy.isTrusted(request.uri),
+                            currentDocumentTrusted = isTrustedDocument(currentDocumentUrl),
+                        )
+                    ) {
+                        DshMainFrameDecision.Allow -> Unit
+                        DshMainFrameDecision.Cancel -> return GeckoResult.deny()
+                        DshMainFrameDecision.External -> {
+                            emit(DshRendererEvent.ExternalUrlRequested(request.uri))
+                            return GeckoResult.deny()
+                        }
+                    }
                 }
                 if (scheme != null && scheme in internalSchemes) {
                     if (request.target ==
@@ -322,6 +359,10 @@ internal class GeckoDshRenderer(
 
             override fun onKill(session: GeckoSession) {
                 handleRendererGone("content process was killed")
+            }
+
+            override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+                deliverExternalResponse(session, response)
             }
         })
 
@@ -497,11 +538,27 @@ internal class GeckoDshRenderer(
         return permissionController.complete(requestId, grantedPermissions)
     }
 
+    /**
+     * 安装下载监听（GeckoView 158 的下载入口是
+     * [GeckoSession.ContentDelegate.onExternalResponse]——引擎对判定为下载的
+     * 响应回调一次；无独立 DownloadDelegate/DownloadSettings 需要配置；
+     * 同一 URL 的第二次下载是独立响应，不做去重）。
+     * 监听替换即换靶；null = 撤监听，其后的引擎回调一律静默丢弃。
+     */
+    override fun setDownloadListener(listener: ((DshDownloadRequest) -> Unit)?) {
+        requireMainThread("GeckoDshRenderer.setDownloadListener")
+        if (released) return
+        downloadListener = listener
+    }
+
     override fun release() {
         requireMainThread("GeckoDshRenderer.release")
         if (released) return
         released = true
         eventsEnabled = false
+        // 撤下载监听先于会话关闭：onExternalResponse 的迟到投递在主线程复查
+        // 监听与状态后丢弃，release 后不再有下载回调
+        downloadListener = null
         token = null
         tokenRevision = null
         currentDocumentUrl = null
@@ -549,10 +606,24 @@ internal class GeckoDshRenderer(
             ): GeckoResult<AllowOrDeny>? {
                 if (session !== popup || !isActiveForEngine()) return GeckoResult.deny()
 
+                // 弹窗里的导航型下载与主文档同一判定：先收进下载器，不按
+                // 「页面打开请求」外放
+                if (downloadListener != null &&
+                    config.downloadUrlPredicate?.invoke(request.uri) == true
+                ) {
+                    deliverDownloadRequest(request.uri, null, null)
+                    retirePopupSession(popup)
+                    return GeckoResult.deny()
+                }
+
                 val uri = runCatching { Uri.parse(request.uri) }.getOrNull()
                 val scheme = uri?.scheme?.lowercase(Locale.ROOT)
                 if (scheme == "http" || scheme == "https") {
-                    emit(DshRendererEvent.ExternalUrlRequested(request.uri))
+                    // popup 会话（页面 open 请求经 onNewSession 产生）递交的
+                    // http(s) 目标属"页面打开请求"语义：forced = true，宿主
+                    // 一律按新窗口语义外放，不得在其内就地加载（就地加载会
+                    // 卸载当前远程文档）
+                    emit(DshRendererEvent.ExternalUrlRequested(request.uri, forced = true))
                     retirePopupSession(popup)
                     return GeckoResult.deny()
                 }
@@ -589,6 +660,11 @@ internal class GeckoDshRenderer(
             override fun onKill(session: GeckoSession) {
                 retirePopupSession(popup)
             }
+
+            override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+                // 弹窗/新标签里的下载与主页面同一通道
+                deliverExternalResponse(session, response)
+            }
         })
         popup.setPromptDelegate(object : GeckoSession.PromptDelegate {
             override fun onPopupPrompt(
@@ -596,6 +672,42 @@ internal class GeckoDshRenderer(
                 prompt: GeckoSession.PromptDelegate.PopupPrompt,
             ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> =
                 GeckoResult.fromValue(prompt.confirm(AllowOrDeny.DENY))
+        })
+    }
+
+    /**
+     * 页面触发的下载（Content-Disposition 附件 / 可下载 MIME）：主 session 与
+     * 弹窗 session 共用。Gecko 对每次下载响应只回调一次，不做 uri 去重——
+     * 同一 URL 的第二次下载必须是独立事件；release/监听撤下后丢弃。
+     */
+    private fun deliverExternalResponse(session: GeckoSession, response: WebResponse) {
+        if (downloadListener == null) return
+        if (!isActiveForEngine()) return
+        deliverDownloadRequest(
+            url = response.uri,
+            contentDisposition = response.headers["Content-Disposition"],
+            mimeType = response.headers["Content-Type"],
+        )
+    }
+
+    private fun deliverDownloadRequest(
+        url: String,
+        contentDisposition: String?,
+        mimeType: String?,
+    ) {
+        session.getUserAgent().accept({ userAgent ->
+            mainHandler.post {
+                val current = downloadListener
+                if (!isActiveForEngine() || current == null) return@post
+                current.invoke(
+                    DshDownloadRequest(
+                        url = url,
+                        userAgent = userAgent?.filter { !it.isISOControl() },
+                        contentDisposition = contentDisposition,
+                        mimeType = mimeType,
+                    ),
+                )
+            }
         })
     }
 

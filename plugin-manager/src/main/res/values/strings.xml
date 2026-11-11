@@ -214,7 +214,7 @@
 
     <!-- DSHBox adapter plugins (moved from the settings page) -->
     <string name="pm_adapt_section_title">DSHBox adapter plugins</string>
-    <string name="pm_adapt_mobile">DSH mobile page adaptation</string>
+    <string name="pm_adapt_mobile">DSH page interaction adaptation</string>
     <string name="pm_adapt_mobile_pilot">Connect phone to DSH</string>
     <string name="pm_browser_adapter_title">DSH Browser automation</string>
     <string name="pm_browser_assembled">Browser adapter assembled</string>

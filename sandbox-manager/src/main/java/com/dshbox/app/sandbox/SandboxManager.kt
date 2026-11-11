@@ -39,6 +39,18 @@ interface SandboxManager {
      */
     val dshLaunchToken: StateFlow<String?>
 
+    /**
+     * DSH webserver 的**运行期地址**（含实际端口，`http://host:port`）。
+     *
+     * 端口自适应：启动前应用侧探测 3080..3099 的第一个空闲端口
+     * 并经 `--patch` 层下发给 webserver 插件；真正生效的端口以启动输出
+     * `dsh web: http://host:port/?token=…` 为准（请求与输出不一致以输出为准）。
+     * null = 尚无从输出确证的地址（未启动或旧版输出不可解析），消费方回退
+     * `Constants.DSH_BASE_URL` 默认值。端口变化（重启落到另一端口）时本流
+     * 即时更新，界面/WebView/健康检查按现值读取。
+     */
+    val dshBaseUrl: StateFlow<String?>
+
     /** One-time directory initialization. Idempotent. */
     suspend fun initialize()
 

@@ -47,14 +47,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dshbox.app.R
 import com.dshbox.app.ui.configurationAwareResources
-import com.dshbox.app.common.Constants
 import com.dshbox.app.ui.webview.dshUrlWithToken
 import com.dshbox.app.ui.webview.openDefaultAppsSettings
 import kotlinx.coroutines.delay
+import com.dshbox.app.ui.theme.AppDshAddressState
 import com.dshbox.app.common.R as CommonR
 
 /**
- * DSH access settings occupies the same full-screen subpage layer as Pilot/Cordis detail pages.
+ * Local DSH access occupies the same full-screen subpage layer as Pilot/Cordis detail pages.
  * Its rows describe the APP's external-access boundary; DSH itself is not modified.
  */
 @Composable
@@ -66,10 +66,10 @@ internal fun DshAccessSettingsScreen(
 ) {
     val context = LocalContext.current
     val resources = configurationAwareResources()
-    val fullUrl = remember(launchToken) {
+    val fullUrl = remember(launchToken, AppDshAddressState.baseUrl) {
         launchToken
             ?.takeIf { it.isNotEmpty() }
-            ?.let { dshUrlWithToken(Constants.DSH_BASE_URL, it) }
+            ?.let { dshUrlWithToken(AppDshAddressState.baseUrl, it) }
     }
     var copied by remember(fullUrl) { mutableStateOf(false) }
     var settingsFailed by remember { mutableStateOf(false) }

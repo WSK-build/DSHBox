@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DSHBox — Run DeepSeek Harness (DSH) on Android</title>
-  <meta name="description" content="DSHBox runs DeepSeek Harness on Android with an AI browser assistant, phone tools, shared files and a terminal. Guided Debian and Node.js setup. No root or Termux required.">
-  <meta name="keywords" content="DeepSeek Harness, DSH, dsh-android, dsh-mobile, dshbox, dsh android, dsh for android, deepseek harness android, deepseek harness mobile, DeepSeek 手机端, DSH 手机端, Android, 安卓, 手机, 平板, 本地运行, 手机本地运行 DeepSeek, 免Root, no root, no Termux, Termux, Debian, Node.js, PRoot, WebView, LLM, 大模型, AI assistant, APK">
+  <title>DSHBox — Run DeepSeek Harness (DSH) on Android, locally or remotely</title>
+  <meta name="description" content="DSHBox runs DeepSeek Harness locally on Android and also connects to DSH remotely over LAN or the web. Remote multi-device management, proxy/direct modes, an AI browser assistant, phone tools, shared files and a terminal. No root or Termux required.">
+  <meta name="keywords" content="DeepSeek Harness, DSH, dsh-android, dsh-mobile, dshbox, dsh android, dsh for android, deepseek harness android, deepseek harness mobile, remote DSH, DSH remote, remote harness, dsh-mobile remote, dsh-bridge, dsh-pocket, ds-harness-remote, WorkBuddy, MiniMax, 远程连接 DSH, 远程操控 DSH, 远程 DSH, DeepSeek 手机端, DSH 手机端, Android, 安卓, 手机, 平板, 本地运行, 远程连接, 手机本地运行 DeepSeek, 免Root, no root, no Termux, Termux, Debian, Node.js, PRoot, WebView, LLM, 大模型, AI assistant, APK">
   <meta name="robots" content="index, follow">
   <meta name="msvalidate.01" content="90F2FC4A24EEE6144EAC2F6A1D1230B3" />
   <meta name="google-site-verification" content="M2irGPAWei9iTdLFDT43vW1g58zfYRuMUeWWWIcyMPM" />
@@ -13,15 +13,15 @@
   <meta name="theme-color" content="#10A37F">
 
   <meta property="og:type" content="website">
-  <meta property="og:title" content="DSHBox — DeepSeek Harness for Android">
-  <meta property="og:description" content="Run the full DeepSeek Harness (DSH) locally on Android phones and tablets. One APK, no root and no Termux required.">
+  <meta property="og:title" content="DSHBox — DeepSeek Harness for Android, local and remote">
+  <meta property="og:description" content="Run the full DeepSeek Harness (DSH) locally on Android phones and tablets, or control DSH remotely over LAN or the web. One APK, no root and no Termux required.">
   <meta property="og:url" content="https://wsk-build.github.io/DSHBox/">
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="zh_CN">
   <meta property="og:image" content="https://wsk-build.github.io/DSHBox/assets/images/hero-product-crop.jpg">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="DSHBox — DeepSeek Harness for Android">
-  <meta name="twitter:description" content="Run the full DeepSeek Harness locally on Android phones and tablets.">
+  <meta name="twitter:title" content="DSHBox — DeepSeek Harness for Android, local and remote">
+  <meta name="twitter:description" content="Run the full DeepSeek Harness locally on Android phones and tablets, or control DSH remotely over LAN or the web.">
   <meta name="twitter:image" content="https://wsk-build.github.io/DSHBox/assets/images/hero-product-crop.jpg">
 
   <link rel="icon" type="image/svg+xml" href="./assets/images/icon.svg">
@@ -32,7 +32,7 @@
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.1&build=2">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.2">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -47,18 +47,20 @@
       {
         "@type": "SoftwareApplication",
         "name": "DSHBox",
-        "alternateName": ["DeepSeek Harness for Android", "DeepSeek Harness 安卓移动端", "dsh-android", "dsh-mobile"],
-        "keywords": ["dsh-android", "dsh-mobile", "dsh android", "dsh for android", "deepseek harness android", "deepseek harness mobile", "DeepSeek 手机端", "DSH 手机端", "手机本地运行 DeepSeek", "Android 本地 AI"],
+        "alternateName": ["DeepSeek Harness for Android", "DeepSeek Harness 安卓移动端", "DSH remote client", "DSH 远程连接", "dsh-android", "dsh-mobile"],
+        "keywords": ["dsh-android", "dsh-mobile", "dsh android", "dsh for android", "deepseek harness android", "deepseek harness mobile", "remote DSH", "DSH remote", "dsh-mobile remote", "dsh-bridge", "dsh-pocket", "ds-harness-remote", "WorkBuddy", "MiniMax", "远程连接 DSH", "远程操控 DSH", "DeepSeek 手机端", "DSH 手机端", "手机本地运行 DeepSeek", "Android 本地 AI"],
         "url": "https://wsk-build.github.io/DSHBox/",
         "sameAs": ["https://github.com/WSK-build/DSHBox", "https://github.com/WSK-build/DSHBox/releases/latest"],
         "applicationCategory": "MobileApplication",
-        "applicationSubCategory": "Local AI / LLM assistant",
+        "applicationSubCategory": "Local and remote AI / LLM assistant",
         "operatingSystem": "Android (ARM64, Android 10+)",
         "softwareVersion": "1.5.1",
         "inLanguage": ["en", "zh-CN"],
-        "description": "Run DeepSeek Harness locally on Android with an AI browser assistant, phone tools, shared folders and a terminal. Guided Debian and Node.js setup, no root or Termux required. 中文：在安卓手机与平板上本地运行 DSH，集成 AI 浏览器助手、手机助手、系统文件共享区与终端；按引导安装 Debian 与 Node.js，无需 Root 或单独安装 Termux。",
+        "description": "Run DeepSeek Harness locally on Android and connect to DSH remotely over LAN or the web, with an AI browser assistant, phone tools, shared folders and a terminal. Guided Debian and Node.js setup, no root or Termux required. 中文：在安卓手机与平板上本地运行 DSH，也可通过扫码或配对链接远程连接 DSH；集成 AI 浏览器助手、手机助手、系统文件共享区与终端，无需 Root 或单独安装 Termux。",
         "featureList": [
           "Runs the full DeepSeek Harness (DSH) locally on Android",
+          "Connects to DSH remotely over LAN or the web with proxy or direct modes",
+          "Manages multiple remote DSH devices and switches between them",
           "Supports Android phones and tablets (ARM64)",
           "No root required",
           "No Termux or other external software required",
@@ -133,12 +135,12 @@
           </p>
           <h1 class="reveal hero-title">DSHBox</h1>
           <p class="hero-subtitle reveal">
-            <span class="lang-en">The Android mobile client for DeepSeek Harness (DSH) — run the full harness completely on-device, on phones and tablets.</span>
-            <span class="lang-zh" lang="zh-CN">DeepSeek Harness（DSH）的安卓移动端——在手机与平板上完全本地化、完整运行 DSH。</span>
+            <span class="lang-en">The Android mobile client for DeepSeek Harness (DSH) — run the full harness locally on phones and tablets, and control DSH remotely.</span>
+            <span class="lang-zh" lang="zh-CN">DeepSeek Harness（DSH）的安卓移动端——在手机与平板上本地化完整运行 DSH，以及可远程操控 DSH。</span>
           </p>
           <p class="hero-note reveal">
-            <span class="lang-en">An AI workbench with a browser assistant, phone tools, shared files and a terminal. Guided runtime setup, no root or separate Termux required.</span>
-            <span class="lang-zh" lang="zh-CN">集成 AI 浏览器助手、手机助手、系统文件共享区与终端。按引导安装运行环境，无需 Root，也无需单独安装 Termux。</span>
+            <span class="lang-en">An AI workbench for local and remote DSH, with a browser assistant, phone tools, shared files and a terminal. Connect other DSH devices by pairing code or link; guided runtime setup, no root or separate Termux required.</span>
+            <span class="lang-zh" lang="zh-CN">本地与远程 DSH 共用的 AI 工作台，集成浏览器助手、手机助手、系统文件共享区与终端。可扫码或粘贴链接连接其他 DSH 设备；按引导安装运行环境，无需 Root，也无需单独安装 Termux。</span>
           </p>
 
           <div class="hero-actions reveal">
@@ -171,6 +173,9 @@
             </a></li>
             <li><a href="https://github.com/WSK-build/DSHBox#readme" target="_blank" rel="noopener">
               <span class="lang-en">Installation Guide</span><span class="lang-zh">安装指南</span>
+            </a></li>
+            <li><a href="https://github.com/WSK-build/DSHBox" target="_blank" rel="noopener">
+              <span class="lang-en">Star on GitHub</span><span class="lang-zh">去 GitHub 点赞支持</span>
             </a></li>
           </ul>
 
@@ -253,8 +258,8 @@
             <span class="lang-zh">一个 APK，装下完整工具链</span>
           </h2>
           <p>
-            <span class="lang-en">Set up your runtime with guided steps, then use DSH, browser automation and local tools from one app.</span>
-            <span class="lang-zh">按引导准备运行环境，在一个 App 中连接 DSH、浏览器自动化与本地工具。</span>
+            <span class="lang-en">Run DSH locally or connect remotely, then use the terminal, browser automation, phone control and other tools from one app.</span>
+            <span class="lang-zh">本地运行或远程连接 DSH，在一个 App 中使用终端、浏览器自动化与手机操控等工具。</span>
           </p>
         </header>
 
@@ -265,8 +270,8 @@
             </div>
             <h3><span class="lang-en">Complete DSH Workbench</span><span class="lang-zh">完整 DSH 工作台</span></h3>
             <p>
-              <span class="lang-en">Run DSH locally on Android. Use sessions, agents and tools through the embedded WebUI, with full-screen chat and quick navigation.</span>
-              <span class="lang-zh">在 Android 本机运行 DSH，通过内嵌 WebUI 使用会话、Agent 与工具调用，配合全屏对话和快捷导航。</span>
+              <span class="lang-en">Run DSH locally on Android, or connect to DSH on another computer and use both from one app. Sessions, agents and tools work through the embedded WebUI, with full-screen chat and quick navigation.</span>
+              <span class="lang-zh">在 Android 本机运行 DSH，也可连接另一台电脑上的 DSH，本地与远程共用同一个 App。通过内嵌 WebUI 使用会话、Agent 与工具调用，配合全屏对话和快捷导航。</span>
             </p>
           </article>
 
@@ -360,8 +365,8 @@
             <span class="lang-zh">来自真实运行设备</span>
           </h2>
           <p>
-            <span class="lang-en">Real captures from a running device — how DSHBox hosts and extends the DSH ecosystem, and the facilities that keep it usable every day.</span>
-            <span class="lang-zh">真机实拍画面——DSHBox 对 DSH 生态的容纳与扩充，以及让它日常好用的配套设施。</span>
+            <span class="lang-en">Real captures from a running device — DSHBox hosts and extends the DSH ecosystem, and provides practical mobile facilities for it.</span>
+            <span class="lang-zh">真机实拍画面——DSHBox 是对 DSH 生态的容纳与扩充，以及为它提供好用的移动端配套设施。</span>
           </p>
         </header>
 
@@ -649,13 +654,23 @@
             <span class="lang-zh">你想问的都在这里</span>
           </h2>
           <p>
-            <span class="lang-en">Common questions about running DSH on Android.</span>
-            <span class="lang-zh">关于在 Android 上运行 DSH 的常见问题。</span>
+            <span class="lang-en">Common questions about running or remotely connecting to DSH on Android.</span>
+            <span class="lang-zh">关于在 Android 上运行或远程连接 DSH 的常见问题。</span>
           </p>
         </header>
 
         <div class="faq-list">
           <details class="faq-item reveal" style="--i:0">
+            <summary>
+              <span class="lang-en">Does DSHBox run DSH locally or connect remotely?</span>
+              <span class="lang-zh">DSHBox 是移动端本地运行还是远程连接？</span>
+            </summary>
+            <p>
+              <span class="lang-en">Both. You can run the full DSH locally on your phone or tablet, or scan a pairing code / paste a link to connect to DSH on your LAN or the internet. Remote connections support proxy and direct modes, with switching between multiple devices.</span>
+              <span class="lang-zh">两者都支持。既可在手机或平板上本地完整运行 DSH，也可通过扫码或粘贴配对链接，远程连接同一局域网或公网上的 DSH。远程连接支持代理与直连，并可在多个设备间切换。</span>
+            </p>
+          </details>
+          <details class="faq-item reveal" style="--i:1">
             <summary>
               <span class="lang-en">Does DSHBox need root?</span>
               <span class="lang-zh">DSHBox 需要 Root 吗？</span>
@@ -665,7 +680,7 @@
               <span class="lang-zh">不需要。DSHBox 使用 PRoot 提供免 Root 的 Debian 用户态环境。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:1">
+          <details class="faq-item reveal" style="--i:2">
             <summary>
               <span class="lang-en">Do I need to install Termux separately?</span>
               <span class="lang-zh">需要单独安装 Termux 吗？</span>
@@ -675,7 +690,7 @@
               <span class="lang-zh">不需要。DSHBox 随包提供 DSH 与 PRoot，并引导安装或离线导入 Debian、Node.js，无需依赖 Termux。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:2">
+          <details class="faq-item reveal" style="--i:3">
             <summary>
               <span class="lang-en">Does it support Android tablets?</span>
               <span class="lang-zh">支持 Android 平板吗？</span>
@@ -685,7 +700,7 @@
               <span class="lang-zh">支持。DSHBox 已在手机与平板上测试，WebUI 会自动适配大屏。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:3">
+          <details class="faq-item reveal" style="--i:4">
             <summary>
               <span class="lang-en">Does it support x86 or 32-bit devices?</span>
               <span class="lang-zh">支持 x86 或 32 位设备吗？</span>
@@ -695,7 +710,7 @@
               <span class="lang-zh">不支持。当前构建仅面向 ARM64 设备。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:4">
+          <details class="faq-item reveal" style="--i:5">
             <summary>
               <span class="lang-en">Is there an iOS version?</span>
               <span class="lang-zh">有 iOS 版本吗？</span>
@@ -705,7 +720,7 @@
               <span class="lang-zh">没有。DSHBox 仅支持 Android，iOS 不允许此类本地运行时环境。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:5">
+          <details class="faq-item reveal" style="--i:6">
             <summary>
               <span class="lang-en">Where is my data stored?</span>
               <span class="lang-zh">我的数据存在哪里？</span>
@@ -715,7 +730,7 @@
               <span class="lang-zh">会话与工作区默认位于应用存储；共享目录保存在系统存储中，卸载 App 不会自动删除其中内容。模型调用与网页访问使用你选择的服务。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:6">
+          <details class="faq-item reveal" style="--i:7">
             <summary>
               <span class="lang-en">How do I upgrade DSH?</span>
               <span class="lang-zh">如何升级 DSH？</span>
@@ -725,7 +740,7 @@
               <span class="lang-zh">随包版本为 <span data-fact="dshVersion">0.2.1-rc.5</span>，可在设置 → 在线更新 DSH 中选择镜像源升级。体验 Alpha 前请备份，回退 RC 可能出现对话数据兼容问题。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:7">
+          <details class="faq-item reveal" style="--i:8">
             <summary>
               <span class="lang-en">How do I back up sessions and workspaces?</span>
               <span class="lang-zh">如何备份会话与工作区？</span>
@@ -735,7 +750,7 @@
               <span class="lang-zh">使用内置文件管理器或系统文件传输工具，把工作区目录复制到 DSHBox 存储之外；升级前请保留副本。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:8">
+          <details class="faq-item reveal" style="--i:9">
             <summary>
               <span class="lang-en">Is PRoot a full security sandbox?</span>
               <span class="lang-zh">PRoot 是完整的安全沙箱吗？</span>
@@ -745,7 +760,7 @@
               <span class="lang-zh">不是。PRoot 提供的是用户态 Linux 环境，不是内核级沙箱，请勿用它运行不受信任的代码。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:9">
+          <details class="faq-item reveal" style="--i:10">
             <summary>
               <span class="lang-en">Is DSHBox an official DeepSeek project?</span>
               <span class="lang-zh">DSHBox 是 DeepSeek 官方项目吗？</span>
@@ -755,7 +770,7 @@
               <span class="lang-zh">不是。DSHBox 是面向 DeepSeek Harness 的独立开源社区项目，与 DeepSeek 无隶属或背书关系。</span>
             </p>
           </details>
-          <details class="faq-item reveal" style="--i:10">
+          <details class="faq-item reveal" style="--i:11">
             <summary>
               <span class="lang-en">DSH, dsh-android or dsh-mobile — what should I call it?</span>
               <span class="lang-zh">该叫 DSH、dsh-android 还是 dsh-mobile？</span>
@@ -798,6 +813,7 @@
           <ul>
             <li><a href="https://github.com/deepseek-ai/deepseek-harness/discussions/5801" target="_blank" rel="noopener"><span class="lang-en">Community Discussion</span><span class="lang-zh">社区讨论</span></a></li>
             <li><a href="https://github.com/WSK-build/DSHBox#readme" target="_blank" rel="noopener"><span class="lang-en">Installation Guide</span><span class="lang-zh">安装指南</span></a></li>
+            <li><a href="https://github.com/WSK-build/DSHBox" target="_blank" rel="noopener"><span class="lang-en">Star on GitHub</span><span class="lang-zh">去 GitHub 点赞支持</span></a></li>
             <li><a href="#faq"><span class="lang-en">FAQ</span><span class="lang-zh">常见问题</span></a></li>
           </ul>
         </nav>
@@ -825,6 +841,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.5.1&build=2" defer></script>
+  <script src="./assets/js/main.js?v=1.5.2" defer></script>
 </body>
 </html>

@@ -540,6 +540,14 @@ class SandboxProcessRunner(
         order.asReversed().forEach { killPid(it) }
         Log.i(TAG, "killAll('$prefix'): killed ${order.size} pid(s)")
     }
+
+    /**
+     * /proc 快照中是否仍存在 cmdline 含 [prefix] 的存活进程（SIGKILL 后
+     * 进程条目会短暂残留，供 killAll 后的有界等待判定"进程已消失"）。
+     * 与 [killAll] 同一次 /proc 遍历口径。
+     */
+    fun hasAliveProcess(prefix: String): Boolean =
+        readProcTable()?.keys?.any { readCmdline(it)?.contains(prefix) == true } ?: false
 }
 
 /** /proc 计数单位 USER_HZ 的兜底值；实际值用 sysconf(_SC_CLK_TCK) 现取（同 AOSP ProcessCpuTracker）。 */

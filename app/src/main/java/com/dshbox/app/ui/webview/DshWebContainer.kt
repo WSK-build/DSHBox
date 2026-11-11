@@ -14,6 +14,7 @@ import com.dshbox.app.BuildConfig
 import com.dshbox.app.R
 import com.dshbox.app.dsh.DshRendererFactory
 import com.dshbox.app.dsh.DshRendererReportStore
+import com.dshbox.app.ui.theme.AppDshBehaviorState
 import com.dshbox.dsh.renderer.api.*
 
 /** Shared Android host; the selected build flavor supplies exactly one DSH engine. */
@@ -48,6 +49,7 @@ internal class DshWebContainer(
             trustedBaseOrigin = url,
             internalSchemes = setOf("dshbox", "dsh-resource"),
             debuggingEnabled = BuildConfig.ENABLE_WEBVIEW_DEBUGGING,
+            enterKeyNewline = AppDshBehaviorState.enterKeyNewline,
         ),
         this,
     )
@@ -229,6 +231,15 @@ internal class DshWebContainer(
 
     fun applyAppTheme(canvasColor: Int) {
         if (!released) renderer.applyTheme(DshRendererTheme(canvasColor))
+    }
+
+    /**
+     * 把回车键「换行」开关推送到已建立的本机容器（设置页拨动即时生效）：
+     * 仅转发给渲染器的推送 API；注入配置不变，页面靠每次按键读取的
+     * 可变全局接住新值。这是本容器为该项设置新增的唯一调用。
+     */
+    fun setEnterKeyNewline(newline: Boolean) {
+        if (!released) renderer.setEnterKeyNewline(newline)
     }
 
     fun cancelFilePreparation(requestId: DshAsyncRequestId) {

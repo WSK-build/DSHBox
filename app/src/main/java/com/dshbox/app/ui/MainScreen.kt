@@ -1,7 +1,10 @@
 package com.dshbox.app.ui
 
 import android.app.Activity
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,7 +59,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,6 +96,7 @@ import com.dshbox.app.DshApp
 import com.dshbox.app.browser.BrowserAppController
 import com.dshbox.app.R
 import com.dshbox.app.common.Constants
+import com.dshbox.app.dsh.DshRendererFactory
 import com.dshbox.app.sandbox.BundledRuntimeInstaller
 import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.sandbox.SandboxState
@@ -101,8 +108,13 @@ import com.dshbox.app.ui.launch.LaunchScreen
 import com.dshbox.app.ui.onboarding.OnboardingFlow
 import com.dshbox.app.ui.onboarding.OnboardingGate
 import com.dshbox.app.ui.onboarding.OnboardingPrefs
+import com.dshbox.app.ui.remote.REMOTE_DOWNLOAD_DIR_NAME
+import com.dshbox.app.ui.remote.RemoteUploadCoordinator
+import com.dshbox.app.ui.remote.RemoteUploadCoordinatorHost
 import com.dshbox.app.ui.settings.SettingsScreen
 import com.dshbox.app.ui.terminal.TerminalScreen
+import com.dshbox.app.ui.theme.AppDshAddressState
+import com.dshbox.app.ui.theme.AppDshBehaviorState
 import com.dshbox.app.ui.theme.AppThemeState
 import com.dshbox.app.ui.theme.ThemeMode
 // AppIcons 仅出现在上方的回退注释里，随之一并注释，
@@ -113,11 +125,19 @@ import com.dshbox.app.ui.webview.DshWebViewScreen
 import com.dshbox.app.ui.webview.dshBrowserChooser
 import com.dshbox.app.service.SandboxService
 import com.dshbox.app.util.AppUpdater
+import com.dshbox.app.util.ShareArea
+import com.dshbox.dsh.renderer.api.DshSelectedFile
+import com.dshbox.remote.RemoteConnectionController
+import com.dshbox.remote.RemoteConnectionHost
+import com.dshbox.remote.model.DisplayTarget
+import com.dshbox.remote.render.RemoteSessionSurface
+import com.dshbox.remote.ui.RemotePanel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
+import java.io.File
 import com.dshbox.app.common.R as CommonR
 
 /**
@@ -133,6 +153,9 @@ private data class TabSpec(val labelRes: Int, val icon: ImageVector, val content
  * Browser 动作页签不占内容索引，设置页仍可安全占用索引 4（仅由首页入口进入）。
  */
 private const val HOME_CONTENT_INDEX = 0
+
+/** 首页 Pager 的远程页签下标（第四页签）。 */
+private const val REMOTE_TAB_INDEX = 3
 private const val FILES_CONTENT_INDEX = 1
 private const val DSH_CONTENT_INDEX = 2
 private const val TERMINAL_CONTENT_INDEX = 3
@@ -191,12 +214,14 @@ fun MainScreen(
     var sandboxError by remember { mutableStateOf(false) }
     var dshState by remember { mutableStateOf(DshState.UNINITIALIZED) }
     var dshUnresponsive by remember { mutableStateOf(false) }
-    // 首页子页整屏提升：DSH 访问设置、Pilot / Cordis 模块内子页打开时，首页壳层（品牌栏 + 页签行）
-    // 与这里的底部导航同步收起，整屏让给模块子页（返回由子页顶栏箭头与系统返回键承接）。
-    // 两个模块各记一份：Cordis 的 insets 反档只看它自己的子页，不被另一模块的
+    // 首页子页整屏提升：本地 DSH 访问、Pilot / Cordis / 远程面板的模块内子页打开时，
+    // 首页壳层（品牌栏 + 页签行）与这里的底部导航同步收起，整屏让给模块子页
+    // （返回由子页顶栏箭头与系统返回键承接）。
+    // 各模块各记一份：Cordis 的 insets 反档只看它自己的子页，不被其它模块的
     // 上报串扰（只作整屏判定，不参与导航，故不会互相覆盖）。
     var pilotSubPageVisible by remember { mutableStateOf(false) }
     var cordisSubPageVisible by remember { mutableStateOf(false) }
+    var remoteSubPageVisible by remember { mutableStateOf(false) }
     var homeSubPageVisible by remember { mutableStateOf(false) }
     var showLaunch by remember { mutableStateOf(true) }
     var runtimeInstalled by remember { mutableStateOf(sandboxManager.isRuntimeInstalled()) }
@@ -221,6 +246,115 @@ fun MainScreen(
             sandbox = sandboxManager,
             scope = pluginScope,
         )
+    }
+
+    // 远程页附件上传协调器：远程会话页面的 <input type="file"> 经宿主来源面板
+    // 取件（与本地 DSH 页同一套七来源通道）。须先于门面创建——宿主匿名对象的
+    // pickUploadFiles 转调它；面板宿主在页签内容之外挂载（见 TabContent 之后）。
+    val remoteUploadCoordinator = remember { RemoteUploadCoordinator() }
+    // 远程下载器的「打开文件夹」：置位后切到文件页，由 FilesScreen 消费并
+    // 定位共享区下载目录（null = 无请求；文件页消费后回调复位）。声明先于
+    // 门面——宿主 openDownloadsFolder 的覆写在下方 remember 块内写入。
+    var pendingSharedDir by remember { mutableStateOf<File?>(null) }
+    // 远程连接门面：随首页常驻组合创建一次，内部协程随组合作用域走。渲染引擎适配器
+    // 由 flavor 决定，在此从工厂取出注入，模块不感知引擎与 flavor 差异。宿主上下文
+    // 必须覆写返回 application context：会话内核（设备档案/凭据存档/槽位分配）依赖
+    // 它构建生产会话工厂，缺失时生产路径会话工厂为 null、会话空转。
+    val remoteScope = rememberCoroutineScope()
+    val remoteController = remember {
+        RemoteConnectionController(
+            scope = remoteScope,
+            // 回车键「换行」档：读 DSH 页签的通用设置现值（页面注入层按其
+            // 在远程会话内把裸 Enter 映射为换行 / 保持发送行为）。
+            enterKeyNewlineProvider = { AppDshBehaviorState.enterKeyNewline },
+            host = object : RemoteConnectionHost {
+                override fun rendererAdapter() = DshRendererFactory.adapter()
+
+                override fun appContext() = app.applicationContext
+
+                override suspend fun pickUploadFiles(
+                    multiple: Boolean,
+                    mimeTypes: List<String>,
+                ): List<DshSelectedFile>? =
+                    // 三态（null=未提供 / 空=取消 / 非空=选中）由渲染宿主分派；
+                    // 本协调器只产出「取消」与「选中文件」两态。
+                    remoteUploadCoordinator.awaitRequest(multiple, mimeTypes)
+
+                override fun downloadDirectory(): File =
+                    // 公共存储 DSHBox/download-remote：与共享区同一访问模型
+                    // （MANAGE_EXTERNAL_STORAGE / 旧式存储权限），目录由代理
+                    // 首次落盘时创建，不在组合期做磁盘 IO。
+                    File(ShareArea.hostRoot(), REMOTE_DOWNLOAD_DIR_NAME)
+
+                override fun hasDownloadPermission(): Boolean = ShareArea.hasAccess(app)
+
+                override fun requestDownloadPermission() {
+                    runCatching {
+                        app.startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                Uri.parse("package:${app.packageName}"),
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }
+
+                override fun openDownloadsFolder(): Boolean {
+                    // 下载器的「打开文件夹」：切到文件页共享区视图并定位
+                    // DSHBox/download-remote（经 FilesScreen 的 pendingSharedDir
+                    // 参数消费，与外部分享落页同一模式）。目录由代理首次落盘
+                    // 时创建，此处不预创建（保持既有延迟创建口径）。
+                    pendingSharedDir = File(ShareArea.hostRoot(), REMOTE_DOWNLOAD_DIR_NAME)
+                    selectTab(FILES_CONTENT_INDEX)
+                    return true
+                }
+            },
+        )
+    }
+    // 宿主前后台上报：会话保留档（保留 N 分钟）以前台时钟计量，退后台停走、
+    // 回前台补偿判定（后台滞留不计时，锁屏期到点的会话回前台即释放）。
+    val remoteLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(remoteController, remoteLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> remoteController.onHostResumed()
+                Lifecycle.Event.ON_STOP -> remoteController.onHostPaused()
+                else -> Unit
+            }
+        }
+        remoteLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            remoteLifecycleOwner.lifecycle.removeObserver(observer)
+            // 门面随组合销毁收尾：释放全部会话与代理监听，Activity 重建不泄漏
+            // 代理线程与端口（存档保留，门面重建后免登录恢复）。
+            remoteController.close()
+        }
+    }
+    // 远程会话微条的「打开远程面板」：经首页的页签落位参数管道把 Pager 落到
+    // 远程页签（首页改动仅此一条入参 + 消费回调，页签既有逻辑零改动）。
+    // -1 表示无请求（rememberSaveable 的可保存哨兵）。
+    var requestedRemoteTab by rememberSaveable { mutableIntStateOf(-1) }
+    // 显示请求观察：用户在远程面板选择端点（页签隐藏时的「想看到它」语义
+    // 动作）→ 自动切到 DSH 页签；只处理增量，消费过的计数不再触发。
+    val showDshRequests by remoteController.showDshRequests.collectAsState()
+    var handledShowDshRequests by remember { mutableIntStateOf(0) }
+    LaunchedEffect(showDshRequests) {
+        if (showDshRequests > handledShowDshRequests) {
+            handledShowDshRequests = showDshRequests
+            selectTab(DSH_CONTENT_INDEX)
+        }
+    }
+
+    // DSH 页签离场/回场上报：显示槽的会话失活与激活由页签可见性驱动（页签
+    // 保活组合不销毁，不能依赖组合生命周期）。离开即按保留策略处置显示中的
+    // 会话（IMMEDIATE 即释放 / Retain 起倒计时），回场撤销倒计时或重建已
+    // 释放的会话。
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == DSH_CONTENT_INDEX) {
+            remoteController.onDshTabVisible()
+        } else {
+            remoteController.onDshTabHidden()
+        }
     }
 
     // 首页「运行环境缺失」卡 → 在线获取直达（切到设置页，由其消费并打开覆盖页）。
@@ -351,7 +485,7 @@ fun MainScreen(
             val splashVisible = showLaunch && dshState != DshState.READY
             val density = LocalDensity.current
 
-            // Immersive tabs share one condition with three coordinated effects:
+            // Immersive tabs share one condition set with three coordinated effects:
             // (1) contentWindowInsets is adjusted — the terminal with the keyboard up
             //     must not be inset by BOTH the navigation bar height (Scaffold
             //     innerPadding) AND the full IME height (TerminalScreen.imePadding()),
@@ -366,8 +500,27 @@ fun MainScreen(
             // 系统导航栏（手势条）两条路径都不隐藏：需求只覆盖 app 自绘底部导航与顶部状态栏。
             val imeVisible = WindowInsets.ime.getBottom(density) > 0
             val immersiveTerminal = imeVisible && selectedTab == TERMINAL_CONTENT_INDEX
-            val immersiveDsh = selectedTab == DSH_CONTENT_INDEX
+            // DSH 页签的沉浸判定按显示槽分口径：远程会话恒全屏（其微条自带
+            // statusBarsPadding）；本机页面按「本机 DSH 状态栏」设置——设置
+            // 开启时不再隐藏状态栏，让系统图标与网页同屏。
+            val remoteSessionActive =
+                remoteController.activeDisplay.collectAsState().value is DisplayTarget.Session
+            val dshLocalStatusBarVisible = AppDshBehaviorState.localStatusBarVisible
+            val immersiveDsh = selectedTab == DSH_CONTENT_INDEX &&
+                (remoteSessionActive || !dshLocalStatusBarVisible)
             val immersive = immersiveTerminal || immersiveDsh
+
+            // 「本机 DSH 状态栏」设置只影响顶部状态栏（ImmersiveStatusBar +
+            // contentWindowInsets），底部导航的显隐**不**随它翻转：DSH 页签的
+            // app 自绘导航恒隐（与沉浸口径解耦的独立判定），其余页签行为不变
+            // —— 关掉状态栏设置不会让 DSH 页签多出一条自绘导航条。
+            val dshBottomBarHidden = selectedTab == DSH_CONTENT_INDEX
+            val bottomBarVisible = !dshBottomBarHidden &&
+                !(imeVisible && selectedTab == TERMINAL_CONTENT_INDEX) &&
+                !homeSubPageVisible &&
+                !pilotSubPageVisible &&
+                !cordisSubPageVisible &&
+                !remoteSubPageVisible
 
             ImmersiveStatusBar(enabled = immersive)
 
@@ -377,26 +530,29 @@ fun MainScreen(
                     .alpha(if (splashVisible) 0f else 1f),
                 contentWindowInsets = when {
                     immersiveTerminal -> WindowInsets(0, 0, 0, 0)
+                    // DSH 页签、本机显示且设置开启状态栏：内容让出状态栏高度
+                    // （网页内容不钻入状态栏下方）；沿用同一有意舍弃——不取
+                    // displayCutout 分量，横屏刘海两侧不额外内缩。
+                    selectedTab == DSH_CONTENT_INDEX && !remoteSessionActive &&
+                        dshLocalStatusBarVisible -> WindowInsets.systemBars
                     // DSH 整页沉浸：只顶掉顶部状态栏留白，保留手势条留白；
                     // 有意舍弃 contentWindowInsets 里的 displayCutout 分量（与终端分支的
                     // 全清同一先例），横屏刘海两侧不再额外内缩。
                     immersiveDsh -> WindowInsets.navigationBars
-                    // 首页三页签外壳：状态栏让位由壳层品牌顶栏与内嵌模块页各自的顶栏
-                    // （Pilot / Cordis 自带 statusBars insets）处理，这里再叠一层会让
-                    // 内嵌页顶栏上方出现双重空带。子页整屏提升（pilotSubPageVisible /
-                    // cordisSubPageVisible）时壳层与底部导航都收起，该值仍为 0：整屏子页的
-                    // insets 由模块页自让。
+                    // 首页四页签外壳：状态栏让位由壳层品牌顶栏与内嵌模块页各自的顶栏
+                    // （Pilot / Cordis 自带 statusBars insets；远程面板根页由品牌顶栏
+                    // 让位，子页由其顶栏自让）处理，这里再叠一层会让内嵌页顶栏上方出现
+                    // 双重空带。子页整屏提升（pilotSubPageVisible / cordisSubPageVisible /
+                    // remoteSubPageVisible）时壳层与底部导航都收起，该值仍为 0：
+                    // 整屏子页的 insets 由模块页自让。
                     selectedTab == HOME_CONTENT_INDEX -> WindowInsets(0, 0, 0, 0)
                     else -> ScaffoldDefaults.contentWindowInsets
                 },
                 bottomBar = {
                     // 首页子页整屏提升时底部导航让位：子页自身顶栏提供返回，导航条不该
                     // 出现在整屏面板底下（其交互也被子页覆盖）。
-                    if (!immersive &&
-                        !homeSubPageVisible &&
-                        !pilotSubPageVisible &&
-                        !cordisSubPageVisible
-                    ) {
+                    // 显隐判定独立于状态栏设置（见上方 bottomBarVisible 口径）。
+                    if (bottomBarVisible) {
                         AppBottomNavigationBar(
                             tabs = tabs,
                             selectedTab = selectedTab,
@@ -419,6 +575,13 @@ fun MainScreen(
                         runtimeInstalled = runtimeInstalled,
                         nodeLayerInstalled = nodeLayerInstalled,
                         bundledRuntimeAvailable = bundledRuntimeAvailable,
+                        remoteController = remoteController,
+                        onOpenRemotePanel = {
+                            selectTab(HOME_CONTENT_INDEX)
+                            requestedRemoteTab = REMOTE_TAB_INDEX
+                        },
+                        requestedRemoteTabIndex = requestedRemoteTab.takeIf { it >= 0 },
+                        onRemoteTabRequestConsumed = { requestedRemoteTab = -1 },
                         onNavigateToSettings = { selectTab(SETTINGS_CONTENT_INDEX) },
                         onBackToHome = { selectTab(HOME_CONTENT_INDEX) },
                         onGetRuntimeOnline = {
@@ -447,6 +610,18 @@ fun MainScreen(
                                 },
                             )
                         },
+                        remoteContent = { isActive, onBackToControl, onSubPageVisible ->
+                            RemoteTabContent(
+                                controller = remoteController,
+                                isActive = isActive,
+                                onBack = onBackToControl,
+                                onOpenLocalDsh = { selectTab(DSH_CONTENT_INDEX) },
+                                onSubPageVisibilityChanged = { visible ->
+                                    remoteSubPageVisible = visible
+                                    onSubPageVisible(visible)
+                                },
+                            )
+                        },
                         onHomeSubPageVisibilityChanged = { homeSubPageVisible = it },
                         // DSH 快捷条路由：MainScreen 是唯一知道内容栈下标的地方；
                         // DSH 页只报语义动作（DshQuickAction），不感知页签编号。
@@ -469,7 +644,15 @@ fun MainScreen(
                         onPendingOnlineImportConsumed = { pendingOnlineImport = false },
                         inboundShareItems = inboundShareItems,
                         onInboundShareConsumed = onInboundShareConsumed,
+                        pendingSharedDir = pendingSharedDir,
+                        onPendingSharedDirConsumed = { pendingSharedDir = null },
                     )
+
+                    // 远程页附件上传协调宿主：远程会话的文件选择请求经宿主来源面板
+                    // 取件（与本地 DSH 页同一套七来源通道）。挂在页签内容之外：
+                    // 面板与选择器是覆盖层，不属于任何页签的内容树（DSH 页签内部
+                    // 零改动）。
+                    RemoteUploadCoordinatorHost(remoteUploadCoordinator)
                 }
             }
 
@@ -628,6 +811,54 @@ private fun CordisTabContent(
     }
 }
 
+/**
+ * 远程页签内容：内嵌远程连接面板 [RemotePanel]。
+ *
+ * 面板状态由 [controller] 驱动（门面在宿主处组装，见 MainScreen 的装配注释）；
+ * 面板内含添加区/设备清单/设置区与扫码器全屏子页（扫码成功走建档或重配对
+ * 链路，DSH 显示槽由 [controller] 的显示指向接管）。「本机 DSH」卡片选中
+ * 后经 [onOpenLocalDsh] 切到 DSH 页签（页签下标只在本文件解析）。
+ */
+@Composable
+private fun RemoteTabContent(
+    controller: RemoteConnectionController,
+    isActive: Boolean,
+    onBack: () -> Unit,
+    /** 面板内后续阶段的整屏子页（扫码/手动输入）可见性上报：宿主据此收起壳层与底部导航。 */
+    onSubPageVisibilityChanged: (Boolean) -> Unit = {},
+    /** 「本机 DSH」卡片选中后的页签接续：切到 DSH 页签（显示槽已指向本机档）。 */
+    onOpenLocalDsh: () -> Unit = {},
+) {
+    // 面板根页暂无内部返回栈：栈底的系统返回由本宿主接手回到控制页签，
+    // 与 Pilot / Cordis 的根返回语义一致（否则返回键穿透到 Activity 默认行为）。
+    BackHandler(enabled = isActive) { onBack() }
+    // App 内切换深浅走 AppCompat 资源内更新，不经视图层配置派发；与 PilotTabContent
+    // 同一处理：按宿主主题状态覆写夜模式位的 Configuration 副本，模块页内任何
+    // 依赖 LocalConfiguration 的组合（含夜模式判定）切换当帧即生效。
+    val currentConfiguration = LocalConfiguration.current
+    val themeConfiguration = remember(currentConfiguration, AppThemeState.mode) {
+        Configuration(currentConfiguration).apply {
+            when (AppThemeState.mode) {
+                ThemeMode.LIGHT ->
+                    uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                        Configuration.UI_MODE_NIGHT_NO
+                ThemeMode.DARK ->
+                    uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                        Configuration.UI_MODE_NIGHT_YES
+                ThemeMode.SYSTEM -> Unit
+            }
+        }
+    }
+    CompositionLocalProvider(LocalConfiguration provides themeConfiguration) {
+        // 扫码器全屏子页：可见性上报宿主（收起首页壳层与底部导航，返回由扫码页承接）
+        RemotePanel(
+            controller = controller,
+            onSubPageVisibilityChanged = onSubPageVisibilityChanged,
+            onOpenLocalDsh = onOpenLocalDsh,
+        )
+    }
+}
+
 @Composable
 private fun TabContent(
     selectedTab: Int,
@@ -638,6 +869,13 @@ private fun TabContent(
     runtimeInstalled: Boolean,
     nodeLayerInstalled: Boolean,
     bundledRuntimeAvailable: Boolean,
+    /** 远程连接门面：DSH 显示槽据其显示指向决定呈现本机页面还是远程会话。 */
+    remoteController: RemoteConnectionController,
+    /** 远程会话微条的「打开远程面板」：切回首页并把 Pager 落位到远程页签。 */
+    onOpenRemotePanel: () -> Unit,
+    /** 首页页签落位请求（远程页签）：由 HomeScreen 消费后经回调置空。 */
+    requestedRemoteTabIndex: Int?,
+    onRemoteTabRequestConsumed: () -> Unit,
     onNavigateToSettings: () -> Unit,
     /** 设置页返回（标题栏箭头 / 系统返回键）：回到首页页签。 */
     onBackToHome: () -> Unit,
@@ -654,7 +892,13 @@ private fun TabContent(
         onBackToControl: () -> Unit,
         onSubPageVisible: (Boolean) -> Unit,
     ) -> Unit,
-    /** 首页自身的全屏子页（DSH 访问设置）可见性。 */
+    /** 远程页签内容（宿主注入的内嵌远程连接面板）：参数同 [pilotContent]。 */
+    remoteContent: @Composable (
+        isActive: Boolean,
+        onBackToControl: () -> Unit,
+        onSubPageVisible: (Boolean) -> Unit,
+    ) -> Unit,
+    /** 首页自身的全屏子页（本地 DSH 访问）可见性。 */
     onHomeSubPageVisibilityChanged: (Boolean) -> Unit,
     /** DSH 悬浮球快捷条的语义路由（页签下标只在本文件解析）。 */
     onQuickAction: (DshQuickAction) -> Unit,
@@ -669,6 +913,9 @@ private fun TabContent(
     /** 外部应用分享/打开进来的待导入清单；文件页消费后回调置空。 */
     inboundShareItems: List<InboundShareItem>?,
     onInboundShareConsumed: () -> Unit,
+    /** 远程下载器的「打开文件夹」请求（共享区物理目录）：文件页消费后回调置空。 */
+    pendingSharedDir: File?,
+    onPendingSharedDirConsumed: () -> Unit,
 ) {
     val context = LocalContext.current
     val resources = configurationAwareResources()
@@ -724,16 +971,19 @@ private fun TabContent(
             runtimeInstalled = runtimeInstalled,
             nodeLayerInstalled = nodeLayerInstalled,
             bundledRuntimeAvailable = bundledRuntimeAvailable,
+            requestedTabIndex = requestedRemoteTabIndex,
+            onRequestedTabConsumed = onRemoteTabRequestConsumed,
             onNavigateToSettings = onNavigateToSettings,
             onGetRuntimeOnline = onGetRuntimeOnline,
             dshLaunchToken = dshLaunchToken,
             readSandboxCpuMillis = readSandboxCpuMillis,
             pilotContent = pilotContent,
             cordisContent = cordisContent,
+            remoteContent = remoteContent,
             onSubPageVisibilityChanged = onHomeSubPageVisibilityChanged,
             onOpenInBrowser = {
                 // 必须带 token：外部浏览器拿不到 WebView 的 cookie 交换，也拿不到注入脚本，
-                // 直接开 Constants.DSH_BASE_URL 会停在鉴权页（用户实证"打不开"）。
+                // 直接开本机 DSH 地址会停在鉴权页（用户实证"打不开"）。
                 // token 未就绪时**不开**：裸开必然停在鉴权页，不如给一句可重试的提示。
                 val token = dshLaunchToken
                 if (token.isNullOrEmpty()) {
@@ -741,10 +991,11 @@ private fun TabContent(
                 } else {
                     // chooser：隐式 http 意图可被任何声明了 127.0.0.1 的 App 抢走，
                     // 而这条 URL 带着等同沙箱控制权的 token（详见 DshBrowser.kt）。
+                    // 地址走运行期状态（端口自适应），未确证时回退默认常量。
                     val opened = runCatching {
                         context.startActivity(
                             dshBrowserChooser(
-                                Constants.DSH_BASE_URL,
+                                AppDshAddressState.baseUrl,
                                 token,
                                 resources.getString(R.string.home_open),
                             ),
@@ -767,22 +1018,60 @@ private fun TabContent(
             isActiveTab = selectedTab == FILES_CONTENT_INDEX,
             inboundShareItems = inboundShareItems,
             onInboundShareConsumed = onInboundShareConsumed,
+            pendingSharedDir = pendingSharedDir,
+            onPendingSharedDirConsumed = onPendingSharedDirConsumed,
         )
-        DshWebViewScreen(
+        // DSH 显示槽（页面热池）：显示指向本机时既有本机链路原样全权；指向
+        // 远程端点时以远程会话表面覆盖——本机页面按非激活页签继续保活（返回
+        // 接管、快捷条面板、前台语义让位，与切到文件页同一语义；悬浮球本体
+        // 常渲染，由覆盖层 zIndex 物理遮盖）。渲染器表面按热池遍历驻留：保留
+        // 档非 IMMEDIATE 的失活会话留在组合内零尺寸保活（切走不重载页面），
+        // 释放/删除/到期即移出热池、表面离开组合（渲染器随表面自身的
+        // DisposableEffect 释放）。AndroidView 的相互遮挡由子组合顺序与放置
+        // 决定（zIndex 值不改变 AndroidView 层级），当前同刻仅一个表面参与
+        // 放置（隐藏表面零尺寸不放置），呈现表面即该唯一放置者。
+        val activeDisplay = remoteController.activeDisplay.collectAsState().value
+        val remoteSessionActive = activeDisplay is DisplayTarget.Session
+        val hotEndpoints = remoteController.hotEndpoints.collectAsState().value
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(if (selectedTab == DSH_CONTENT_INDEX) 1f else 0f)
                 .alpha(dshAlpha)
                 .then(if (selectedTab == DSH_CONTENT_INDEX) Modifier else Modifier.keepAliveHidden()),
-            url = com.dshbox.app.common.Constants.DSH_BASE_URL,
-            dshState = dshState,
-            sandboxRunning = sandboxRunning,
-            isActiveTab = selectedTab == DSH_CONTENT_INDEX,
-            onStartDsh = { SandboxService.startDsh(context) },
-            onStartSandbox = { SandboxService.startSandbox(context) },
-            onQuickAction = onQuickAction,
-            onBackAtRoot = onDshRootBack,
-        )
+        ) {
+            DshWebViewScreen(
+                modifier = Modifier.fillMaxSize(),
+                // 运行期地址（端口自适应）：确认地址变化时容器随重组取新值。
+                url = AppDshAddressState.baseUrl,
+                dshState = dshState,
+                sandboxRunning = sandboxRunning,
+                isActiveTab = selectedTab == DSH_CONTENT_INDEX && !remoteSessionActive,
+                onStartDsh = { SandboxService.startDsh(context) },
+                onStartSandbox = { SandboxService.startSandbox(context) },
+                onQuickAction = onQuickAction,
+                onBackAtRoot = onDshRootBack,
+            )
+            // 当前呈现的端点必须始终有表面（在途建立的 Connecting/失败覆盖层
+            // 也由它承载），与热池集合取并集渲染
+            val presentedEndpointId = (activeDisplay as? DisplayTarget.Session)?.endpointId
+            val renderedEndpoints = hotEndpoints + listOfNotNull(presentedEndpointId)
+            renderedEndpoints.forEach { endpointId ->
+                val isPresented = presentedEndpointId == endpointId
+                key(endpointId) {
+                    RemoteSessionSurface(
+                        controller = remoteController,
+                        endpointId = endpointId,
+                        visible = isPresented && selectedTab == DSH_CONTENT_INDEX,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(if (isPresented) 1f else 0f),
+                        tabActive = isPresented && selectedTab == DSH_CONTENT_INDEX,
+                        onOpenPanel = onOpenRemotePanel,
+                    )
+                }
+            }
+        }
         TerminalScreen(
             modifier = Modifier
                 .fillMaxSize()

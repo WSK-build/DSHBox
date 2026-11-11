@@ -26,7 +26,7 @@ LANGS=(values values-zh values-ar values-es values-fr values-ru)
 # 注：plugin-manager 参与键位核对，但**暂不参与下面的硬编码文案扫描**——
 # 该模块的领域层（安全模式的状态与事件文案）目前直接产生中文串，尚未改成资源 id；
 # 纳入扫描会让本脚本在改造完成前一直失败。改造后把它的 src/main 加进扫描列表。
-MODULES=(app common sandbox-manager plugin-manager browser/browser-runtime)
+MODULES=(app common sandbox-manager plugin-manager browser/browser-runtime remote-connection)
 
 extract_keys() { # $1 = strings.xml 路径 → 排序后的键名
   sed -n 's/.*<\(string\|plurals\) name="\([^"]*\)">.*/\2/p' "$1" | sort
@@ -161,6 +161,10 @@ WHITELIST=(
   "app/src/main/java/com/dshbox/app/runtime/OnlineRuntimeImportManager.kt"
   "app/src/main/java/com/dshbox/app/service/SandboxService.kt"
   "browser/browser-runtime/src/main/java/com/dshbox/browser/runtime/BrowserBlockedPageEvidence.kt"
+  "remote-connection/src/main/java/com/dshbox/remote/parse/SayaChJsonParser.kt"
+  "remote-connection/src/main/java/com/dshbox/remote/session/SayaChHttpTransport.kt"
+  "remote-connection/src/main/java/com/dshbox/remote/session/SayaChPairExchange.kt"
+  "remote-connection/src/main/java/com/dshbox/remote/session/DefaultSessionFactory.kt"
 )
 for src_dir in \
   "$ROOT/app/src/main" \
@@ -171,7 +175,8 @@ for src_dir in \
   "$ROOT/terminal-emulator/src/main" \
   "$ROOT/browser/browser-runtime/src/main" \
   "$ROOT/browser/browser-bridge/src/main" \
-  "$ROOT/terminal-view/src/main"; do
+  "$ROOT/terminal-view/src/main" \
+  "$ROOT/remote-connection/src/main"; do
   [ -d "$src_dir" ] || continue
   # grep -n 输出带 "绝对路径:行号:" 前缀；先剥离前缀再判注释，
   #否则行首 "/" 会被注释分支误判（修复）。
@@ -181,6 +186,9 @@ for src_dir in \
       if [[ "$line" == *"$w":* ]]; then SKIP=1; break; fi
     done
     [ "$SKIP" -eq 1 ] && continue
+    # 行级豁免标记 i18n-skip：非界面文案的中文数据字面量（如旧档案持久化
+    # 标签的兼容映射）经行尾注释显式登记后放行，避免逼出转义写法
+    [[ "$line" == *"i18n-skip"* ]] && continue
     t="${line%%//*}"                    # 去掉 // 注释尾巴
     t="$(printf '%s' "$t" | sed 's/^[^:]*:[0-9]*://')"
     t="$(printf '%s' "$t" | sed 's/^[[:space:]]*//')"

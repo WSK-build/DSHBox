@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ترجمة عربية. مجموعة المفاتيح وترتيبها مطابقة لملف values/strings.xml، وأسماء المنتجات والاختصارات التقنية تبقى بالحروف اللاتينية. -->
+<resources>
+
+    <!-- 远程面板 · 本机清单首行 -->
+    <string name="remote_local_entry_title">DSH المحلي</string>
+
+    <!-- 远程面板 · 设备清单标题与设备重命名 -->
+    <string name="remote_devices_group_title">الأجهزة المقترنة · %1$d</string>
+    <string name="remote_device_rename">إعادة تسمية الجهاز</string>
+    <string name="remote_device_rename_label">اسم الجهاز</string>
+    <string name="remote_device_rename_save">حفظ</string>
+
+    <!-- 远程面板 · 归属分组（确认卡归属下拉与设备/端点归属展示共用） -->
+    <string name="remote_group_none">بدون مجموعة</string>
+    <string name="remote_group_new">مجموعة جديدة</string>
+
+    <!-- 远程面板 · 空状态引导 -->
+    <string name="remote_empty_title">لا توجد أجهزة مقترنة</string>
+    <string name="remote_empty_hint">امسح رمز الاقتران من إضافة DSH للتحكم عن بُعد على حاسوبك، أو أدخل رابط الاقتران يدويًا لإضافة جهاز.</string>
+
+    <!-- 远程会话表面 · 顶部微条 -->
+    <string name="remote_session_back_local">العودة إلى DSH المحلي</string>
+    <string name="remote_session_open_panel">فتح لوحة الاتصال عن بُعد</string>
+    <string name="remote_session_switch">تبديل الصفحة</string>
+    <string name="remote_switch_local">DSH الجهاز</string>
+    <string name="remote_switch_local_sub">اعرض خدمة DSH العاملة على هذا الجهاز</string>
+    <string name="remote_switch_empty">لا توجد صفحات بعيدة مقترنة بعد</string>
+    <string name="remote_session_refresh">تحديث</string>
+    <string name="remote_session_collapse">تصغير الشريط</string>
+    <string name="remote_session_expand">توسيع الشريط</string>
+    <string name="remote_session_local_name">DSH الجهاز</string>
+    <string name="remote_session_status_ready">متصل</string>
+    <string name="remote_session_status_loading">جارٍ التحميل</string>
+    <string name="remote_session_status_connecting">جارٍ الاتصال</string>
+    <string name="remote_session_status_failed">فشل الاتصال</string>
+    <string name="remote_session_status_disconnected">انقطع الاتصال</string>
+
+    <!-- 远程会话表面 · 连接态覆盖层 -->
+    <string name="remote_session_connecting">جارٍ الاتصال بالجلسة عن بُعد…</string>
+    <string name="remote_session_failed">فشل الاتصال بالجلسة عن بُعد</string>
+    <string name="remote_session_retry">إعادة المحاولة</string>
+    <string name="remote_session_disconnected">انقطع الاتصال بالجلسة عن بُعد</string>
+    <string name="remote_session_reconnect">إعادة الاتصال</string>
+    <string name="remote_session_status_rejected">بيانات الاعتماد مرفوضة</string>
+    <string name="remote_link_open_failed">تعذّر فتح الرابط في المتصفح</string>
+
+    <!-- 远程面板 · 添加区 -->
+    <string name="remote_add_scan">مسح رمز الاقتران</string>
+    <string name="remote_add_manual">إدخال يدوي</string>
+    <string name="remote_add_section_title">إضافة جهاز</string>
+    <string name="remote_help_title">كيف يعمل الاتصال البعيد</string>
+    <string name="remote_help_intro">امسح رمز الاقتران أو الصق رابط الاقتران لإضافة جهاز.</string>
+    <string name="remote_help_pt">إضافات DSH المدعومة</string>
+    <string name="remote_help_pocket_note">(قد يكون المستودع الأصلي غير محدّث منذ فترة طويلة)</string>
+    <string name="remote_help_bridge_note">(موصى به)</string>
+    <string name="remote_help_pn_future">سنضيف قريباً محوّلات لربط التنزيلات وغيرها من ميزات الاتصال البعيد.</string>
+    <string name="remote_help_pn_diy">يمكنك أيضاً إنشاء إضافة بعيدة خاصة بك.</string>
+    <string name="remote_help_pn">ثبّت أي إضافة على الحاسوب، وافتح صفحتها للهاتف أو الاتصال البعيد، ثم امسح الرمز أو الصق الرابط.</string>
+    <string name="remote_help_at">وكلاء الويب أيضاً</string>
+    <string name="remote_help_ax">يدعم WorkBuddy وMiniMax وغيرهما من وكلاء الويب أيضاً. رُبط رفع الملفات وتنزيلها بصندوق DSHBox.</string>
+    <string name="remote_help_ra">توصيل وكيل آخر عن بُعد</string>
+    <string name="remote_help_rax">يمكنك الاتصال بوكيل آخر على الحاسوب نفسه، حتى لا يتركك عطل أحدهما بلا وسيلة للإصلاح. توصي اختباراتنا بـ zcode: لديه قناة شبكة رسمية وهو مستقر نسبياً.</string>
+    <string name="remote_help_mt">الوسيط والاتصال المباشر</string>
+    <string name="remote_help_mp">الوسيط: يمر عبر هذا الهاتف؛ يدعم HTTP المحلي والشهادات ذاتية التوقيع.</string>
+    <string name="remote_help_md">المباشر: يفتح الهاتف عنوان https مباشرة. أقصر مسار.</string>
+    <string name="remote_help_close">إغلاق</string>
+    <string name="remote_add_note">امسح رمز الاقتران من إضافة DSH البعيدة على الحاسوب أو الصق رابطًا يتضمن رمزًا</string>
+    <string name="remote_add_failed">فشل الاقتران: %1$s</string>
+    <!-- 远程面板 · 建档前确认卡 -->
+    <string name="remote_confirm_add_title">إضافة هذا الجهاز؟</string>
+    <string name="remote_confirm_device_target">اختر الجهاز الذي ينتمي إليه هذا الاقتران</string>
+    <string name="remote_confirm_group_name_label">اسم المجموعة</string>
+    <string name="remote_confirm_generic_note">صفحة ويب عامة (ليست إضافة معروفة)، وسيتم الوصول إليها عبر الخادم الوسيط كصفحة ويب عادية.</string>
+    <string name="remote_confirm_endpoint_count">ستتم إضافة %1$d من القنوات</string>
+    <string name="remote_confirm_endpoint_count_update">تحديث %1$d من القنوات</string>
+    <string name="remote_confirm_repair_choices_note">تُبقي إعادة الاقتران على وضع الجلسة وإعدادات الاحتفاظ الحالية. يمكن تغييرها من بطاقة الجهاز.</string>
+    <!-- 远程面板 · 手动输入 -->
+    <string name="remote_manual_title">اقتران يدوي</string>
+    <string name="remote_manual_address_label">رابط الاقتران (مع الرمز أو المفتاح إن وُجد)</string>
+    <string name="remote_manual_token_label">الرمز (اختياري، يُلحق كـ ?auth=)</string>
+    <string name="remote_manual_note_label">ملاحظة الجهاز (اختياري)</string>
+    <string name="remote_manual_confirm">إضافة جهاز</string>
+    <!-- 远程面板 · 设备卡 -->
+    <string name="remote_device_expand">توسيع الجهاز</string>
+    <string name="remote_device_collapse">طي الجهاز</string>
+    <string name="remote_device_delete">حذف الجهاز</string>
+    <string name="remote_device_delete_title">حذف هذا الجهاز؟</string>
+    <string name="remote_device_delete_message">حذف «%1$s» يزيل جميع نقاط الاتصال ويمسح بيانات اعتماد الجهاز وبيانات الصفحات المحفوظة على هذا الجهاز. لا يمكن التراجع.</string>
+    <!-- One-line hint while a VPN/system proxy is active and private-address endpoints exist -->
+    <string name="remote_lan_vpn_warning">تم اكتشاف وكيل نظام أو VPN؛ قد يكون الاتصال بالشبكة المحلية غير متاح.</string>
+
+    <string name="remote_device_confirm_delete">حذف</string>
+    <string name="remote_cancel">إلغاء</string>
+    <string name="remote_confirm">موافق</string>
+    <string name="remote_endpoint_set_display">تعيين كمصدر العرض</string>
+    <string name="remote_endpoint_edit">تعديل</string>
+    <string name="remote_endpoint_more">إجراءات إضافية لنقطة الاتصال</string>
+    <string name="remote_endpoint_move">نقل إلى جهاز</string>
+    <string name="remote_endpoint_move_to_group">نقل إلى مجموعة الأجهزة</string>
+    <string name="remote_endpoint_switch_group">تبديل مجموعة الأجهزة</string>
+    <string name="remote_endpoint_delete">حذف نقطة الاتصال هذه</string>
+    <string name="remote_endpoint_delete_title">حذف نقطة الاتصال هذه؟</string>
+    <string name="remote_endpoint_delete_message">ستُزال نقطة اتصال %1$s ‏%2$s من «%3$s» وتمسح بيانات الاعتماد المحفوظة الخاصة بها. لا يمكن التراجع.</string>
+    <string name="remote_endpoint_status_idle">غير متصل</string>
+    <string name="remote_endpoint_displaying">%1$s · معروض</string>
+    <!-- 远程面板 · 端点地址编辑 -->
+    <string name="remote_edit_endpoint_title">تعديل عنوان نقطة الاتصال</string>
+    <string name="remote_edit_endpoint_address_label">عنوان الوجهة الجديد</string>
+    <string name="remote_edit_endpoint_confirm">حفظ</string>
+    <string name="remote_session_mode_label">وضع الجلسة</string>
+    <string name="remote_session_mode_proxied">وكيل</string>
+    <string name="remote_session_mode_direct">مباشر</string>
+    <!-- 直连仅放行 https 端点（会话层门禁与卡片选项禁用双保险） -->
+    <string name="remote_direct_https_limitation">الوضع المباشر يدعم عناوين https فقط</string>
+    <!-- 远程面板 · 设置 -->
+    <string name="remote_settings_title">الإعدادات</string>
+    <string name="remote_settings_retention_label">الاحتفاظ بالجلسة غير النشطة</string>
+    <string name="remote_settings_default_retention">مدة الاحتفاظ الافتراضية · عام</string>
+    <string name="remote_settings_inactive_hint">الجلسات غير النشطة</string>
+    <string name="remote_settings_hot_label">استخدام التجمع الساخن</string>
+    <string name="remote_settings_hot_usage">%1$d / %2$d</string>
+    <string name="remote_settings_hot_note">الصفحات التي لا تستخدم الاحتفاظ الفوري تبقى في التجمع الساخن عند عدم النشاط، فلا يُعاد تحميلها عند العودة.</string>
+    <string name="remote_settings_release_all">تحرير الكل الآن</string>
+    <string name="remote_retention_immediate">التحرير عند التبديل</string>
+    <string name="remote_retention_minutes">%1$d دقيقة</string>
+    <string name="remote_retention_forever">للأبد</string>
+    <string name="remote_retention_inherit">موروث (%1$s)</string>
+    <string name="remote_retention_trigger">الاحتفاظ: %1$s</string>
+    <string name="remote_retention_label">سياسة الاحتفاظ</string>
+
+    <!-- 远程面板 · 平板右栏端点详情 -->
+    <string name="remote_detail_empty">اختر جهازًا من الجانب الأيسر لعرض نقاط الاتصال الخاصة به</string>
+        <string name="remote_device_endpoint_summary">النقاط الطرفية · %1$d قنوات</string>
+    <string name="remote_detail_endpoint_label">النقاط الطرفية</string>
+    <string name="remote_detail_channel_count">%1$d قنوات</string>
+    <!-- 远程面板 · 远程面板 · 通道标签 -->
+    <string name="remote_channel_lan">شبكة محلية</string>
+    <string name="remote_channel_public">إنترنت عام</string>
+    <string name="remote_channel_tunnel">نفق</string>
+    <string name="remote_channel_url">URL</string>
+    <!-- 远程面板 · 远程面板 · 端点插件类型标注（产品专名不翻译，仅 generic 走资源） -->
+    <string name="remote_parser_generic">رابط عام</string>
+    <!-- 远程面板 · 远程面板 · 重新配对 -->
+    <string name="remote_device_repair">إعادة اقتران</string>
+    <string name="remote_device_repair_input">إعادة إدخال الاقتران</string>
+    <string name="remote_repair_description">الصق رابط الاقتران الجديد لـ 「%1$s」؛ يصبح الرمز القديم لمرة واحدة غير صالح.</string>
+    <!-- 远程面板 · 远程面板 · 地址编辑失败 -->
+    <string name="remote_edit_endpoint_invalid">ليس رابط اقتران صالحًا</string>
+    <!-- 远程面板 · 远程面板 · 一次性凭据被拒 -->
+    <string name="remote_pairing_rejected_title">بيانات الاقتران غير صالحة</string>
+    <string name="remote_pairing_rejected">تم رفض بيانات الاقتران لمرة واحدة أو استخدامها مسبقًا؛ أعد اقتران نقطة الاتصال من بطاقة الجهاز.</string>
+    <!-- 扫码器 · 扫码器 · 全屏子页 -->
+    <string name="remote_scan_title">مسح رمز الاقتران</string>
+    <string name="remote_scan_torch">المصباح</string>
+    <!-- 扫码器 · 扫码器 · 权限流 -->
+    <string name="remote_scan_permission_denied">تم رفض إذن الكاميرا؛ يمكنك طلبه مجددًا أو إدخال رابط الاقتران يدويًا.</string>
+    <string name="remote_scan_permission_permanent">تم رفض إذن الكاميرا نهائيًا؛ أدخل رابط الاقتران يدويًا.</string>
+    <string name="remote_scan_request_again">طلب مجددًا</string>
+    <string name="remote_scan_manual_fallback">إدخال يدوي</string>
+    <!-- 扫码器 · 设备卡重扫 -->
+    <string name="remote_device_rescan">إعادة المسح للتحديث</string>
+    <!-- 扫码器 · 相机不可用与系统设置 -->
+    <string name="remote_scan_camera_unavailable">لا توجد كاميرا خلفية متاحة على هذا الجهاز، أو فشل تشغيل الكاميرا. أدخل رابط الاقتران يدويًا.</string>
+    <string name="remote_scan_open_settings">افتح إعدادات النظام</string>
+    <!-- 下载分支 · 结果页 -->
+    <string name="remote_download_saved">تم الحفظ في %1$s/%2$s</string>
+    <string name="remote_download_failed">فشل التنزيل: %1$s</string>
+    <string name="remote_download_dir_unavailable">مجلد التنزيلات غير قابل للكتابة</string>
+    <string name="remote_download_saved_hint">إذا كان هذا الملف مُصدَّرًا من إرسال نموذج، يمكنك الرجوع إلى الصفحة السابقة للمتابعة.</string>
+    <string name="remote_download_back">رجوع</string>
+    <string name="remote_download_title">التنزيلات</string>
+    <string name="remote_download_share">المنطقة المشتركة: DSHBox/download-remote</string>
+    <string name="remote_download_system">ملفات النظام: التخزين الداخلي/DSHBox/download-remote</string>
+    <string name="remote_download_empty">لا توجد تنزيلات</string>
+    <string name="remote_download_copy">نسخ المسار</string>
+    <string name="remote_download_open_folder">فتح المجلد</string>
+    <string name="remote_download_perm">يلزم الوصول إلى كل الملفات للحفظ في المنطقة المشتركة.</string>
+    <string name="remote_download_grant">فتح الإعدادات</string>
+    <string name="remote_download_fail_perm">لا يوجد إذن للتخزين: لا يمكن الكتابة في المنطقة المشتركة.</string>
+    <string name="remote_download_fail_origin">تم حظر التنزيل: العنوان لا يطابق مصدر الجلسة.</string>
+    <string name="remote_download_fail_http">رفض الخادم طلب التنزيل.</string>
+    <string name="remote_download_fail_io">فشل كتابة الملف.</string>
+    <string name="remote_download_fail_dir">مجلد التنزيلات غير متاح.</string>
+</resources>

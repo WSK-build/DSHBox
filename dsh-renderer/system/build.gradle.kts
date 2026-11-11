@@ -29,6 +29,7 @@ kotlin {
 dependencies {
     api(project(":dsh-renderer:api"))
     implementation(libs.androidx.webkit)
+    testImplementation(libs.junit)
 }
 
 val compatibilitySemantics = tasks.register<Exec>("testCompatibilityJavaScript") {

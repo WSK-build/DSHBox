@@ -204,7 +204,7 @@
     <string name="pm_market_state_rebuild">Сохранить копию и пересоздать</string>
     <string name="pm_market_state_rebuilt">Файл состояния пересоздан; оригинал сохранён как резервная копия.</string>
     <string name="pm_adapt_section_title">Плагины адаптации DSHBox</string>
-    <string name="pm_adapt_mobile">Адаптация страницы DSH для мобильных</string>
+    <string name="pm_adapt_mobile">Адаптация взаимодействия со страницей DSH</string>
     <string name="pm_adapt_mobile_pilot">Подключить телефон к DSH</string>
     <string name="pm_browser_adapter_title">Автоматизация Browser в DSH</string>
     <string name="pm_browser_assembled">Адаптер Browser установлен</string>

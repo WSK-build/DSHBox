@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Français. Même ensemble et ordre de clés que values/strings.xml. -->
+<resources>
+
+    <!-- 远程面板 · 本机清单首行 -->
+    <string name="remote_local_entry_title">DSH local</string>
+
+    <!-- 远程面板 · 设备清单标题与设备重命名 -->
+    <string name="remote_devices_group_title">Appareils associés · %1$d</string>
+    <string name="remote_device_rename">Renommer l’appareil</string>
+    <string name="remote_device_rename_label">Nom de l’appareil</string>
+    <string name="remote_device_rename_save">Enregistrer</string>
+
+    <!-- 远程面板 · 归属分组（确认卡归属下拉与设备/端点归属展示共用） -->
+    <string name="remote_group_none">Sans groupe</string>
+    <string name="remote_group_new">Nouveau groupe</string>
+
+    <!-- 远程面板 · 空状态引导 -->
+    <string name="remote_empty_title">Aucun appareil apparié</string>
+    <string name="remote_empty_hint">Scannez le code d\'appariement du plugin distant DSH sur votre ordinateur, ou saisissez manuellement le lien d\'appariement pour ajouter un appareil.</string>
+
+    <!-- 远程会话表面 · 顶部微条 -->
+    <string name="remote_session_back_local">Revenir au DSH local</string>
+    <string name="remote_session_open_panel">Ouvrir le panneau distant</string>
+    <string name="remote_session_switch">Changer de page</string>
+    <string name="remote_switch_local">DSH local</string>
+    <string name="remote_switch_local_sub">Affiche le service DSH exécuté sur cet appareil</string>
+    <string name="remote_switch_empty">Aucune page distante appairée pour le moment</string>
+    <string name="remote_session_refresh">Actualiser</string>
+    <string name="remote_session_collapse">Réduire la barre</string>
+    <string name="remote_session_expand">Développer la barre</string>
+    <string name="remote_session_local_name">DSH local</string>
+    <string name="remote_session_status_ready">Connecté</string>
+    <string name="remote_session_status_loading">Chargement</string>
+    <string name="remote_session_status_connecting">Connexion</string>
+    <string name="remote_session_status_failed">Échec de connexion</string>
+    <string name="remote_session_status_disconnected">Déconnecté</string>
+
+    <!-- 远程会话表面 · 连接态覆盖层 -->
+    <string name="remote_session_connecting">Connexion à la session distante…</string>
+    <string name="remote_session_failed">Échec de la session distante</string>
+    <string name="remote_session_retry">Réessayer</string>
+    <string name="remote_session_disconnected">Session distante déconnectée</string>
+    <string name="remote_session_reconnect">Reconnecter</string>
+    <string name="remote_session_status_rejected">Identifiants refusés</string>
+    <string name="remote_link_open_failed">Impossible d\'ouvrir le lien dans un navigateur</string>
+
+    <!-- 远程面板 · 添加区 -->
+    <string name="remote_add_scan">Scanner le code d\'appariement</string>
+    <string name="remote_add_manual">Saisie manuelle</string>
+    <string name="remote_add_section_title">Ajouter un appareil</string>
+    <string name="remote_help_title">Comment fonctionne la connexion distante</string>
+    <string name="remote_help_intro">Scannez un code ou collez un lien d’appairage pour ajouter un appareil.</string>
+    <string name="remote_help_pt">Plugins DSH compatibles</string>
+    <string name="remote_help_pocket_note">(le dépôt amont semble inactif depuis longtemps)</string>
+    <string name="remote_help_bridge_note">(recommandé)</string>
+    <string name="remote_help_pn_future">Des adaptateurs arriveront bientôt pour relier les téléchargements et d’autres fonctions distantes.</string>
+    <string name="remote_help_pn_diy">Vous pouvez aussi créer votre propre plugin distant.</string>
+    <string name="remote_help_pn">Installez n’importe quel plugin sur l’ordinateur, ouvrez sa page mobile/distante, puis scannez ou collez le lien.</string>
+    <string name="remote_help_at">Aussi les agents web</string>
+    <string name="remote_help_ax">WorkBuddy, MiniMax et d’autres agents web sont également pris en charge. L’envoi et le téléchargement de fichiers sont reliés au bac à sable DSHBox.</string>
+    <string name="remote_help_ra">Connecter un autre agent à distance</string>
+    <string name="remote_help_rax">Vous pouvez connecter un autre agent du même ordinateur, pour qu’une panne ne vous laisse pas sans solution. Nos tests recommandent zcode : il dispose d’un canal réseau officiel et reste assez stable.</string>
+    <string name="remote_help_mt">Proxy et direct</string>
+    <string name="remote_help_mp">Proxy : passe par ce téléphone ; compatible HTTP local et certificats auto-signés.</string>
+    <string name="remote_help_md">Direct : le téléphone ouvre directement l’adresse https. Chemin le plus court.</string>
+    <string name="remote_help_close">Fermer</string>
+    <string name="remote_add_note">Scannez le code d’association du plugin DSH distant sur l’ordinateur ou collez un lien contenant un jeton</string>
+    <string name="remote_add_failed">Échec de l\'appariement : %1$s</string>
+    <!-- 远程面板 · 建档前确认卡 -->
+    <string name="remote_confirm_add_title">Ajouter cet appareil ?</string>
+    <string name="remote_confirm_device_target">Choisissez l\'appareil auquel appartient cet appariement</string>
+    <string name="remote_confirm_group_name_label">Nom du groupe</string>
+    <string name="remote_confirm_generic_note">Page web générique (aucun plugin connu) ; elle sera relayée par proxy comme une page web ordinaire.</string>
+    <string name="remote_confirm_endpoint_count">%1$d canaux seront ajoutés</string>
+    <string name="remote_confirm_endpoint_count_update">Mettre à jour %1$d canaux</string>
+    <string name="remote_confirm_repair_choices_note">Le réappairage conserve le mode de session et les réglages de rétention actuels. Vous pouvez les modifier dans la fiche de l’appareil.</string>
+    <!-- 远程面板 · 手动输入 -->
+    <string name="remote_manual_title">Appariement manuel</string>
+    <string name="remote_manual_address_label">URL d\'appariement (avec jeton ou secret le cas échéant)</string>
+    <string name="remote_manual_token_label">Jeton (facultatif, ajouté en ?auth=)</string>
+    <string name="remote_manual_note_label">Note de l\'appareil (facultatif)</string>
+    <string name="remote_manual_confirm">Ajouter l\'appareil</string>
+    <!-- 远程面板 · 设备卡 -->
+    <string name="remote_device_expand">Déplier l\'appareil</string>
+    <string name="remote_device_collapse">Replier l\'appareil</string>
+    <string name="remote_device_delete">Supprimer l\'appareil</string>
+    <string name="remote_device_delete_title">Supprimer cet appareil ?</string>
+    <string name="remote_device_delete_message">Supprimer « %1$s » retire tous ses endpoints et efface les identifiants de l\'appareil et les données de page conservés sur cet appareil. Action irréversible.</string>
+    <!-- One-line hint while a VPN/system proxy is active and private-address endpoints exist -->
+    <string name="remote_lan_vpn_warning">Un proxy système ou un VPN a été détecté ; les connexions au réseau local peuvent être inaccessibles.</string>
+
+    <string name="remote_device_confirm_delete">Supprimer</string>
+    <string name="remote_cancel">Annuler</string>
+    <string name="remote_confirm">Valider</string>
+    <string name="remote_endpoint_set_display">Définir comme source d\'affichage</string>
+    <string name="remote_endpoint_edit">Modifier</string>
+    <string name="remote_endpoint_more">Autres actions du point d\'accès</string>
+    <string name="remote_endpoint_move">Déplacer vers un appareil</string>
+    <string name="remote_endpoint_move_to_group">Déplacer vers le groupe d’appareils</string>
+    <string name="remote_endpoint_switch_group">Changer de groupe d’appareils</string>
+    <string name="remote_endpoint_delete">Supprimer ce point d\'accès</string>
+    <string name="remote_endpoint_delete_title">Supprimer ce point d\'accès ?</string>
+    <string name="remote_endpoint_delete_message">Retire le point d\'accès %1$s %2$s de « %3$s » et efface ses identifiants enregistrés. Action irréversible.</string>
+    <string name="remote_endpoint_status_idle">Non connecté</string>
+    <string name="remote_endpoint_displaying">%1$s · À l\'écran</string>
+    <!-- 远程面板 · 端点地址编辑 -->
+    <string name="remote_edit_endpoint_title">Modifier l\'adresse du point d\'accès</string>
+    <string name="remote_edit_endpoint_address_label">Nouvelle URL cible</string>
+    <string name="remote_edit_endpoint_confirm">Enregistrer</string>
+    <string name="remote_session_mode_label">Mode de session</string>
+    <string name="remote_session_mode_proxied">Proxy</string>
+    <string name="remote_session_mode_direct">Direct</string>
+    <!-- 直连仅放行 https 端点（会话层门禁与卡片选项禁用双保险） -->
+    <string name="remote_direct_https_limitation">Le mode direct ne prend en charge que les adresses https</string>
+    <!-- 远程面板 · 设置 -->
+    <string name="remote_settings_title">Paramètres</string>
+    <string name="remote_settings_retention_label">Conserver la session inactive</string>
+    <string name="remote_settings_default_retention">Rétention par défaut · Globale</string>
+    <string name="remote_settings_inactive_hint">Sessions inactives</string>
+    <string name="remote_settings_hot_label">Occupation du pool chaud</string>
+    <string name="remote_settings_hot_usage">%1$d / %2$d</string>
+    <string name="remote_settings_hot_note">Les pages dont la rétention n’est pas Immédiate restent dans le pool chaud une fois inactives, sans rechargement au retour.</string>
+    <string name="remote_settings_release_all">Tout libérer maintenant</string>
+    <string name="remote_retention_immediate">Libérer au changement</string>
+    <string name="remote_retention_minutes">%1$d min</string>
+    <string name="remote_retention_forever">Pour toujours</string>
+    <string name="remote_retention_inherit">Hériter (%1$s)</string>
+    <string name="remote_retention_trigger">Rétention : %1$s</string>
+    <string name="remote_retention_label">Politique de rétention</string>
+
+    <!-- 远程面板 · 平板右栏端点详情 -->
+    <string name="remote_detail_empty">Sélectionnez un appareil à gauche pour voir ses points d\'accès</string>
+        <string name="remote_device_endpoint_summary">Points de terminaison · %1$d canaux</string>
+    <string name="remote_detail_endpoint_label">Points de terminaison</string>
+    <string name="remote_detail_channel_count">%1$d canaux</string>
+    <!-- 远程面板 · 远程面板 · 通道标签 -->
+    <string name="remote_channel_lan">LAN</string>
+    <string name="remote_channel_public">Publique</string>
+    <string name="remote_channel_tunnel">Tunnel</string>
+    <string name="remote_channel_url">URL</string>
+    <!-- 远程面板 · 远程面板 · 端点插件类型标注（产品专名不翻译，仅 generic 走资源） -->
+    <string name="remote_parser_generic">URL générique</string>
+    <!-- 远程面板 · 远程面板 · 重新配对 -->
+    <string name="remote_device_repair">Ré-apparier</string>
+    <string name="remote_device_repair_input">Ressaisir l’appairage</string>
+    <string name="remote_repair_description">Collez la nouvelle URL d\'appariement pour « %1$s » ; l\'ancien identifiant à usage unique devient invalide.</string>
+    <!-- 远程面板 · 远程面板 · 地址编辑失败 -->
+    <string name="remote_edit_endpoint_invalid">URL d\'appariement invalide</string>
+    <!-- 远程面板 · 远程面板 · 一次性凭据被拒 -->
+    <string name="remote_pairing_rejected_title">Identifiant d\'appariement invalide</string>
+    <string name="remote_pairing_rejected">L\'identifiant d\'appariement à usage unique a été refusé ou déjà utilisé. Ré-appariez ce point d\'accès depuis sa carte.</string>
+    <!-- 扫码器 · 扫码器 · 全屏子页 -->
+    <string name="remote_scan_title">Scanner le code d\'appariement</string>
+    <string name="remote_scan_torch">Lampe torche</string>
+    <!-- 扫码器 · 扫码器 · 权限流 -->
+    <string name="remote_scan_permission_denied">L\'autorisation caméra a été refusée. Vous pouvez la redemander ou saisir le lien manuellement.</string>
+    <string name="remote_scan_permission_permanent">L\'autorisation caméra est définitivement refusée. Saisissez le lien manuellement.</string>
+    <string name="remote_scan_request_again">Demander à nouveau</string>
+    <string name="remote_scan_manual_fallback">Saisir manuellement</string>
+    <!-- 扫码器 · 设备卡重扫 -->
+    <string name="remote_device_rescan">Rescanner pour mettre à jour</string>
+    <!-- 扫码器 · 相机不可用与系统设置 -->
+    <string name="remote_scan_camera_unavailable">Aucune caméra arrière disponible sur cet appareil, ou la caméra n\'a pas pu démarrer. Saisissez le lien d\'appariement manuellement.</string>
+    <string name="remote_scan_open_settings">Ouvrir les réglages système</string>
+    <!-- 下载分支 · 结果页 -->
+    <string name="remote_download_saved">Enregistré dans %1$s/%2$s</string>
+    <string name="remote_download_failed">Échec du téléchargement : %1$s</string>
+    <string name="remote_download_dir_unavailable">Répertoire de téléchargement non accessible en écriture</string>
+    <string name="remote_download_saved_hint">Si ce fichier provient de l’envoi d’un formulaire, vous pouvez revenir à la page précédente pour continuer.</string>
+    <string name="remote_download_back">Retour</string>
+    <string name="remote_download_title">Téléchargements</string>
+    <string name="remote_download_share">Espace partagé : DSHBox/download-remote</string>
+    <string name="remote_download_system">Fichiers système : Stockage interne/DSHBox/download-remote</string>
+    <string name="remote_download_empty">Aucun téléchargement</string>
+    <string name="remote_download_copy">Copier le chemin</string>
+    <string name="remote_download_open_folder">Ouvrir le dossier</string>
+    <string name="remote_download_perm">L’accès à tous les fichiers est requis pour enregistrer dans l’espace partagé.</string>
+    <string name="remote_download_grant">Ouvrir les réglages</string>
+    <string name="remote_download_fail_perm">Pas d’autorisation de stockage : écriture impossible dans l’espace partagé.</string>
+    <string name="remote_download_fail_origin">Téléchargement bloqué : l’adresse ne correspond pas à l’origine de la session.</string>
+    <string name="remote_download_fail_http">Le serveur a refusé le téléchargement.</string>
+    <string name="remote_download_fail_io">Écriture du fichier impossible.</string>
+    <string name="remote_download_fail_dir">Le dossier de téléchargement est indisponible.</string>
+</resources>
