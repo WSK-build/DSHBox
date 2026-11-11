@@ -32,8 +32,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,12 +70,16 @@ import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.UiText
 import com.dshbox.app.ui.asString
 import com.dshbox.app.ui.configurationAwareResources
-import com.dshbox.app.common.Constants
+import com.dshbox.app.ui.StarFeedbackDialog
+import com.dshbox.app.ui.IssueFeedbackDialog
 import com.dshbox.app.sandbox.SandboxManager
 import com.dshbox.app.sandbox.DshUpdateOutcome
 import com.dshbox.app.service.SandboxService
 import com.dshbox.app.dsh.DshRendererReportStore
 import com.dshbox.app.dsh.DshDiagnosticLogs
+import com.dshbox.app.ui.theme.AppDshAddressState
+import com.dshbox.app.ui.theme.AppDshBehaviorState
+import com.dshbox.app.ui.home.AppUpdateHighlightsState
 import com.dshbox.app.ui.theme.AppLanguage
 import com.dshbox.app.ui.theme.AppLocaleState
 import com.dshbox.app.ui.theme.AppThemeState
@@ -124,8 +126,14 @@ fun SettingsScreen(
             onPendingOnlineImportConsumed()
         }
     }
-    // 语言选择器单选对话框（外观区块）。
+    // 语言选择器单选对话框（通用区块）。
     var showLanguageDialog by remember { mutableStateOf(false) }
+    // DSH 回车键单选对话框（通用区块，与语言选择器同一风格）。
+    var showEnterKeyDialog by remember { mutableStateOf(false) }
+    // 本机 DSH 状态栏单选对话框（开启 / 关闭两档，与语言/回车同一风格）。
+    var showStatusBarDialog by remember { mutableStateOf(false) }
+    // 首页「版本更新要点」卡开关单选对话框（开启 / 关闭，与语言/回车同一风格）。
+    var showUpdateHighlightsDialog by remember { mutableStateOf(false) }
     var updateChecking by remember { mutableStateOf(false) }
     var updateCheckResult by remember { mutableStateOf<AppUpdater.CheckResult?>(null) }
     var showUpdateCheckDialog by remember { mutableStateOf(false) }
@@ -478,7 +486,8 @@ fun SettingsScreen(
                         else -> R.string.home_dsh_stopped
                     },
                 ),
-                value = Constants.DSH_BASE_URL,
+                // 运行期地址（端口自适应）：确认地址变化即时随动。
+                value = AppDshAddressState.baseUrl,
             )
             SettingsDivider()
             SettingsRow(
@@ -511,7 +520,7 @@ fun SettingsScreen(
             )
         }
 
-        SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
+        SettingsSection(title = stringResource(R.string.settings_section_general)) {
             Text(
                 text = stringResource(R.string.settings_appearance),
                 style = MaterialTheme.typography.bodyLarge,
@@ -555,6 +564,49 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_language),
                 value = currentLanguageLabel,
                 onClick = { showLanguageDialog = true },
+            )
+            // 本机 DSH 页面系统状态栏（默认「关闭」= 全屏沉浸，保持既有行为）：
+            // 与语言/回车键同款单选对话框（开启 / 关闭），标题本身说明作用域
+            // 仅本机 DSH 页面、不影响远程页面，不再另设副标题。
+            SettingsDivider()
+            SettingsRow(
+                title = stringResource(R.string.settings_dsh_status_bar),
+                value = stringResource(
+                    if (AppDshBehaviorState.localStatusBarVisible) {
+                        R.string.settings_dsh_status_bar_on
+                    } else {
+                        R.string.settings_dsh_status_bar_off
+                    },
+                ),
+                onClick = { showStatusBarDialog = true },
+            )
+            // DSH 回车键二档（换行 / 发送消息，默认换行）：与语言行同一
+            // 单选对话框交互；写入偏好后重启生效（渲染器注入配置按现值装配）。
+            SettingsDivider()
+            SettingsRow(
+                title = stringResource(R.string.settings_dsh_enter_key),
+                value = stringResource(
+                    if (AppDshBehaviorState.enterKeyNewline) {
+                        R.string.settings_dsh_enter_key_newline
+                    } else {
+                        R.string.settings_dsh_enter_key_send
+                    },
+                ),
+                onClick = { showEnterKeyDialog = true },
+            )
+            // 首页「版本更新要点」卡开关（默认开启）：沿用状态栏/回车键同款
+            // 单选对话框；关闭后首页不再展示该卡，重新开启从下个版本起展示。
+            SettingsDivider()
+            SettingsRow(
+                title = stringResource(R.string.settings_update_highlights),
+                value = stringResource(
+                    if (AppUpdateHighlightsState.enabled) {
+                        R.string.settings_update_highlights_on
+                    } else {
+                        R.string.settings_update_highlights_off
+                    },
+                ),
+                onClick = { showUpdateHighlightsDialog = true },
             )
         }
 
@@ -689,52 +741,14 @@ fun SettingsScreen(
         )
     }
 
-    // ── 用户反馈：点 Star ──────────────────────────────────────
-    // 说明"为什么值得点"（业余维护、Star 也能带来曝光），而不是喊口号。
+    // ── 用户反馈：点 Star / 提 Issue ─────────────────────────────
+    // 与首页版本更新卡共用同一组引导弹窗：先说明、再确认跳转。
     if (showStarDialog) {
-        AlertDialog(
-            onDismissRequest = { showStarDialog = false },
-            title = { Text(stringResource(R.string.settings_feedback_star_title)) },
-            text = { Text(stringResource(R.string.settings_feedback_star_msg)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showStarDialog = false
-                    AppUpdater.openUrl(context, AppUpdater.REPO_URL)
-                }) {
-                    Text(stringResource(R.string.settings_feedback_star_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showStarDialog = false }) {
-                    // 用「稍后再说」而非「取消」：非破坏性引导，措辞更柔和。
-                    Text(stringResource(R.string.settings_feedback_later))
-                }
-            },
-        )
+        StarFeedbackDialog(onDismiss = { showStarDialog = false })
     }
 
-    // ── 用户反馈：提 Issue ───────────────────────────────────────
-    // 正文里主动给出"附上复现步骤/截图"的方法——降低提交门槛，
-    // 也让我们收到的反馈更好定位。
     if (showIssueDialog) {
-        AlertDialog(
-            onDismissRequest = { showIssueDialog = false },
-            title = { Text(stringResource(R.string.settings_feedback_issue_title)) },
-            text = { Text(stringResource(R.string.settings_feedback_issue_msg)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showIssueDialog = false
-                    AppUpdater.openUrl(context, AppUpdater.ISSUES_URL)
-                }) {
-                    Text(stringResource(R.string.settings_feedback_issue_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showIssueDialog = false }) {
-                    Text(stringResource(R.string.settings_feedback_later))
-                }
-            },
-        )
+        IssueFeedbackDialog(onDismiss = { showIssueDialog = false })
     }
 
     // 导入进行中提示（不可取消——中断会留下半成品，流程内部会自行清理）。
@@ -1004,6 +1018,120 @@ fun SettingsScreen(
             },
         )
     }
+
+    // DSH 回车键单选对话框：换行 / 发送消息两档。默认「换行」（裸 Enter
+    // 映射换行）；选择即写偏好即时生效——已建立的页面经渲染器推送翻转
+    // 可变全局，页面重载/新会话按注入配置初值生效。
+    if (showEnterKeyDialog) {
+        AlertDialog(
+            onDismissRequest = { showEnterKeyDialog = false },
+            title = { Text(stringResource(R.string.settings_dsh_enter_key)) },
+            text = {
+                Column {
+                    AlertDialogRadioOption(
+                        label = stringResource(R.string.settings_dsh_enter_key_newline),
+                        selected = AppDshBehaviorState.enterKeyNewline,
+                        onSelect = {
+                            AppDshBehaviorState.setEnterKeyNewline(context, true)
+                            showEnterKeyDialog = false
+                        },
+                    )
+                    AlertDialogRadioOption(
+                        label = stringResource(R.string.settings_dsh_enter_key_send),
+                        selected = !AppDshBehaviorState.enterKeyNewline,
+                        onSelect = {
+                            AppDshBehaviorState.setEnterKeyNewline(context, false)
+                            showEnterKeyDialog = false
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showEnterKeyDialog = false }) {
+                    Text(stringResource(R.string.home_stop_cancel))
+                }
+            },
+        )
+    }
+
+    // 本机 DSH 页面系统状态栏单选对话框（开启 / 关闭，默认关闭 = 全屏）：
+    // 选择即写偏好即时生效（主框架沉浸判定在重组时读现值）。
+    if (showStatusBarDialog) {
+        AlertDialog(
+            onDismissRequest = { showStatusBarDialog = false },
+            title = { Text(stringResource(R.string.settings_dsh_status_bar)) },
+            text = {
+                Column {
+                    AlertDialogRadioOption(
+                        label = stringResource(R.string.settings_dsh_status_bar_on),
+                        selected = AppDshBehaviorState.localStatusBarVisible,
+                        onSelect = {
+                            AppDshBehaviorState.setLocalStatusBarVisible(context, true)
+                            showStatusBarDialog = false
+                        },
+                    )
+                    AlertDialogRadioOption(
+                        label = stringResource(R.string.settings_dsh_status_bar_off),
+                        selected = !AppDshBehaviorState.localStatusBarVisible,
+                        onSelect = {
+                            AppDshBehaviorState.setLocalStatusBarVisible(context, false)
+                            showStatusBarDialog = false
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStatusBarDialog = false }) {
+                    Text(stringResource(R.string.home_stop_cancel))
+                }
+            },
+        )
+    }
+
+    // 首页「版本更新要点」卡开关单选对话框（开启 / 关闭，默认开启）：
+    // 开启档的副文案简述展示时机——每个版本更新后展示一次，点关闭即不再出。
+    if (showUpdateHighlightsDialog) {
+        AlertDialog(
+            onDismissRequest = { showUpdateHighlightsDialog = false },
+            title = { Text(stringResource(R.string.settings_update_highlights)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = stringResource(R.string.settings_update_highlights_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    AlertDialogRadioOption(
+                        label = stringResource(R.string.settings_update_highlights_on),
+                        selected = AppUpdateHighlightsState.enabled,
+                        onSelect = {
+                            // 重新开启按「下个版本起展示」口径：把当前版本记为
+                            // 已展示，避免用户刚打开开关就被本版本卡片再弹一次
+                            AppUpdateHighlightsState.setEnabled(context, true)
+                            AppUpdateHighlightsState.markShownForCurrentVersion(
+                                context,
+                                BuildConfig.VERSION_CODE.toLong(),
+                            )
+                            showUpdateHighlightsDialog = false
+                        },
+                    )
+                    AlertDialogRadioOption(
+                        label = stringResource(R.string.settings_update_highlights_off),
+                        selected = !AppUpdateHighlightsState.enabled,
+                        onSelect = {
+                            AppUpdateHighlightsState.setEnabled(context, false)
+                            showUpdateHighlightsDialog = false
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showUpdateHighlightsDialog = false }) {
+                    Text(stringResource(R.string.home_stop_cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1060,6 +1188,29 @@ private fun SettingsSection(
                 content()
             }
         }
+    }
+}
+
+/**
+ * 单选对话框的选项行（与语言选择器同一交互风格）：行首单选点 + 单行
+ * 文案，点击即选定并关闭弹窗（由调用方回调写入偏好）。
+ */
+@Composable
+private fun AlertDialogRadioOption(
+    label: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(text = label, style = MaterialTheme.typography.bodyLarge)
     }
 }
 

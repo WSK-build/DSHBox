@@ -39,7 +39,7 @@ import java.util.zip.ZipFile
  */
 class DefaultSandboxManager(
     private val config: SandboxConfig,
-    private val healthChecker: SandboxHealthChecker = HttpHealthChecker(config.dshHost, config.dshPort),
+    configuredHealthChecker: SandboxHealthChecker = HttpHealthChecker(config.dshHost, config.dshPort),
     /**
      * 设备是否处于交互状态（唤醒且亮屏）。健康循环据此区分探测失败的性质：设备休眠
      * 时 guest 会被整体冻结，此时的失败是暂时状态，不该判为故障。
@@ -72,6 +72,100 @@ class DefaultSandboxManager(
     // DSH 进程级 launchToken（从 `dsh web:` 原始输出解析，仅内存）。
     private val _dshLaunchToken = MutableStateFlow<String?>(null)
     override val dshLaunchToken: StateFlow<String?> = _dshLaunchToken.asStateFlow()
+
+    /**
+     * 运行期 DSH 地址（实际端口以启动输出为准）：供界面、WebView 与健康检查
+     * 使用。null = 尚未从输出确证地址（未启动过 / 输出不可解析），消费方回退
+     * [Constants.DSH_BASE_URL]。重启（含换端口重试）开始时清空，回落值永远
+     * 指向**本次请求**的端口，而不是上一轮的旧端口。
+     */
+    private val _dshBaseUrl = MutableStateFlow<String?>(null)
+    override val dshBaseUrl: StateFlow<String?> = _dshBaseUrl.asStateFlow()
+
+    /**
+     * 本进程内的启动代次计数（[launchGeneration] 的自增源）：每开始一轮
+     * startDsh / 就地重启递增一次，仅由持有 [lifecycleMutex] 的启动路径推进，
+     * Long 单调计数在进程生命周期内不会回绕到歧义。
+     */
+    private var launchGenerationCounter: Long = 0L
+
+    /**
+     * 当前轮启动的代次：确证门用它区分「旧进程输出的迟到行」与「本轮进程的
+     * 输出行」。每轮启动（手动 startDsh、就地重启、健康循环触发的重启）开始
+     * 时自增并清空地址 / token；输出解析 [ingestDshWebLaunchLine] 写入前校验
+     * 代次——不属于当前轮的行只能作废，不得写入地址。`addressConfirmed`（=
+     * `_dshBaseUrl != null`）因此在任何重启之后都恒等于「本轮启动之后解析到
+     * 的值」，旧进程在停机窗口里吐出的最后一行不能再通过确证门。
+     *
+     * @Volatile internal var（setter 同 internal）：仅为 JVM 单测可直接构造
+     * 代次时序；生产改动仍走启动路径的自增。
+     */
+    @Volatile
+    internal var launchGeneration: Long = -1L
+
+    /** 构造时注入的默认检查器（3080 口径，保留可测注入口）；每轮启动复位回它。 */
+    private val fallbackHealthChecker: SandboxHealthChecker = configuredHealthChecker
+
+    /**
+     * 当前健康检查器（跟随实际端口换新）。启动前是默认 3080 检查器
+     * （[fallbackHealthChecker]）；每次确证新端口（探测下发或输出解析）都重建
+     * 一次，健康循环与手动 healthCheck 均读本引用。
+     */
+    @Volatile
+    private var healthChecker: SandboxHealthChecker = configuredHealthChecker
+
+    /**
+     * 本次 startDsh 在互斥锁内的启动中止原因（非空 = 拒绝发车）。锁体只回传
+     * Boolean，这里把"写覆盖层失败"等中止细节传出锁外，由 startDsh 据此
+     * 返回起步失败（可诊断错误）而不是误报"已在使用中"。
+     */
+    @Volatile
+    private var startAbortReason: String? = null
+
+    /** 测试注入口：仅暴露端口读取（生产代码不触碰）。 */
+    internal val healthCheckerTestable: HttpHealthChecker? get() = healthChecker as? HttpHealthChecker
+
+    /** 端口探测区间上界日志用（3080..3099）。 */
+    private val PROBE_PORT_RANGE_END = Constants.DSH_DEFAULT_PORT + DshPortProbe.PORT_COUNT - 1
+
+    /**
+     * 本次启动的请求端口（探测结果），供输出解析日志对照与重试序列（用户
+     * 手动重启即重申：下一轮 startDsh 重新探测，竞争失败落在输出判断）。
+     */
+    @Volatile
+    private var nextDshLaunchPass: Int? = null
+
+    /**
+     * 跨重启的端口探测游标：上一轮启动的请求端口（
+     * [nextDshLaunchPass]）即游标；自动重启前把游标推进到「上轮请求端口 +
+     * 1」（纯计算收口在 [DshPortProbe.cursorFirstPort]），不回绕、顶到上界
+     * 3099 后不再回走。
+     *
+     * 旧实现（重启 attempt 从 0、又从 3080 重探，且先杀旧进程使原端口可绑）
+     * 合在一起变成「30s 超时重启仍钉死同一端口」：确证超时的重启拿回同一个
+     * 请求端口，起新进程、占上旧端口、再次确证失败——换端口重试形同虚设。
+     *
+     * 语义：
+     *  - 用户**手动**重启 DSH（stopDsh → startDsh）视为全新意图：手动
+     *    startDsh 恒从 3080 重探（= 规范「直到下次用户手动重启 DSH 才回到
+     *    3080」），不读游标；
+     *  - 自动路径（就地重启、健康循环重启）：确证超时 / 不就绪时**推进**
+     *    （起点 = 上轮请求端口 + 1 + attempt），探测窗口沿剩余区间裁剪；
+     *  - 成功确证后游标随 [nextDshLaunchPass] 保留，不被任何清理路径回走，
+     *    下一次自动重启仍从它的下一个起探。
+     */
+    private fun advancePortCursorFromLastRequest(): Int {
+        val lastRequested = nextDshLaunchPass ?: Constants.DSH_DEFAULT_PORT
+        val cursor = DshPortProbe.cursorFirstPort(lastRequested, attempt = 0)
+        Log.i(TAG, "dsh port cursor advanced: lastRequested=$lastRequested cursor=$cursor")
+        return cursor
+    }
+
+    /** JVM 单测代次时序专用：复位确证地址与 token（生产重启路径的同款动作）。 */
+    internal fun resetConfirmedAddressForTest() {
+        _dshBaseUrl.value = null
+        _dshLaunchToken.value = null
+    }
 
     private val dshLayer = DshLayer(runtimeCurrentDir(), bundleManager)
 
@@ -211,6 +305,7 @@ class DefaultSandboxManager(
         }
 
         val shouldStart = lifecycleMutex.withLock {
+            startAbortReason = null
             val activeNow =
                 _dshState.value == DshState.RUNNING ||
                     _dshState.value == DshState.READY ||
@@ -221,41 +316,95 @@ class DefaultSandboxManager(
                 false
             } else {
                 _dshState.value = DshState.STARTING
-                try {
-                    ensureRuntimePresent()
-                    // 本进程尚未跟踪任何实例，但上一轮 App 进程可能留下仍占着 3080 的孤儿
-                    // dsh（句柄随进程回收一并丢失）。先按 cmdline 兜底清扫，否则新实例会因
-                    // 端口被占（EADDRINUSE）启动失败——与停机、就地重启两处相同的兜底。
-                    runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
-                    // Start 前清掉"持有者已不存在"的写者锁：dsh 的原子写只等 2 秒且
-                    // 不会清理别人留下的锁，一次强杀就能让之后的启动全部失败。
-                    sweepDeadWriterLocks()
-                    val runtimeDir = runtimeCurrentDir()
-                    val command = processRunner.buildProotDshCommand(
-                        prootBinary = prootBinary().absolutePath,
-                        rootfsDir = baseRootfs().absolutePath,
-                        workspaceBind = config.userDataDir.absolutePath,
-                        nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
-                        dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
-                        shimHostDir = linkShimHostDir(),
-                        dshPatchGuestPaths = dshOverlayGuestPaths(),
-                        pilotHostDir = pilotHostDir(),
-                        browserHostDir = browserHostDir(),
-                        shareBinds = shareAreaBinds(),
-                        guestCacheHostDir = config.guestCacheDir.absolutePath,
-                        extraBinds = config.extraGuestBindsProvider(),
-                    )
-                    val prootEnv = buildProotEnv(runtimeDir, "dsh")
-                    Log.i(TAG, "starting dsh proot")
-                    dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv, onRawLine = ::ingestDshWebLaunchToken)
-                    Log.i(TAG, "dsh proot process started")
-                    true
-                } catch (t: Throwable) {
-                    Log.e(TAG, "startDsh failed: ${t.message}", t)
+                // 本轮启动开始：递增代次并清空上一轮的确证地址与 token，让
+                // "回落值"只指向本次请求的端口（旧端口可能已易主、或本轮 DSH
+                // 尚未绑定回它）。代次同时闭合确证门：旧进程在停机窗口里吐出
+                // 的 `dsh web:` 行不再能通过 addressConfirmed。
+                launchGeneration = ++launchGenerationCounter
+                _dshBaseUrl.value = null
+                _dshLaunchToken.value = null
+                healthChecker = fallbackHealthChecker
+                // 本进程尚未跟踪任何实例，但上一轮 App 进程可能留下仍占着 3080 的孤儿
+                // dsh（句柄随进程回收一并丢失）。**先**按 cmdline 兜底清扫再探端口：
+                // 探测必须看不见自己上一轮的监听，否则孤儿清不掉（或 TIME_WAIT 残留
+                // 未落定时）端口会被判占用、每次启动都被往后挤——与停机、就地重启
+                // 两处相同的兜底，顺序固定"先杀后探"。
+                runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
+                // killAll 发出 SIGKILL 后垂死的监听不会瞬间释放：强杀到端口
+                // 真正可绑之间存在内核收尾窗口，期间探测会把该端口判占用、
+                // 启动被偶发地往后挤一格。给一道有界等待：轮询至多约 500ms，
+                // 首个探测端口（3080）可绑或相关进程消失即提前结束（都在
+                // 后台协程 + lifecycleMutex 内，不阻塞主线程）。
+                awaitPortsBindableAfterKill(Constants.DSH_DEFAULT_PORT)
+                // Start 前清掉"持有者已不存在"的写者锁：dsh 的原子写只等 2 秒且
+                // 不会清理别人留下的锁，一次强杀就能让之后的启动全部失败。
+                sweepDeadWriterLocks()
+                // 端口自适应：启用时每次手动启动都从 3080 重新探（不持久化）——
+                // 手动启动是用户意志介入的全新意图：「下次用户手动重启
+                // DSH 才回到 3080」；自动路径的游标推进只活在就地重启内部
+                // （[advancePortCursorFromLastRequest]），与手动路径互不影响。
+                // 取第一个空闲端口写入 webserver 覆盖层；全占用才放弃
+                // （ERROR 由探测失败直接置）。
+                // 探测与真正绑定之间存在竞争，真正生效的端口以启动输出为准
+                // （ingestDshWebLaunchLine）。
+                // gecko 变体不启用端口自适应（其状态桥扩展与页面兼容配置在构建期
+                // 固化 3080，见 [config.dshPortAdaptationEnabled]）：固定请求 3080
+                // 跳过探测——3080 被占时照常由输出解析/健康检查暴露故障，不静默挪端口。
+                val probedPort = if (config.dshPortAdaptationEnabled) {
+                    DshPortProbe.probe()
+                } else {
+                    Constants.DSH_DEFAULT_PORT
+                }
+                if (probedPort == null) {
+                    Log.e(TAG, "startDsh: no free port in ${Constants.DSH_DEFAULT_PORT}..$PROBE_PORT_RANGE_END")
                     _dshState.value = DshState.ERROR
                     false
+                } else {
+                    try {
+                        ensureRuntimePresent()
+                        if (config.dshPortAdaptationEnabled) {
+                            // 探测端口写进 webserver 覆盖层（user-data 下，与既有三层同一
+                            // 命名空间、文件级隔离，合并保留既有行）。写失败不能静默继续：
+                            // 自适应启用且 3080 被占时，写失败意味着 DSH 必然按 3080 起并
+                            // 撞上占用者；判启动失败并给出可诊断错误比"必然失败"更明确。
+                            val wroteOverlay = DshWebserverOverlay.refresh(
+                                config.userDataDir, Constants.DSH_DEFAULT_HOST, probedPort,
+                            )
+                            if (!wroteOverlay) {
+                                startAbortReason =
+                                    "dsh webserver overlay write failed (userDataDir=${config.userDataDir.absolutePath})"
+                                Log.e(TAG, "startDsh: $startAbortReason")
+                                _dshState.value = DshState.ERROR
+                                return@withLock false
+                            }
+                        }
+                        Log.i(
+                            TAG,
+                            "startDsh: requestedPort=$probedPort (adaptation=${config.dshPortAdaptationEnabled})",
+                        )
+                        // 请求端口先按它重建健康检查器（避免拿旧端口探新进程）；
+                        // 输出确证实际端口后再各自换新。
+                        if (config.dshPortAdaptationEnabled && healthCheckerTestable?.port != probedPort) {
+                            healthChecker = HttpHealthChecker(Constants.DSH_DEFAULT_HOST, probedPort)
+                        }
+                        // 请求端口即为本次 launch 的下发值：环境变量兜底（旧版 DSH 只看
+                        // env）与覆盖层双通道，输出解析仍是唯一真值。
+                        nextDshLaunchPass = probedPort
+                        startDshProotProcess()
+                        true
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "startDsh failed: ${t.message}", t)
+                        _dshState.value = DshState.ERROR
+                        false
+                    }
                 }
             }
+        }
+
+        // 锁内的启动中止（覆盖层写失败等）在此转为起步失败：状态已置 ERROR，
+        // 等待循环会立即退出，这里直接给出可诊断错误而非"已在用"误报。
+        startAbortReason?.let { reason ->
+            return AppResult.Failure(AppError("DSH_START_ABORTED", reason))
         }
 
         if (shouldStart) {
@@ -276,7 +425,10 @@ class DefaultSandboxManager(
                         DshRuntimeStatus(
                             dshVersion = null,
                             pluginApiVersion = null,
-                            baseUrl = "http://${config.dshHost}:${config.dshPort}",
+                            // READY 以地址确证为前提；确证值缺位时回落**本次请求**
+                            // 的端口（不是固定 3080，也不是上一轮旧端口）。
+                            baseUrl = _dshBaseUrl.value
+                                ?: "http://${config.dshHost}:${nextDshLaunchPass ?: config.dshPort}",
                             ready = true,
                         ),
                     )
@@ -299,6 +451,41 @@ class DefaultSandboxManager(
             delay(500L)
         }
         return AppResult.Failure(AppError("DSH_NOT_READY", "DSH ready timeout", userMessage = UiText.Res(R.string.dsh_ready_timeout)))
+    }
+
+    /**
+     * 以 `nextDshLaunchPass`（当前请求端口）带参数拉起 DSH PRoot 进程：
+     * startDsh 与就地重启共用同一构造路径（`--patch` 层清单、角色 env、
+     * 输出监听全部一致），端口差异只体现在请求值上。
+     * 调用方持有 [lifecycleMutex]。
+     */
+    private fun startDshProotProcess() {
+        val runtimeDir = runtimeCurrentDir()
+        val command = processRunner.buildProotDshCommand(
+            prootBinary = prootBinary().absolutePath,
+            rootfsDir = baseRootfs().absolutePath,
+            workspaceBind = config.userDataDir.absolutePath,
+            nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
+            dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
+            shimHostDir = linkShimHostDir(),
+            dshPatchGuestPaths = dshOverlayGuestPaths(),
+            pilotHostDir = pilotHostDir(),
+            browserHostDir = browserHostDir(),
+            shareBinds = shareAreaBinds(),
+            guestCacheHostDir = config.guestCacheDir.absolutePath,
+            extraBinds = config.extraGuestBindsProvider(),
+        )
+        val prootEnv = buildProotEnv(runtimeDir, "dsh")
+        Log.i(TAG, "starting dsh proot")
+        // P1-1：本进程输出的行随它所属的启动代次一起校验——监听器在进程起
+        // 动时快照当时的 launchGeneration，行到达时若当前代次已经推进（另一
+        // 轮启动已开始），这行必是旧进程的迟到输出，不得复位地址确证门。
+        val generationAtLaunch = launchGeneration
+        dshProcess = processRunner.start(
+            command, tag = "dsh", env = prootEnv,
+            onRawLine = { line -> ingestDshWebLaunchLine(line, generationAtLaunch) },
+        )
+        Log.i(TAG, "dsh proot process started")
     }
 
     override suspend fun stopDsh() = lifecycleMutex.withLock { stopDshLocked() }
@@ -1153,16 +1340,39 @@ class DefaultSandboxManager(
     /**
      * 传给 dsh 的 `--patch` 层：逐个按"文件存在且非空"追加（`--patch` 可重复）。
      *
-     * 三个独立的层，分开是为了互不覆盖 —— 共用一份文件时，一方的回滚会把另一方的停用行抹掉：
+     * 四个独立的层，分开是为了互不覆盖 —— 共用一份文件时，一方的回滚会把另一方的停用行抹掉：
      *  - dsh-official-plugin：预置开启上游默认关闭的官方条目（如侧边栏浏览器）；**只由宿主写**；
      *  - plugin-market：停用行（插件市场与安全模式共写）；**只由该模块写**；
-     *  - safe-mode：绝对安全模式独占（关闭 = 删文件）。
+     *  - safe-mode：绝对安全模式独占（关闭 = 删文件）；
+     *  - webserver-port：本机 DSH 端口自适应（host/port）；**只由宿主写**，落在
+     *    user-data 下 `.dsh/dshbox/webserver-port/`（guest 绑定事务一映射，见
+     *    [DshWebserverOverlay] 类 KDoc）。四个层各用一份文件，文件级隔离，
+     *    谁也不会挤掉谁。
      *
-     * 顺序即优先级：后追加的层覆盖前层，因此 absolute 排最后。
+     * 顺序即优先级：后追加的层覆盖前层，因此 absolute 排最后；webserver-port
+     * 层只覆盖它自己的 host/port 键（唯一写 host/port 的层），位置与三层互不干扰。
      *
      * 不存在时**不传**：传一个不存在的 patch 会让 dsh 启动直接失败，那比"少几个条目"严重得多。
      */
     private fun dshOverlayGuestPaths(): List<String> {
+        // webserver-port 层与既有三层一样在 user-data 下（.dsh/dshbox/webserver-port/），
+        // guest 侧 `/root/projects` 绑定的正是这一目录，路径一映射可达。
+        //
+        // P2-1：gecko 变体（端口自适应关闭）**不消费**遗留层——同一 applicationId
+        // 从 systemWebView 切装 gecko 后，user-data 里残留的非 3080 覆盖层会把
+        // DSH 绑到非 3080 而 gecko 侧固化 3080。准入判定收口在伴生对象的
+        // [webserverOverlayConsumable]；关闭时不但不传，还清理宿主侧旧文件
+        // （清理失败不阻塞启动，overlay 已不传入即不会消费）。
+        val webserverFile = DshWebserverOverlay.hostFile(config.userDataDir)
+        val webserverPresent = webserverFile.isFile && webserverFile.length() > 0L
+        val webserverGuest = Constants.DSH_WEBSERVER_OVERLAY_GUEST_PATH
+            .takeIf { webserverOverlayConsumable(config.dshPortAdaptationEnabled, webserverPresent) }
+        if (webserverGuest == null && !config.dshPortAdaptationEnabled && webserverFile.isFile) {
+            runCatching {
+                webserverFile.delete()
+                Log.i(TAG, "stale webserver-port overlay removed (port adaptation disabled)")
+            }.onFailure { Log.w(TAG, "stale webserver-port overlay delete failed: ${it.message}") }
+        }
         return listOf(
             Constants.DSH_OFFICIAL_PLUGIN_OVERLAY_RELATIVE_PATH to
                 Constants.DSH_OFFICIAL_PLUGIN_OVERLAY_GUEST_PATH,
@@ -1172,7 +1382,7 @@ class DefaultSandboxManager(
         ).mapNotNull { (relative, guest) ->
             val overlay = File(config.userDataDir, relative)
             guest.takeIf { overlay.isFile && overlay.length() > 0L }
-        }
+        } + listOfNotNull(webserverGuest)
     }
 
     private fun linkShimHostDir(): String? =
@@ -1288,7 +1498,9 @@ class DefaultSandboxManager(
         // serves the app's WebView / health endpoint (default port 3080).
         if (role == "dsh") {
             base["DSH_HOME"] = "/root/projects/.dsh"
-            base["PORT"] = Constants.DSH_DEFAULT_PORT.toString()
+            // PORT 仅作旧版 DSH 的兜底通道：真实端口以 webserver 覆盖层请求 +
+            // 启动输出确证为准。本次请求值尚未确证时保持默认。
+            base["PORT"] = (nextDshLaunchPass ?: Constants.DSH_DEFAULT_PORT).toString()
             // xdg-open 垫片挂载在 /opt/dshbox（与硬链接垫片同目录）。DSH 的
             // openNativeTextFile 按 PATH 查找 xdg-open，base 层没有它——把挂载点
             // 放到 PATH 首位，垫片即可被找到；其余查找顺序保持 base 层默认。
@@ -1410,28 +1622,52 @@ class DefaultSandboxManager(
     private fun isDshProcessAlive(): Boolean = dshProcess?.process?.isAlive == true
 
     /**
-     * 从 DSH 进程原始输出解析进程级 launchToken。DSH 0.1.2-rc.1
-     * 启动打印 `dsh web: http://host:port/?token=<随机值>`；token 仅存在于进程
-     * 内存（不落盘），官方 printUrl 输出是宿主集成的唯一入口。在进程内再次启动
-     * 时 token 会刷新，但 WebView 的签名 cookie 持久有效，首次交换后无需重取；
-     * 仅在本进程尚未持有 token 时解析（DSH 重启更新已过期的场景由 WebView 401
-     * 重载配合）。
+     * 从 DSH 进程原始输出同时解析进程级 launchToken 与**实际端口**
+     * （以输出为准，是 READY 确证的前提）；该行必须属于代次 [lineGeneration]
+     * 的那轮启动。DSH 0.1.2-rc.1 启动打印 `dsh web: http://host:port/?token=…`；
+     * token 仅存在于进程内存（不落盘），官方 printUrl 输出是宿主集成的唯一
+     * 入口。在进程内再次启动时 token 会刷新，但 WebView 的签名 cookie 持久
+     * 有效，首次交换后无需重取；仅在本进程尚未持有 token 时解析（DSH 重启
+     * 更新已过期的场景由 WebView 401 重载配合）。端口则**每次确证都更新**：
+     * 输出与请求值不一致以输出为准，端口变化经 [dshBaseUrl] 流式送出，
+     * WebView/健康检查/界面按现值跟随。
+     *
+     * 输出确证的地址优先于探测请求值（`DshWebserverOverlay` 只决定 DSH 侧
+     * bind 的"请求"，竞争或旧版 DSH 忽略 patch 时输出仍为真值）。**解出该行
+     * 之前 DSH 不进入 READY**：健康循环在地址未确证时只按「不就绪」观察
+     * （与 [decideDshHealth] 的 Ready 分支要求 `addressConfirmed` 一致）。
+     *
+     * 代次校验（P1-1）：[lineGeneration] 由进程起动时的监听器闭包快照
+     * （[startDshProotProcess] 捕获 launchGeneration）携带；行到达时与**当前
+     * 代次**比对：
+     *  - 当前代次 < 0（尚未进入任何轮启动）→ 丢弃；
+     *  - 当前代次 != [lineGeneration]（另一轮启动已推进代次）→ 该行是旧
+     *    进程停机窗口的迟到输出，丢弃——不得重新填上旧地址/旧 token；
+     *  - 相等则放行（本轮进程自己的输出）。
+     *
+     * internal 仅为 JVM 单测直接构造代次时序；生产走 onRawLine 闭包注入。
      */
-    private fun ingestDshWebLaunchToken(line: String) {
-        val marker = "dsh web: http"
-        val idx = line.indexOf(marker)
-        if (idx < 0) return
-        val tokenAt = line.indexOf("token=", idx)
-        if (tokenAt < 0) return
-        val start = tokenAt + "token=".length
-        val end = line.indexOf('&', start).let { if (it < 0) line.length else it }
-        val token = line.substring(start, end).trim().takeIf { it.isNotEmpty() }
-        if (token != null) {
-            // 修正)：DSH 进程重启会生成新 launchToken，旧值随即失效——
-            // 每次捕获都更新（不因已持有旧值而跳过），WebView 侧随 StateFlow 变化
-            // 自动用新 token 重载，避免 401 + ERR_HTTP_RESPONSE_CODE_FAILURE。
-            _dshLaunchToken.value = token
-            Log.i(TAG, "dsh web launch token refreshed")
+    internal fun ingestDshWebLaunchLine(line: String, lineGeneration: Long) {
+        val parsed = DshWebLaunchLine.parse(line) ?: return
+        val current = launchGeneration
+        if (lineGeneration < 0L || lineGeneration != current) {
+            Log.w(TAG, "dsh web launch line dropped (stale generation=$lineGeneration current=$current)")
+            return
+        }
+
+        // 修正)：DSH 进程重启会生成新 launchToken，旧值随即失效——
+        // 每次捕获都更新（不因已持有旧值而跳过），WebView 侧随 StateFlow 变化
+        // 自动用新 token 重载，避免 401 + ERR_HTTP_RESPONSE_CODE_FAILURE。
+        _dshLaunchToken.value = parsed.token
+
+        val baseUrl = "http://${Constants.DSH_DEFAULT_HOST}:${parsed.port}"
+        if (_dshBaseUrl.value != baseUrl) {
+            Log.i(TAG, "dsh web address confirmed from output: $baseUrl (requested=${nextDshLaunchPass ?: "n/a"})")
+            _dshBaseUrl.value = baseUrl
+        }
+        // 健康检查跟随实际端口换新——健康循环与手动 healthCheck 都读本引用。
+        if (healthCheckerTestable?.port != parsed.port) {
+            healthChecker = HttpHealthChecker(Constants.DSH_DEFAULT_HOST, parsed.port)
         }
     }
 
@@ -1464,37 +1700,111 @@ class DefaultSandboxManager(
         }
     }
 
+    /**
+     * killAll 之后的有界等待：SIGKILL 命中进程到内核真正释放监听端口之间
+     * 有一段收尾窗口，期间端口探测会误判占用、启动被偶发地往后挤一格。
+     * 轮询 [pollMs]（48ms × 至多 ~10 轮，总体 ≤ 500ms）：
+     *  - 首探端口 [firstPort] 立即可绑 → 无需等待；
+     *  - /proc 扫描发现**没有任何** DSH 启动脚本进程存活（本轮关心的是
+     *    "上一轮孤儿"，节点上不存在其它监听者）→ 提前结束；
+     *  - 超时照常返回，探测本身仍以真实 bind（reuse 开）为准。
+     *
+     * 挂起实现（`delay` 轮询），调用方在后台协程 + [lifecycleMutex] 内，
+     * 不阻塞主线程。仅当 [SandboxProcessRunner.killAll] 真的清扫过一次
+     * （进入本函数的调用点都刚做过兜底清扫）时才有意义。
+     */
+    private suspend fun awaitPortsBindableAfterKill(firstPort: Int, pollMs: Long = 48L) {
+        if (DshPortProbe.canBindLoopback(firstPort)) {
+            // 首个目标端口立即可绑——强杀收尾已完成，无需等待。
+            return
+        }
+        val budgetEndMs = monotonicMs() + 500L
+        var waited = 0L
+        while (monotonicMs() < budgetEndMs) {
+            delay(pollMs)
+            waited += pollMs
+            if (DshPortProbe.canBindLoopback(firstPort)) {
+                Log.i(TAG, "dsh await after kill: port $firstPort bindable after ${waited}ms")
+                return
+            }
+            if (!processRunner.hasAliveProcess(Constants.DSH_START_SCRIPT)) {
+                Log.i(TAG, "dsh await after kill: no live dsh process after ${waited}ms")
+                return
+            }
+        }
+        Log.i(TAG, "dsh await after kill: budget exhausted (~${waited}ms), proceeding to probe")
+    }
+
     private suspend fun restartDshProcessInPlace(): Boolean = lifecycleMutex.withLock {
         dshProcess?.let { processRunner.stop(it) }
         // 健康循环重启同样需要 cmdline 兜底，否则旧树不清时
         // 新进程 EADDRINUSE、循环重启陷入死转。
         runCatching { processRunner.killAll(Constants.DSH_START_SCRIPT) }
+        // 与 startDsh 同款：强杀后给内核收尾留一条有界等待（≤~500ms），
+        // 垂死监听消失后再探测，避免偶发后挤一格。后台协程 + 锁内，
+        // 不阻塞主线程。
+        awaitPortsBindableAfterKill(Constants.DSH_DEFAULT_PORT)
         dshProcess = null
         _dshState.value = DshState.STARTING
+        // 就地重开放新一轮启动。代次先递增、地址与 token 同步清空——
+        // 健康循环以 `_dshBaseUrl != null` 计 addressConfirmed，若只置 STARTING
+        // 而不清地址，重启后会拿旧进程留下的确证值直接放行 READY；清空后确
+        // 证门只认「本轮启动之后解析到的值」（旧进程停机窗口吐出的最后一行
+        // 也因此作废，见 [ingestDshWebLaunchLine] 的代次校验）。
+        launchGeneration = ++launchGenerationCounter
+        _dshBaseUrl.value = null
+        _dshLaunchToken.value = null
+        // 就地重启也重新确定端口：跨重启游标在此处推进——上一轮请求
+        // 的端口已被证明"确证超时 / 不就绪"，下一轮探测必须从它的下一个端口
+        // 起探。顺序同样"先杀后探"（上面先 stop + killAll 再到下面的 probe）：
+        // 探测看不见自己上一轮的监听；探测 reuse 开（与 Node 同口径），
+        // TIME_WAIT 残留不再误判占用，被怀疑的端口也不会被钉死。窗口沿剩余
+        // 区间裁剪、止于 3099 不回绕。自适应关闭（gecko）固定 3080。
+        // 全失败置 ERROR 并返回 false。
+        val restartStartPort = advancePortCursorFromLastRequest()
+        var launched = false
         try {
             ensureRuntimePresent()
-            val runtimeDir = runtimeCurrentDir()
-            val command = processRunner.buildProotDshCommand(
-                prootBinary = prootBinary().absolutePath,
-                rootfsDir = baseRootfs().absolutePath,
-                workspaceBind = config.userDataDir.absolutePath,
-                nodeDir = nodeLayerDir().takeIf { it.isDirectory }?.absolutePath,
-                dshDir = dshLayerDir().takeIf { it.isDirectory }?.absolutePath,
-                shimHostDir = linkShimHostDir(),
-                dshPatchGuestPaths = dshOverlayGuestPaths(),
-                pilotHostDir = pilotHostDir(),
-                browserHostDir = browserHostDir(),
-                shareBinds = shareAreaBinds(),
-            )
-            val prootEnv = buildProotEnv(runtimeDir, "dsh")
-            dshProcess = processRunner.start(command, tag = "dsh", env = prootEnv, onRawLine = ::ingestDshWebLaunchToken)
-            Log.i(TAG, "dsh proot restarted in place")
-            true
+            for (attempt in 0 until Constants.MAX_AUTO_RESTART_ATTEMPTS) {
+                // 起始端口推进但不越过探测区间上界（起点 + attempt 再裁上界）：
+                // 起点本身就裁到上界以内，窗口也按剩余区间裁剪。
+                val firstPort = DshPortProbe.cursorFirstPort(restartStartPort - 1, attempt)
+                val firstPortCount = (PROBE_PORT_RANGE_END - firstPort + 1)
+                    .coerceAtMost(DshPortProbe.PORT_COUNT)
+                val requestedPort = if (config.dshPortAdaptationEnabled) {
+                    DshPortProbe.probe(firstPort = firstPort, count = firstPortCount) ?: run {
+                        Log.e(TAG, "dsh restart: no free port from $firstPort on attempt $attempt")
+                        null
+                    }
+                } else {
+                    Constants.DSH_DEFAULT_PORT
+                } ?: continue
+                if (config.dshPortAdaptationEnabled) {
+                    val wroteOverlay = DshWebserverOverlay.refresh(
+                        config.userDataDir, Constants.DSH_DEFAULT_HOST, requestedPort,
+                    )
+                    if (!wroteOverlay) {
+                        Log.e(TAG, "dsh restart attempt=$attempt: webserver overlay write failed")
+                        continue
+                    }
+                }
+                nextDshLaunchPass = requestedPort
+                if (config.dshPortAdaptationEnabled && healthCheckerTestable?.port != requestedPort) {
+                    healthChecker = HttpHealthChecker(Constants.DSH_DEFAULT_HOST, requestedPort)
+                }
+                Log.i(TAG, "dsh restart attempt=$attempt requestedPort=$requestedPort")
+                startDshProotProcess()
+                Log.i(TAG, "dsh proot restarted in place (port=$requestedPort)")
+                launched = true
+                break
+            }
+            if (!launched) _dshState.value = DshState.ERROR
         } catch (t: Throwable) {
             Log.e(TAG, "dsh restart failed: ${t.message}", t)
             _dshState.value = DshState.ERROR
-            false
+            launched = false
         }
+        launched
     }
 
     /**
@@ -1520,6 +1830,10 @@ class DefaultSandboxManager(
                 val health = healthChecker.check()
                 val nowMs = monotonicMs()
                 val alive = isDshProcessAlive()
+                // 就绪必须以"实际地址确证"为前提：从启动输出解析到 `dsh web:`
+                // 行（同时拿到端口与 token）之前不进入 READY——端口上有 HTTP
+                // 响应还可能是别的服务。解析超时由判定策略直接换端口重试。
+                val addressConfirmed = _dshBaseUrl.value != null
                 val decision = decideDshHealth(
                     state = window,
                     probe = DshHealthProbe(
@@ -1534,6 +1848,7 @@ class DefaultSandboxManager(
                         } else {
                             iterationStartMs - lastIterationEndedAtMs
                         },
+                        addressConfirmed = addressConfirmed,
                     ),
                     readyTimeoutMs = config.dshReadyTimeoutMs,
                     unresponsiveGraceMs = config.dshUnresponsiveGraceMs,
@@ -1567,9 +1882,14 @@ class DefaultSandboxManager(
                         return@launch
                     }
                     is DshHealthDecision.Exhausted -> {
-                        // 预算用尽前再确认一次：句柄仍存活且端口已恢复应答，说明实例只是
-                        // 在判定窗口内不应答，不该销毁一个仍在服务（浏览器在线）的实例。
-                        if (alive && healthChecker.check().webUiReady) {
+                        // 预算用尽前再确认一次：句柄仍存活且端口已恢复应答、**且本轮
+                        // 地址已确证**——三者同时成立才说明实例真的只是判定窗口内
+                        // 短暂不应答，不该销毁一个仍在服务（浏览器在线）的实例。
+                        // （P1-2）缺 addressConfirmed 复核的旧口径：重启后地址未重新
+                        // 确证（错换端口 / 启动输出未撤离管理面）也能借 alive 复
+                        // 位 READY——端口上的 200 可能是**别的服务**应答。确证不成立的
+                        // 保留 ERROR 并给出可诊断原因，由用户显式重试。
+                        if (alive && healthChecker.check().webUiReady && addressConfirmed) {
                             Log.w(TAG, "dsh health: max auto-restart attempts reached, instance still answers; keeping it")
                             window = window.copy(
                                 wasReady = true,
@@ -1582,7 +1902,7 @@ class DefaultSandboxManager(
                             Log.w(
                                 TAG,
                                 "dsh health: reached max auto-restart attempts, giving up, " +
-                                    "alive=$alive portOpen=${health.portOpen}",
+                                    "alive=$alive portOpen=${health.portOpen} addressConfirmed=$addressConfirmed",
                             )
                             teardownDshOnGiveUp()
                             _dshState.value = DshState.ERROR
@@ -1629,5 +1949,15 @@ class DefaultSandboxManager(
         const val GUEST_BASH_RELATIVE = "usr/bin/bash"
 
         fun logSafe(message: String) = LogRedactor.redact(message)
+
+        /**
+         * webserver-port 覆盖层是否可消费（P2-1 口径，纯函数便于单测）：
+         * 端口自适应启用且文件存在非空时**传入**（可消费）；自适应关闭时无论
+         * 文件是否存在一律**不传**——gecko 变体固化 3080，遗留的非 3080 层会
+         * 把 DSH 静默绑到别的端口。宿主侧文件清理由调用方另行处理。
+         */
+        @JvmStatic
+        fun webserverOverlayConsumable(dshPortAdaptationEnabled: Boolean, overlayFileExists: Boolean): Boolean =
+            dshPortAdaptationEnabled && overlayFileExists
     }
 }

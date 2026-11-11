@@ -394,6 +394,13 @@ fun FilesScreen(
     /** 外部应用分享/打开进来的待导入清单：非空即弹目标目录选择器决定落点。 */
     inboundShareItems: List<InboundShareItem>? = null,
     onInboundShareConsumed: () -> Unit = {},
+    /**
+     * 外部请求定位的共享区物理目录（远程下载器的「打开文件夹」动作）：非空且
+     * 在共享区内建根下时切到共享区视图并直接进入该目录；消费后经
+     * [onPendingSharedDirConsumed] 复位。null = 无请求，零改动。
+     */
+    pendingSharedDir: File? = null,
+    onPendingSharedDirConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val resources = configurationAwareResources()
@@ -1890,6 +1897,29 @@ fun FilesScreen(
         searchResults = emptyList()
         // 切到共享区时重新同步授权与目录状态（授权可能在系统设置页被外部更改）。
         if (rootMode == 2) syncShareReady() else refreshEntries()
+    }
+
+    // 外部定位请求（远程下载器的「打开文件夹」）：目录在共享区内建根下时，
+    // 复用根切换的携带机制（pendingNavigateDir + rootMode=2）——由上面的
+    // LaunchedEffect(rootMode) 统一落位 currentDir 并同步共享区状态；不在
+    // 内建根下的目录（用户挂载语义之外的路径）不处理，直接消费掉。
+    LaunchedEffect(pendingSharedDir, isActiveTab) {
+        if (!isActiveTab) return@LaunchedEffect
+        val target = pendingSharedDir ?: return@LaunchedEffect
+        // 消费必须发生在「目标页已激活」之后：文件页在后台仍组合，提前消费
+        // 会把定位请求吞掉，切到前台后不再落位
+        onPendingSharedDirConsumed()
+        // 下载目录首次落盘才由代理创建；用户先点「打开文件夹」时现建，
+        // 否则 isDirectory=false 会让定位静默跳过
+        if (!target.isDirectory) runCatching { target.mkdirs() }
+        val normalizedTarget = normalizedSharePath(target)
+        val builtIn = normalizedSharePath(shareRoot)
+        val underBuiltIn = normalizedTarget == builtIn ||
+            normalizedTarget.startsWith("$builtIn/")
+        if (underBuiltIn && shareRoot.isDirectory) {
+            pendingNavigateDir = target
+            rootMode = 2
+        }
     }
 
     LaunchedEffect(isActiveTab) {

@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 简体中文。键集与顺序同 values/strings.xml。 -->
+<resources>
+
+    <!-- 远程面板 · 本机清单首行 -->
+    <string name="remote_local_entry_title">本机 DSH</string>
+
+    <!-- 远程面板 · 设备清单标题与设备重命名 -->
+    <string name="remote_devices_group_title">已配对设备 · %1$d</string>
+    <string name="remote_device_rename">重命名设备</string>
+    <string name="remote_device_rename_label">设备名</string>
+    <string name="remote_device_rename_save">保存</string>
+
+    <!-- 远程面板 · 归属分组（确认卡归属下拉与设备/端点归属展示共用） -->
+    <string name="remote_group_none">无分组</string>
+    <string name="remote_group_new">新建分组</string>
+
+    <!-- 远程面板 · 空状态引导 -->
+    <string name="remote_empty_title">暂无配对设备</string>
+    <string name="remote_empty_hint">扫描电脑端 DSH 远程插件的配对码，或手动输入配对链接，即可添加设备。</string>
+
+    <!-- 远程会话表面 · 顶部微条 -->
+    <string name="remote_session_back_local">返回本机</string>
+    <string name="remote_session_open_panel">打开远程面板</string>
+    <string name="remote_session_switch">切换页面</string>
+    <string name="remote_switch_local">本机 DSH</string>
+    <string name="remote_switch_local_sub">显示本机上运行的 DSH 服务</string>
+    <string name="remote_switch_empty">暂无已配对的远程页面</string>
+    <string name="remote_session_refresh">刷新</string>
+    <string name="remote_session_collapse">收起微条</string>
+    <string name="remote_session_expand">展开微条</string>
+    <string name="remote_session_local_name">本机 DSH</string>
+    <string name="remote_session_status_ready">已连接</string>
+    <string name="remote_session_status_loading">连接中</string>
+    <string name="remote_session_status_connecting">正在连接</string>
+    <string name="remote_session_status_failed">连接失败</string>
+    <string name="remote_session_status_disconnected">已断开</string>
+
+    <!-- 远程会话表面 · 连接态覆盖层 -->
+    <string name="remote_session_connecting">正在连接远程会话…</string>
+    <string name="remote_session_failed">远程会话连接失败</string>
+    <string name="remote_session_retry">重试</string>
+    <string name="remote_session_disconnected">远程会话已断开</string>
+    <string name="remote_session_reconnect">重连</string>
+    <string name="remote_session_status_rejected">凭据失效</string>
+    <string name="remote_link_open_failed">无法在浏览器中打开此链接</string>
+
+    <!-- 远程面板 · 添加区 -->
+    <string name="remote_add_scan">扫码配对</string>
+    <string name="remote_add_manual">手动输入</string>
+    <string name="remote_add_section_title">添加设备</string>
+    <string name="remote_help_title">远程连接怎么用</string>
+    <string name="remote_help_intro">扫码或粘贴配对链接即可添加设备。</string>
+    <string name="remote_help_pt">已适配的 DSH 插件</string>
+    <string name="remote_help_pocket_note">（上游仓库疑似长时间未更新）</string>
+    <string name="remote_help_bridge_note">（推荐）</string>
+    <string name="remote_help_pn_future">之后会尽快制作适配插件，将下载等远程功能连通。</string>
+    <string name="remote_help_pn_diy">用户也可自行制作远程插件。</string>
+    <string name="remote_help_pn">在电脑端安装任一插件，打开它的手机/远程页面，再扫码或粘贴链接。</string>
+    <string name="remote_help_at">也能连接其他网页版 Agent</string>
+    <string name="remote_help_ax">WorkBuddy、MiniMax 等网页端 Agent 同样支持。文件上传/下载已接入 DSHBox 沙箱。</string>
+    <string name="remote_help_ra">远程连接其他 Agent</string>
+    <string name="remote_help_rax">可连接同一台电脑上的另一个智能体，防止一个故障时无法修复。经测试 zcode 较为推荐，其网络连接有官方通道，比较稳定。</string>
+    <string name="remote_help_mt">代理与直连</string>
+    <string name="remote_help_mp">代理：经手机本机转发，兼容局域网明文与自签证书。</string>
+    <string name="remote_help_md">直连：手机直接访问 https 地址，路径短。</string>
+    <string name="remote_help_close">关闭</string>
+    <string name="remote_add_note">扫描电脑端 DSH 远程插件的配对码，或粘贴含令牌的配对链接</string>
+    <string name="remote_add_failed">配对失败：%1$s</string>
+    <!-- 远程面板 · 建档前确认卡 -->
+    <string name="remote_confirm_add_title">添加此设备？</string>
+    <string name="remote_confirm_device_target">选择本次配对归属的设备</string>
+    <string name="remote_confirm_group_name_label">分组名称</string>
+    <string name="remote_confirm_generic_note">通用网页（非已知插件），将按普通网页代理</string>
+    <string name="remote_confirm_endpoint_count">将添加 %1$d 条通道</string>
+    <string name="remote_confirm_endpoint_count_update">更新 %1$d 条通道</string>
+    <string name="remote_confirm_repair_choices_note">重新配对沿用当前会话模式与保留档设置，可在设备卡内修改。</string>
+
+    <!-- 远程面板 · 手动输入 -->
+    <string name="remote_manual_title">手动配对</string>
+    <string name="remote_manual_address_label">配对链接（含令牌或配对密钥）</string>
+    <string name="remote_manual_token_label">令牌（可选，以 ?auth= 追加）</string>
+    <string name="remote_manual_note_label">设备备注（可选）</string>
+    <string name="remote_manual_confirm">添加设备</string>
+
+    <!-- 远程面板 · 设备卡 -->
+    <string name="remote_device_expand">展开设备</string>
+    <string name="remote_device_collapse">收起设备</string>
+    <string name="remote_device_delete">删除设备</string>
+    <string name="remote_device_delete_title">删除该设备？</string>
+    <string name="remote_device_delete_message">删除「%1$s」将移除其全部端点，并清除本机保存的该设备凭据与页面数据，此操作不可恢复。</string>
+    <!-- VPN/系统代理活跃且清单含私网地址端点时的一行提示 -->
+    <string name="remote_lan_vpn_warning">检测到系统代理/VPN，局域网连接可能不可达。</string>
+
+    <string name="remote_device_confirm_delete">删除</string>
+    <string name="remote_cancel">取消</string>
+    <string name="remote_confirm">确定</string>
+    <string name="remote_endpoint_set_display">设为显示源</string>
+    <string name="remote_endpoint_edit">编辑</string>
+    <string name="remote_endpoint_more">更多端点操作</string>
+    <string name="remote_endpoint_move">移动到设备</string>
+    <string name="remote_endpoint_move_to_group">移动到设备分组</string>
+    <string name="remote_endpoint_switch_group">切换设备分组</string>
+    <string name="remote_endpoint_delete">删除此端点</string>
+    <string name="remote_endpoint_delete_title">删除此端点？</string>
+    <string name="remote_endpoint_delete_message">将移除「%3$s」下的 %1$s 端点 %2$s，其已保存的凭据一并清除，此操作不可恢复。</string>
+    <string name="remote_endpoint_status_idle">未连接</string>
+    <string name="remote_endpoint_displaying">%1$s · 正在显示</string>
+
+    <!-- 远程面板 · 端点地址编辑 -->
+    <string name="remote_edit_endpoint_title">编辑端点地址</string>
+    <string name="remote_edit_endpoint_address_label">新的目标地址</string>
+    <string name="remote_edit_endpoint_confirm">保存</string>
+    <!-- 远程面板 · 端点会话模式（代理承载 / 渲染器直连） -->
+    <string name="remote_session_mode_label">会话模式</string>
+    <string name="remote_session_mode_proxied">代理</string>
+    <string name="remote_session_mode_direct">直连</string>
+    <!-- 直连仅放行 https 端点（会话层门禁与卡片选项禁用双保险） -->
+    <string name="remote_direct_https_limitation">直连仅支持 https 地址</string>
+
+    <!-- 远程面板 · 设置 -->
+    <string name="remote_settings_title">设置</string>
+    <string name="remote_settings_retention_label">非活跃会话保留</string>
+    <string name="remote_settings_default_retention">默认保留档 · 全局</string>
+    <string name="remote_settings_inactive_hint">非活跃会话</string>
+    <string name="remote_settings_hot_label">热池占用</string>
+    <string name="remote_settings_hot_usage">%1$d / %2$d</string>
+    <string name="remote_settings_hot_note">保留档非「即时」的失活页面会留在热池，切走不重载。</string>
+    <string name="remote_settings_release_all">立即释放全部</string>
+    <string name="remote_retention_immediate">切换即释放</string>
+    <string name="remote_retention_minutes">%1$d 分钟</string>
+    <string name="remote_retention_forever">永久</string>
+    <string name="remote_retention_inherit">继承(%1$s)</string>
+    <string name="remote_retention_trigger">保留：%1$s</string>
+    <string name="remote_retention_label">保留策略</string>
+
+    <!-- 远程面板 · 平板右栏端点详情 -->
+    <string name="remote_detail_empty">从左侧选择一台设备查看端点</string>
+        <string name="remote_device_endpoint_summary">端点 · %1$d 条通道</string>
+    <string name="remote_detail_endpoint_label">端点</string>
+    <string name="remote_detail_channel_count">%1$d 条通道</string>
+
+    <!-- 远程面板 · 远程面板 · 通道标签 -->
+    <string name="remote_channel_lan">局域网</string>
+    <string name="remote_channel_public">公网</string>
+    <string name="remote_channel_tunnel">隧道</string>
+    <string name="remote_channel_url">URL</string>
+    <!-- 远程面板 · 远程面板 · 端点插件类型标注（产品专名不翻译，仅 generic 走资源） -->
+    <string name="remote_parser_generic">通用 URL</string>
+    <!-- 远程面板 · 远程面板 · 重新配对 -->
+    <string name="remote_device_repair">重新配对</string>
+    <string name="remote_device_repair_input">重新输入配对</string>
+    <string name="remote_repair_description">为「%1$s」粘贴新的配对链接；原一次性凭据随之失效。</string>
+    <!-- 远程面板 · 远程面板 · 地址编辑失败 -->
+    <string name="remote_edit_endpoint_invalid">不是有效的配对链接</string>
+    <!-- 远程面板 · 远程面板 · 一次性凭据被拒 -->
+    <string name="remote_pairing_rejected_title">配对凭据已失效</string>
+    <string name="remote_pairing_rejected">一次性配对凭据已被拒绝或使用过，请在设备卡上重新配对该端点。</string>
+    <!-- 扫码器 · 扫码器 · 全屏子页 -->
+    <string name="remote_scan_title">扫码配对</string>
+    <string name="remote_scan_torch">手电筒</string>
+    <!-- 扫码器 · 扫码器 · 权限流 -->
+    <string name="remote_scan_permission_denied">相机权限被拒绝，可以再次请求，或改为手动输入配对链接。</string>
+    <string name="remote_scan_permission_permanent">相机权限已被永久拒绝，请改为手动输入配对链接。</string>
+    <string name="remote_scan_request_again">再次请求</string>
+    <string name="remote_scan_manual_fallback">手动输入</string>
+    <!-- 扫码器 · 设备卡重扫 -->
+    <string name="remote_device_rescan">重新扫码更新</string>
+    <!-- 扫码器 · 相机不可用与系统设置 -->
+    <string name="remote_scan_camera_unavailable">本机没有可用的后置相机，或相机启动失败。请改为手动输入配对链接。</string>
+    <string name="remote_scan_open_settings">去系统设置</string>
+    <!-- 下载分支 · 结果页 -->
+    <string name="remote_download_saved">已保存到 %1$s/%2$s</string>
+    <string name="remote_download_failed">下载失败：%1$s</string>
+    <string name="remote_download_dir_unavailable">下载目录不可写</string>
+    <string name="remote_download_saved_hint">如为表单提交导出，可返回上一页继续。</string>
+    <string name="remote_download_back">返回</string>
+    <string name="remote_download_title">下载</string>
+    <string name="remote_download_share">共享区：DSHBox/download-remote</string>
+    <string name="remote_download_system">系统文件：内部存储/DSHBox/download-remote</string>
+    <string name="remote_download_empty">暂无下载文件</string>
+    <string name="remote_download_copy">复制路径</string>
+    <string name="remote_download_open_folder">打开文件夹</string>
+    <string name="remote_download_perm">需要「所有文件访问」权限才能保存到共享区。</string>
+    <string name="remote_download_grant">去开启</string>
+    <string name="remote_download_fail_perm">没有存储权限，无法写入共享区。</string>
+    <string name="remote_download_fail_origin">下载地址与会话来源不一致，已拒绝。</string>
+    <string name="remote_download_fail_http">服务器拒绝了下载请求。</string>
+    <string name="remote_download_fail_io">写入文件失败。</string>
+    <string name="remote_download_fail_dir">下载目录不可用。</string>
+</resources>

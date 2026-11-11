@@ -24,6 +24,7 @@ extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
     signingConfigs {
         create("release") {
             // 启用 v2 和 v3 签名；v3 支持签名密钥轮换。
+            enableV1Signing = false
             enableV2Signing = true
             enableV3Signing = true
             if (hasReleaseKeystore) {
@@ -33,6 +34,13 @@ extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
                 keyPassword = keystoreProperties.getProperty("keyPassword")
             }
         }
+        // debug / 无正式 keystore 时的回退签名同样走 v2+v3：minSdk 29
+        // 不需要 v1，v3 为后续密钥轮换留出通道。
+        getByName("debug") {
+            enableV1Signing = false
+            enableV2Signing = true
+            enableV3Signing = true
+        }
     }
 
     defaultConfig {
@@ -40,8 +48,8 @@ extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
         minSdk = 29
         targetSdk = 36
         // 多语言版本：联合国六语 + 语言选择器 + 硬编码清零 + 布局恒 LTR + i18n 门禁。
-        versionCode = 10
-        versionName = "1.5.1"
+        versionCode = 11
+        versionName = "1.5.2"
         buildConfigField("String", "DSH_GECKOVIEW_VERSION", "\"${libs.versions.geckoview.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -121,6 +129,11 @@ dependencies {
     implementation(project(":plugin-manager"))
     // 手机助手适配层。核心层（interlock-relay-core）由它 api 传递，故此处不必再写一行。
     implementation(project(":pilot:dshbox-adapter"))
+    // 远程连接面板：首页「远程」页签的内容模块。
+    implementation(project(":remote-connection"))
+    // 局域网访问页的二维码生成（version catalog 既有条目，remote-connection
+    // 亦使用同一依赖做扫码解码——此处仅为编译期可见性，非新增外部依赖）。
+    implementation(libs.zxing.core)
 
     implementation(libs.androidx.core.ktx)
     // 应用内语言切换（AppCompatDelegate.setApplicationLocales；
@@ -148,11 +161,16 @@ dependencies {
     // XmlPullParser 仅测试期依赖（kxml2 供 JVM 单测；设备上走平台自带实现——
     // 若随 APK 打包会与平台库类冲突致 R8 失败，且徒增体积）
     testImplementation(libs.kxml2)
+    // 测试期依赖：运行期末的 app 状态对象（AppDshAddressState / AppDshBehaviorState）
+    // 中转化 mutableStateOf，需在测试 classpath 提供 compose-runtime（version 由
+    // compose-bom 对齐，纯 JVM 可用——无 Android 依赖）。
     // tar.zst 条目枚举（zstd-jni classes；arm64 .so 已在 jniLibs，零下载）
     implementation(files("$rootDir/libs/zstd-jni-1.5.7-15-classes.jar"))
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -162,6 +180,21 @@ dependencies {
 }
 
 apply(from = "license-assets.gradle")
+
+// release 产物按发版命名规范输出：dshbox-v<version>-<flavor>-release.apk。
+androidComponents {
+    onVariants { variant ->
+        if (variant.buildType != "release") return@onVariants
+        val flavor = variant.flavorName ?: return@onVariants
+        // 发版命名用 system/gecko 短名，构建变体名仍保留 systemWebView。
+        val flavorSuffix = if (flavor == "systemWebView") "system" else flavor
+        variant.outputs.forEach { output ->
+            output.outputFileName.set(
+                "dshbox-v${output.versionName.get()}-$flavorSuffix-release.apk",
+            )
+        }
+    }
+}
 
 // Preserve the existing CI/release entry point after introducing renderer flavors.
 // Without this aggregate, an unqualified testDebugUnitTest would omit app tests.

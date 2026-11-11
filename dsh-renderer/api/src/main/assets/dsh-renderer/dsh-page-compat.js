@@ -15,6 +15,13 @@
     '\u6253\u5f00\u914d\u7f6e\u6587\u4ef6',
     'Open configuration file'
   ];
+  /*
+   * Fallback grace window after a replayed Enter: how long to wait before the
+   * interceptor checks the editor text and mutates it if the replay did not
+   * take. Long enough for Lexical's own dispatch to run, short enough that
+   * the user never perceives the delay.
+   */
+  var ENTER_NEWLINE_FALLBACK_DELAY_MS = 100;
 
   if (typeof Symbol !== 'function' || typeof Symbol.for !== 'function') return;
   var globalObject = typeof globalThis === 'object' ? globalThis : window;
@@ -41,6 +48,7 @@
     installUrlHostCompat();
     installExternalWindowBridge();
     installOpenDocumentBridge();
+    installEnterKeyNewline();
   } catch (_) {
     return;
   }
@@ -399,10 +407,318 @@
   }
 
   /*
+   * The Enter key setting is honored here, at the page injection layer, so
+   * both the local DSH container and remote sessions get the same behaviour.
+   *
+   * "New line" mode: a bare Enter inside the DSH composer editable is
+   * captured in the capture phase, its default send action is cancelled, and
+   * a shift-keyed Enter is replayed on the same target — the DSH composer's
+   * own Shift+Enter newline binding takes over. A short fallback then
+   * guarantees a newline is inserted even when the replayed event goes
+   * unhandled (untrusted events skip the browser's contenteditable default
+   * action): if the editor's DOM structure has not changed within the grace
+   * window, insertLineBreak is issued once; only if that imperative insert
+   * itself produces no structural change does insertText "\n" follow — at
+   * most one extra insertion either way.
+   *
+   * Change detection uses a DOM-structure fingerprint, not `textContent`:
+   * Lexical's linebreak materializes as a `<br>` node with no text of its
+   * own, so a successful insert can leave `textContent` identical while
+   * `innerHTML` grows. Text-only comparison would then re-issue the insert
+   * every Enter and duplicate blank lines. The fingerprint combines the
+   * direct child count, `<br>` count, and innerHTML length — any of the
+   * three moving means a real structural edit happened.
+   *
+   * Scope is deliberately narrow; the interceptor only fires when the event
+   * target resolves to the exact kind of editor DSH renders its input
+   * surfaces with:
+   *  - a `[data-composer-input="true"][contenteditable="true"]` element (or
+   *    a descendant of one) — the flag DSH actually puts on its composer
+   *    right now (field-proven on device);
+   *  - a `[data-lexical-editor="true"]` flagged `[contenteditable="true"]`
+   *    (self or ancestor) kept as a fallback for builds that mark editors
+   *    the Lexical way instead;
+   *  - `<textarea>` and non-matching contenteditable elements untouched —
+   *    a plain textarea has no JS-level Shift+Enter handler, so intercepting
+   *    it would swallow Enter entirely;
+   *  - a visible open menu ([role="menu"] / [role="listbox"] /
+   *    [data-radix-popper-content-wrapper], in the current document tree,
+   *    not `display:none` / `hidden`) passthroughs the key so the slash/@
+   *    mention menus keep their confirm-on-Enter.
+   * Modifier combos (Shift/Ctrl/Meta/Alt) and IME composition events are
+   * passed through untouched, and the key is recorded past the composition
+   * guard so IME-confirmed Enter always keeps its native meaning.
+   *
+   * The enabled state is read from the mutable global
+   * `__dshboxEnterNewline` on every key press, NOT frozen at install time:
+   * the native host pushes settings changes by assigning that global
+   * (`evaluateJavascript`), so the user's toggle lands without a page
+   * reload. `config.enterKeyNewline` only seeds the initial value — absent
+   * or false still keeps the interceptor uninstalled at install time unless
+   * the global says otherwise.
+   *
+   * Scope caveat (must not be stretched further): the target gate relies on
+   * DSH marking its composer/editors with those data attributes, not on a
+   * page-wide DSH identification step. A third-party page that happens to
+   * carry the same attributes would get the same interception — this does
+   * not need to be defended against because the additional check over the
+   * standard third-party form surface (textarea and plain contenteditable)
+   * is what matters, and both are explicitly excluded.
+   *
+   * Modifier-guard, IME-guard, menu pass-through, and replay side effects
+   * are unchanged from the previous interceptor; only the target gate and
+   * the runtime switch differ. A missing global reads as "send" (page
+   * behaviour exactly as before), which also covers hosts that never push
+   * the switch.
+   */
+  function installEnterKeyNewline() {
+    if (!window.KeyboardEvent) return;
+
+    // Seed the mutable global from the install-time config when the host
+    // has not set it itself. Hosts that push the switch build this global
+    // via `evaluateJavascript`; its presence then wins over the config.
+    if (globalObject.__dshboxEnterNewline === undefined) {
+      globalObject.__dshboxEnterNewline = config.enterKeyNewline === true;
+    }
+
+    /*
+     * DOM-structure fingerprint of an editor subtree: three integers that
+     * move whenever the DOM does. `innerHTML.length` and
+     * `childElementCount` are plain reads; `<br>` count is summed
+     * explicitly because Lexical's linebreak is a dedicated element with
+     * no text, invisible to any text-only comparison. A successful
+     * newline insert grows the innerHTML span (a `<br>` and whatever
+     * spacing the engine adds) even when `textContent` stays identical,
+     * so the fallback gate must see it.
+     */
+    function structureFingerprint(editor) {
+      var brs = 0;
+      try {
+        var list = editor.querySelectorAll('br');
+        brs = list ? list.length : 0;
+      } catch (_) {
+        brs = 0;
+      }
+      var html = '';
+      try { html = String(editor.innerHTML || ''); } catch (_) { html = ''; }
+      var children = 0;
+      try { children = editor.childElementCount || 0; } catch (_) { children = 0; }
+      return children + '/' + brs + '/' + html.length;
+    }
+
+    var replayGeneratorParams = {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true,
+      cancelable: true,
+      shiftKey: true
+    };
+
+    function visibleMenuOpen() {
+      // Gate kept intentionally cheap but complete: a menu counts as open
+      // only when it is actually surfaceable. Collapsed states — the
+      // inline `hidden` attribute, `aria-hidden`, Radix
+      // `data-state="closed"`, computed `display:none` (self or any
+      // ancestor) or `visibility:hidden` — all keep Enter inside the
+      // interceptor, because they cannot surface a menu confirmation.
+      // Only a currently-open menu passthroughs the key.
+      function styleOf(node) {
+        var view = document.defaultView;
+        var styleReader = (view && view.getComputedStyle) || document.getComputedStyle;
+        if (typeof styleReader !== 'function') return null;
+        try {
+          var style = styleReader.call(view || document, node);
+          return style || null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function collapsedByAttributes(node) {
+        if (node.hidden === true) return true;
+        var read = function (name) {
+          return typeof node.getAttribute === 'function'
+            ? node.getAttribute(name)
+            : null;
+        };
+        if (read('aria-hidden') === 'true') return true;
+        if (read('data-state') === 'closed') return true;
+        return false;
+      }
+
+      // Real pages resolve the computed view through `defaultView`; a
+      // document hosting its own `getComputedStyle` (test double, legacy
+      // engine) is honoured as a fallback. When no style engine exists the
+      // attribute gates above still run; an unresolvable layer keeps the
+      // interceptor (query failure collapses to "no menu").
+      function visible(node) {
+        if (!node || node.nodeType !== 1) return false;
+        if (collapsedByAttributes(node)) return false;
+        var cursor = node;
+        while (cursor && cursor !== document.body && cursor.nodeType === 1) {
+          var style = styleOf(cursor);
+          if (style) {
+            if (style.display === 'none' || style.visibility === 'hidden') {
+              return false;
+            }
+          }
+          cursor = cursor.parentElement;
+        }
+        return true;
+      }
+      var queries = ['[role="menu"]', '[role="listbox"]', '[data-radix-popper-content-wrapper]'];
+      for (var i = 0; i < queries.length; i += 1) {
+        var nodes = [];
+        try { nodes = document.querySelectorAll(queries[i]) || []; } catch (_) { nodes = []; }
+        for (var j = 0; j < nodes.length; j += 1) {
+          if (visible(nodes[j])) return true;
+        }
+      }
+      return false;
+    }
+
+    function findComposerEditable(target) {
+      // Target gate, phase 1: the field-proven composer marker
+      // `[data-composer-input="true"]` on a `[contenteditable="true"]`
+      // element (self or ancestor). This is the attribute DSH actually
+      // ships on its input surface today — the previous `data-lexical-
+      // editor` gate matched nothing in the live DOM, so interception
+      // silently never fired.
+      var node = target;
+      while (node && node !== document.body) {
+        if (node.getAttribute
+            && node.getAttribute('data-composer-input') === 'true') {
+          return node.isContentEditable !== false;
+        }
+        node = node.parentElement;
+      }
+
+      // Phase 2: keep Lexical's editor flag as the fallback gate for
+      // builds that mark editors the Lexical way (same climb semantics
+      // as before: inner editable layers do NOT terminate the climb —
+      // only the flagged root proves the chain).
+      var editable = target;
+      while (editable && editable !== document.body) {
+        var flagged = editable.getAttribute
+          ? editable.getAttribute('data-lexical-editor') === 'true'
+          : false;
+        if (flagged) {
+          // Lexical only flags its editor roots; reaching a flag proves
+          // the chain is a Lexical editable regardless of which layer
+          // the caret rests on.
+          return editable.isContentEditable !== false;
+        }
+        editable = editable.parentElement;
+      }
+      return false;
+    }
+
+    function closestContentEditable(target) {
+      if (typeof target.closest !== 'function') return null;
+      try { return target.closest('[contenteditable="true"]'); } catch (_) { return null; }
+    }
+
+    document.addEventListener('keydown', function (event) {
+      try {
+        // The switch reads fresh on every key press: the native host flips
+        // the mutable `__dshboxEnterNewline` global via evaluateJavascript
+        // when the user toggles the setting, and this read is what makes
+        // the change land without a reload.
+        if (globalObject.__dshboxEnterNewline !== true) return;
+        if (!event || event.key !== 'Enter') return;
+        if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (event.isComposing || event.keyCode === 229) return;
+        var contentEditable = closestContentEditable(event.target);
+        if (!contentEditable && !(event.target &&
+            event.target.isContentEditable === true)) return;
+        if (visibleMenuOpen()) return;
+        if (!findComposerEditable(event.target)) return;
+        var editor = contentEditable || event.target;
+        var before = structureFingerprint(editor);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        editor.dispatchEvent(new window.KeyboardEvent('keydown', replayGeneratorParams));
+        // Interception fallback: the replay is an untrusted (isTrusted:false)
+        // event, so Lexical or the browser may still decline to act. Wait a
+        // short grace period, and if the editor's DOM structure is unchanged,
+        // insert the newline imperatively so Enter can never become a no-op.
+        // `insertLineBreak` runs at most once; only when it demonstrably
+        // produced no structural change does `insertText "\n"` follow — the
+        // baseline snapshot guarantees the pair can never fire twice for one
+        // intercepted Enter (Lexical's `<br>` nodes register in the
+        // fingerprint even though they carry no text).
+        setTimeout(function () {
+          try {
+            if (document.querySelector &&
+                document.documentElement &&
+                !document.documentElement.contains(editor)) return;
+            if (structureFingerprint(editor) !== before) return;
+            document.execCommand('insertLineBreak', false, null);
+            // Second-chance gate compares against the **same** baseline, not
+            // the pre-command reading: a successful insertLineBreak moves the
+            // fingerprint off the baseline, and only an unchanged fingerprint
+            // justifies the single text insert. Reading before this check is
+            // identical to `before` re-tested post-command since nothing else
+            // ran in between.
+            if (structureFingerprint(editor) === before) {
+              document.execCommand('insertText', false, '\n');
+            }
+          } catch (_) {}
+        }, ENTER_NEWLINE_FALLBACK_DELAY_MS);
+      } catch (_) {}
+    }, true);
+  }
+
+  /*
    * DSH uses window.open for destinations that belong outside the embedded
    * application. Keep direct blank popups usable for account login, then send
    * their eventual HTTP(S) destination to the native host.
+   *
+   * Destinations leave the page through one of two channels, probed at
+   * install time. When the injected `dshboxHost` object exposes
+   * `postMessage`, the destination is handed to the host as a JSON frame
+   * message and the document itself never navigates. This is the only
+   * channel that keeps a proxy session alive: rewriting the top frame to an
+   * unknown scheme there would unload the document and surface a connection
+   * failure. The host registers `dshboxHost` only for remote sessions (both
+   * proxy and direct); the local DSH container does not, so local page
+   * behaviour is unchanged. Same-origin `_blank` destinations go through the
+   * channel too, because the native popup window cannot open inside the
+   * embedded application anyway. Without the injected `dshboxHost` object the
+   * legacy `dshbox://open-external` scheme path stays in charge: a registered
+   * internal scheme (proxied remote sessions; direct remote sessions; the
+   * local container) cancels that navigation before commit and turns it into
+   * an internal action. A
+   * gecko remote session has neither: its built-in extension content script
+   * only injects the fixed local origin, so remote gecko pages fall back to
+   * the engine's native `window.open` handling — remote external links are
+   * specified against the systemWebView renderer only.
    */
+  var HOST_MESSAGE_NAME = 'dshboxHost';
+  var HOST_MESSAGE_TYPE = 'open-external';
+
+  function hostChannelAvailable() {
+    try {
+      return typeof window[HOST_MESSAGE_NAME] === 'object' &&
+        window[HOST_MESSAGE_NAME] !== null &&
+        typeof window[HOST_MESSAGE_NAME].postMessage === 'function';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function postExternalToHost(targetUrl) {
+    try {
+      window[HOST_MESSAGE_NAME].postMessage(JSON.stringify({
+        type: HOST_MESSAGE_TYPE,
+        url: targetUrl.href
+      }));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function installExternalWindowBridge() {
     var nativeOpen = window.open;
     if (typeof nativeOpen !== 'function') return;
@@ -414,8 +730,11 @@
         if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
           return false;
         }
-        if (targetUrl.origin === window.location.origin) return false;
         if (targetUrl.username !== '' || targetUrl.password !== '') return false;
+        if (hostChannelAvailable()) {
+          return postExternalToHost(targetUrl);
+        }
+        if (targetUrl.origin === window.location.origin) return false;
         window.location.href = OPEN_EXTERNAL_URL_PREFIX +
           encodeURIComponent(targetUrl.href);
         return true;

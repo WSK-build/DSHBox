@@ -43,3 +43,5 @@ include(":browser:browser-devtools")
 include(":dsh-renderer:api")
 include(":dsh-renderer:system")
 include(":dsh-renderer:gecko")
+// 远程连接：手机端打开电脑端 DSH 远程插件的页面（扫码/手动输入配对 + 远程会话显示）。
+include(":remote-connection")

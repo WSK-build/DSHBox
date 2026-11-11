@@ -25,6 +25,7 @@ class DshHealthPolicyTest {
         alive: Boolean = true,
         interactive: Boolean = true,
         gapMs: Long = 2_000L,
+        confirmed: Boolean = true,
     ): DshHealthDecision = decideDshHealth(
         state = state,
         probe = DshHealthProbe(
@@ -33,6 +34,7 @@ class DshHealthPolicyTest {
             processAlive = alive,
             deviceInteractive = interactive,
             probeGapMs = gapMs,
+            addressConfirmed = confirmed,
         ),
         readyTimeoutMs = readyTimeoutMs,
         unresponsiveGraceMs = graceMs,
@@ -145,5 +147,31 @@ class DshHealthPolicyTest {
         val s = readyState(since = 0, startedAt = 0)
         val d = decide(s, nowMs = 600_000, ready = false, alive = false, interactive = false)
         assertTrue(d is DshHealthDecision.Restart)
+    }
+
+    /**
+     * 就绪必须以启动输出行确证为前提：解析超时前端口上即便有别的服务应答
+     * 也只是继续观察；到达确认窗口即进入换端口重试，不判 READY。
+     */
+    @Test
+    fun `unconfirmed address never becomes ready and retries on parse timeout`() {
+        val start = DshWindowState.fresh(0)
+        // 窗口内（哪怕端口已经返回 200/401）只观察；
+        val inside = decide(start, nowMs = DshHealthPolicy.DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS - 1, ready = true, confirmed = false)
+        assertTrue(inside is DshHealthDecision.Observe)
+        // 超过确认窗口：进入重启（预算内）。
+        val outside = decide(start, nowMs = DshHealthPolicy.DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS + 1, ready = true, confirmed = false)
+        assertTrue(outside is DshHealthDecision.Restart)
+        // 端口无响应 + 未确证同样按确认超时走重启（不必吃满 120s readyTimeout）。
+        val quiet = decide(start, nowMs = DshHealthPolicy.DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS + 1, ready = false, confirmed = false)
+        assertTrue(quiet is DshHealthDecision.Restart)
+    }
+
+    /** 已确证的地址不受该门影响：原有就绪路径照常生效。 */
+    @Test
+    fun `confirmed address keeps normal ready path`() {
+        val start = DshWindowState.fresh(0)
+        val d = decide(start, nowMs = 1_000, ready = true, confirmed = true)
+        assertTrue(d is DshHealthDecision.Ready)
     }
 }

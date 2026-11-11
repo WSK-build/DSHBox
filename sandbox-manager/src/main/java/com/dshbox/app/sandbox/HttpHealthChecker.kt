@@ -18,7 +18,8 @@ import java.net.URL
  */
 class HttpHealthChecker(
     private val host: String = Constants.DSH_DEFAULT_HOST,
-    private val port: Int = Constants.DSH_DEFAULT_PORT,
+    /** 检查目标端口：健康检查必须使用 DSH 的**实际**端口（运行期地址状态）。 */
+    val port: Int = Constants.DSH_DEFAULT_PORT,
     private val path: String = "/",
     private val connectTimeoutMs: Int = 2_000,
     private val readTimeoutMs: Int = 3_000,

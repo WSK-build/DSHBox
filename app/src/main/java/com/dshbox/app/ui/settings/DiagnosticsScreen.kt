@@ -36,7 +36,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.dshbox.app.R
-import com.dshbox.app.common.Constants
 import com.dshbox.app.dsh.DshRendererReportStore
 import com.dshbox.app.dsh.DshDiagnosticLogs
 import com.dshbox.app.dsh.DshLogWindow
@@ -48,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.dshbox.app.ui.theme.AppDshAddressState
 
 /**
  * Diagnostics shows the report populated by the current real DSH container and
@@ -127,7 +127,8 @@ fun DiagnosticsScreen(
         )
 
         Text(
-            text = stringResource(R.string.diagnostics_dsh_address) + "：" + Constants.DSH_BASE_URL,
+            // 运行期地址（端口自适应）：确认地址变化即时随动。
+            text = stringResource(R.string.diagnostics_dsh_address) + "：" + AppDshAddressState.baseUrl,
             style = MaterialTheme.typography.bodyLarge,
         )
 

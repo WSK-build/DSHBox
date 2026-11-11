@@ -26,11 +26,14 @@ pilot/build/
 pilot/interlock-relay-core/build/
 pilot/dshbox-adapter/build/
 pilot/developer-access/build/
+remote-connection/build/
 *.apk
 *.aab
 *.keystore
 *.jks
 *.p12
+# 例外：remote-connection 集成测试的自签 mock 密钥库（无生产敏感物，保证测试可复现）
+!**/mock-upstream.p12
 keystore.properties
 dist/
 .gradle-home/

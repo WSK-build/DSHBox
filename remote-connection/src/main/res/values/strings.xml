@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 远程面板 · 本机清单首行 -->
+    <string name="remote_local_entry_title">Local DSH</string>
+
+    <!-- 远程面板 · 设备清单标题与设备重命名 -->
+    <string name="remote_devices_group_title">Paired devices · %1$d</string>
+    <string name="remote_device_rename">Rename device</string>
+    <string name="remote_device_rename_label">Device name</string>
+    <string name="remote_device_rename_save">Save</string>
+
+    <!-- 远程面板 · 归属分组（确认卡归属下拉与设备/端点归属展示共用） -->
+    <string name="remote_group_none">Ungrouped</string>
+    <string name="remote_group_new">New group</string>
+
+    <!-- 远程面板 · 空状态引导 -->
+    <string name="remote_empty_title">No paired devices</string>
+    <string name="remote_empty_hint">Scan the pairing code of a DSH remote plugin on your computer, or enter the pairing link manually to add a device.</string>
+
+    <!-- 远程会话表面 · 顶部微条 -->
+    <string name="remote_session_back_local">Back to local DSH</string>
+    <string name="remote_session_open_panel">Open remote panel</string>
+    <string name="remote_session_switch">Switch page</string>
+    <string name="remote_switch_local">Local DSH</string>
+    <string name="remote_switch_local_sub">Show the DSH service running on this device</string>
+    <string name="remote_switch_empty">No paired remote pages yet</string>
+    <string name="remote_session_refresh">Refresh</string>
+    <string name="remote_session_collapse">Collapse micro bar</string>
+    <string name="remote_session_expand">Expand micro bar</string>
+    <string name="remote_session_local_name">Local DSH</string>
+    <string name="remote_session_status_ready">Connected</string>
+    <string name="remote_session_status_loading">Loading</string>
+    <string name="remote_session_status_connecting">Connecting</string>
+    <string name="remote_session_status_failed">Failed</string>
+    <string name="remote_session_status_disconnected">Disconnected</string>
+
+    <!-- 远程会话表面 · 连接态覆盖层 -->
+    <string name="remote_session_connecting">Connecting to the remote session…</string>
+    <string name="remote_session_failed">Remote session failed</string>
+    <string name="remote_session_retry">Retry</string>
+    <string name="remote_session_disconnected">Remote session disconnected</string>
+    <string name="remote_session_reconnect">Reconnect</string>
+    <string name="remote_session_status_rejected">Credentials rejected</string>
+    <string name="remote_link_open_failed">Could not open the link in a browser</string>
+
+    <!-- 远程面板 · 添加区 -->
+    <string name="remote_add_scan">Scan pairing code</string>
+    <string name="remote_add_manual">Manual input</string>
+    <string name="remote_add_section_title">Add device</string>
+    <string name="remote_help_title">How remote connection works</string>
+    <string name="remote_help_intro">Scan a pairing code or paste a pairing link to add a device.</string>
+    <string name="remote_help_pt">Supported DSH plugins</string>
+    <string name="remote_help_pocket_note">(upstream repo may be inactive for a long time)</string>
+    <string name="remote_help_bridge_note">(recommended)</string>
+    <string name="remote_help_pn_future">We will add adapters soon to connect downloads and other remote features.</string>
+    <string name="remote_help_pn_diy">You can also build your own remote plugin.</string>
+    <string name="remote_help_pn">Install any plugin on your computer, open its phone/remote page, then scan or paste its link.</string>
+    <string name="remote_help_at">Other web agents too</string>
+    <string name="remote_help_ax">WorkBuddy, MiniMax and other web agents are supported too. File upload and download are connected to the DSHBox sandbox.</string>
+    <string name="remote_help_ra">Connect another agent remotely</string>
+    <string name="remote_help_rax">You can connect to another agent on the same computer, so one failure does not leave you unable to fix things. zcode is recommended in our tests: it has an official network channel and is fairly stable.</string>
+    <string name="remote_help_mt">Proxy and direct</string>
+    <string name="remote_help_mp">Proxy: routed through this phone; supports LAN plaintext and self-signed certificates.</string>
+    <string name="remote_help_md">Direct: the phone opens the https address directly. Shortest path.</string>
+    <string name="remote_help_close">Close</string>
+    <string name="remote_add_note">Scan the pairing code from the DSH remote plugin on your computer, or paste a pairing link with a token</string>
+    <string name="remote_add_failed">Pairing failed: %1$s</string>
+    <!-- 远程面板 · 建档前确认卡 -->
+    <string name="remote_confirm_add_title">Add this device?</string>
+    <string name="remote_confirm_device_target">Choose the device the pairing belongs to</string>
+    <string name="remote_confirm_group_name_label">Group name</string>
+    <string name="remote_confirm_generic_note">Generic web page (no dedicated plugin). It will be proxied as an ordinary web page.</string>
+    <string name="remote_confirm_endpoint_count">%1$d channels will be added</string>
+    <string name="remote_confirm_endpoint_count_update">Update %1$d channels</string>
+    <string name="remote_confirm_repair_choices_note">Re-pairing keeps the current session mode and retention settings. You can change them in the device card.</string>
+
+    <!-- 远程面板 · 手动输入 -->
+    <string name="remote_manual_title">Manual pairing</string>
+    <string name="remote_manual_address_label">Pairing URL (with token or secret if any)</string>
+    <string name="remote_manual_token_label">Token (optional, appended as ?auth=)</string>
+    <string name="remote_manual_note_label">Device note (optional)</string>
+    <string name="remote_manual_confirm">Add device</string>
+
+    <!-- 远程面板 · 设备卡 -->
+    <string name="remote_device_expand">Expand device</string>
+    <string name="remote_device_collapse">Collapse device</string>
+    <string name="remote_device_delete">Delete device</string>
+    <string name="remote_device_delete_title">Delete this device?</string>
+    <string name="remote_device_delete_message">Deleting \u0022%1$s\u0022 removes its endpoints and clears the device credentials and page data saved on this device. This cannot be undone.</string>
+    <!-- One-line hint while a VPN/system proxy is active and private-address endpoints exist -->
+    <string name="remote_lan_vpn_warning">A system proxy or VPN is active; LAN connections may be unreachable.</string>
+
+    <string name="remote_device_confirm_delete">Delete</string>
+    <string name="remote_cancel">Cancel</string>
+    <string name="remote_confirm">OK</string>
+    <string name="remote_endpoint_set_display">Set as display source</string>
+    <string name="remote_endpoint_edit">Edit</string>
+    <string name="remote_endpoint_more">More endpoint actions</string>
+    <string name="remote_endpoint_move">Move to device</string>
+    <string name="remote_endpoint_move_to_group">Move to device group</string>
+    <string name="remote_endpoint_switch_group">Switch device group</string>
+    <string name="remote_endpoint_delete">Delete this endpoint</string>
+    <string name="remote_endpoint_delete_title">Delete this endpoint?</string>
+    <string name="remote_endpoint_delete_message">Remove the %1$s endpoint %2$s from \"%3$s\"? Its saved credential is cleared. This cannot be undone.</string>
+    <string name="remote_endpoint_status_idle">Not connected</string>
+    <string name="remote_endpoint_displaying">%1$s · Displaying</string>
+
+    <!-- 远程面板 · 端点地址编辑 -->
+    <string name="remote_edit_endpoint_title">Edit endpoint address</string>
+    <string name="remote_edit_endpoint_address_label">New target URL</string>
+    <string name="remote_edit_endpoint_confirm">Save</string>
+    <!-- 远程面板 · 端点会话模式（代理承载 / 渲染器直连） -->
+    <string name="remote_session_mode_label">Session mode</string>
+    <string name="remote_session_mode_proxied">Proxy</string>
+    <string name="remote_session_mode_direct">Direct</string>
+    <!-- 直连仅放行 https 端点（会话层门禁与卡片选项禁用双保险） -->
+    <string name="remote_direct_https_limitation">Direct mode requires an https address</string>
+
+    <!-- 远程面板 · 设置 -->
+    <string name="remote_settings_title">Settings</string>
+    <string name="remote_settings_retention_label">Keep inactive session for</string>
+    <string name="remote_settings_default_retention">Default retention · Global</string>
+    <string name="remote_settings_inactive_hint">Inactive sessions</string>
+    <string name="remote_settings_hot_label">Hot pool</string>
+    <string name="remote_settings_hot_usage">%1$d / %2$d</string>
+    <string name="remote_settings_hot_note">Pages not set to Immediate stay in the hot pool when inactive, so switching back does not reload.</string>
+    <string name="remote_settings_release_all">Release all now</string>
+    <string name="remote_retention_immediate">Release on switch</string>
+    <string name="remote_retention_minutes">%1$d min</string>
+    <string name="remote_retention_forever">Forever</string>
+    <string name="remote_retention_inherit">Inherit (%1$s)</string>
+    <string name="remote_retention_trigger">Retention: %1$s</string>
+    <string name="remote_retention_label">Retention policy</string>
+
+    <!-- 远程面板 · 平板右栏端点详情 -->
+    <string name="remote_detail_empty">Select a device on the left to view its endpoints</string>
+        <string name="remote_device_endpoint_summary">Endpoints · %1$d channels</string>
+    <string name="remote_detail_endpoint_label">Endpoints</string>
+    <string name="remote_detail_channel_count">%1$d channels</string>
+
+    <!-- 远程面板 · 远程面板 · 通道标签 -->
+    <string name="remote_channel_lan">LAN</string>
+    <string name="remote_channel_public">Public</string>
+    <string name="remote_channel_tunnel">Tunnel</string>
+    <string name="remote_channel_url">URL</string>
+    <!-- 远程面板 · 远程面板 · 端点插件类型标注（产品专名不翻译，仅 generic 走资源） -->
+    <string name="remote_parser_generic">Generic URL</string>
+    <!-- 远程面板 · 远程面板 · 重新配对 -->
+    <string name="remote_device_repair">Re-pair</string>
+    <string name="remote_device_repair_input">Enter pairing again</string>
+    <string name="remote_repair_description">Paste the new pairing URL for 「%1$s」; the old one-time credential becomes invalid.</string>
+    <!-- 远程面板 · 远程面板 · 地址编辑失败 -->
+    <string name="remote_edit_endpoint_invalid">Not a valid pairing URL</string>
+    <!-- 远程面板 · 远程面板 · 一次性凭据被拒 -->
+    <string name="remote_pairing_rejected_title">Pairing credential invalid</string>
+    <string name="remote_pairing_rejected">The one-time pairing credential was rejected or already used. Re-pair this endpoint from its device card.</string>
+    <!-- 扫码器 · 扫码器 · 全屏子页 -->
+    <string name="remote_scan_title">Scan pairing code</string>
+    <string name="remote_scan_torch">Torch</string>
+    <!-- 扫码器 · 扫码器 · 权限流 -->
+    <string name="remote_scan_permission_denied">Camera permission was denied. You can request it again or enter the pairing link manually.</string>
+    <string name="remote_scan_permission_permanent">Camera permission is permanently denied. Enter the pairing link manually.</string>
+    <string name="remote_scan_request_again">Request again</string>
+    <string name="remote_scan_manual_fallback">Enter manually</string>
+    <!-- 扫码器 · 设备卡重扫 -->
+    <string name="remote_device_rescan">Re-scan update</string>
+    <!-- 扫码器 · 相机不可用与系统设置 -->
+    <string name="remote_scan_camera_unavailable">No back camera is available on this device, or the camera failed to start. Enter the pairing link manually.</string>
+    <string name="remote_scan_open_settings">Open system settings</string>
+    <!-- 下载分支 · 结果页 -->
+    <string name="remote_download_saved">Saved to %1$s/%2$s</string>
+    <string name="remote_download_failed">Download failed: %1$s</string>
+    <string name="remote_download_dir_unavailable">Download directory is not writable</string>
+    <string name="remote_download_saved_hint">If this file was exported from a form submission, you can go back to the previous page to continue.</string>
+    <string name="remote_download_back">Back</string>
+    <string name="remote_download_title">Downloads</string>
+    <string name="remote_download_share">Shared area: DSHBox/download-remote</string>
+    <string name="remote_download_system">System files: Internal storage/DSHBox/download-remote</string>
+    <string name="remote_download_empty">No downloads yet</string>
+    <string name="remote_download_copy">Copy path</string>
+    <string name="remote_download_open_folder">Open folder</string>
+    <string name="remote_download_perm">All-files access is required to save into the shared area.</string>
+    <string name="remote_download_grant">Open settings</string>
+    <string name="remote_download_fail_perm">No storage permission: cannot write to the shared area.</string>
+    <string name="remote_download_fail_origin">Download blocked: the file address is outside the current session origin.</string>
+    <string name="remote_download_fail_http">The server rejected the download request.</string>
+    <string name="remote_download_fail_io">Writing the file failed.</string>
+    <string name="remote_download_fail_dir">The download directory is unavailable.</string>
+</resources>

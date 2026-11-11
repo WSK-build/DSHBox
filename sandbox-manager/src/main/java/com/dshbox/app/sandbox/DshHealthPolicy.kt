@@ -28,6 +28,12 @@ internal object DshHealthPolicy {
     const val PROBE_GAP_REARM_MS = 15_000L
 
     /**
+     * 启动输出行（`dsh web: …`）解析确认的默认超时（毫秒）。未在该窗口内解析
+     * 到就绪行即不判就绪：进入换端口重试，不静默以探测端口（3080）就绪。
+     */
+    const val DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS = 30_000L
+
+    /**
      * 连续不应答超过该时长即对外提示「无响应」。
      *
      * 只用于界面提示与其它展示层信号，**不参与**是否重启的判定：判定仍按
@@ -72,6 +78,12 @@ internal data class DshHealthProbe(
     val deviceInteractive: Boolean,
     /** 与上一轮的实际间隔（不含本次探测耗时）；首轮传 0。 */
     val probeGapMs: Long,
+    /**
+     * 启动地址是否已从 DSH 输出行确证（解析到 `dsh web: …` 行）。
+     * 未确证时**不得**进入 READY——端口上有 HTTP 响应还可能是别的服务占用，
+     * 就绪必须以"实际地址 + token"确证为前提，输出解析超时进入换端口重试。
+     */
+    val addressConfirmed: Boolean = true,
 )
 
 /** 判定结果；每种结果都带出迁移后的窗口状态。 */
@@ -104,6 +116,12 @@ internal fun decideDshHealth(
     readyTimeoutMs: Long,
     unresponsiveGraceMs: Long,
     maxRestartAttempts: Int,
+    /**
+     * 启动行 (dsh web: …) 解析确认超时恰在 30 秒后（探测进程已成功但迟迟
+     * 未打印就绪行）：未在窗口内确认地址则判定本次启动失败并进入换端口重试
+     * 重启，而不是待探测端口上另一个响应服务的 200 字符误判后续启动就绪。
+     */
+    addressConfirmTimeoutMs: Long = DshHealthPolicy.DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS,
 ): DshHealthDecision {
     var current = state
     // 设备休眠（guest 会被整体冻结）或采样中断（循环被冻结/长时间未获调度）：
@@ -113,6 +131,17 @@ internal fun decideDshHealth(
     }
 
     if (probe.webUiReady) {
+        if (!probe.addressConfirmed) {
+            // 端口有响应但启动地址尚未确证：端口上响应的未必是我们的 DSH
+            // （缺启动输出行）。就绪判定必须以确证为前提：
+            // - 确认窗口内继续观察；
+            // - 超过确认窗口 → 进入换端口重试（重启本进程），绝不按探测端口就绪。
+            current = current.copy(healthyStreak = 0)
+            if (probe.nowMs - current.startedAtMs > addressConfirmTimeoutMs) {
+                return restartOrExhausted(current, probe.nowMs, maxRestartAttempts)
+            }
+            return DshHealthDecision.Observe(current)
+        }
         val streak = current.healthyStreak + 1
         val closed = streak >= DshHealthPolicy.HEALTHY_STREAK_TO_CLOSE
         return DshHealthDecision.Ready(
@@ -127,6 +156,14 @@ internal fun decideDshHealth(
 
     // 探测失败：连续成功计数归零。
     current = current.copy(healthyStreak = 0)
+
+    // 地址一直未确证（输出迟迟无 `dsh web:` 行），首次启动阶段到达确认超时
+    // 即进入换端口重试，不必吃满 readyTimeout。
+    if (!probe.addressConfirmed &&
+        probe.nowMs - current.startedAtMs > addressConfirmTimeoutMs
+    ) {
+        return restartOrExhausted(current, probe.nowMs, maxRestartAttempts)
+    }
 
     if (!probe.processAlive) {
         // 确定性宕机：即使设备在休眠也立即重建。

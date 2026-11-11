@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -36,6 +37,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -84,9 +87,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -97,6 +103,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -109,6 +116,8 @@ import com.dshbox.app.R
 import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.common.Constants
 import com.dshbox.app.sandbox.DshState
+import com.dshbox.app.ui.theme.AppDshAddressState
+import com.dshbox.app.ui.theme.AppDshBehaviorState
 import com.dshbox.app.util.ShareArea
 import com.dshbox.dsh.renderer.api.DshRenderer
 import com.dshbox.dsh.renderer.api.DshSelectedFile
@@ -116,6 +125,7 @@ import com.dshbox.dsh.renderer.api.DshAsyncRequestId
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.dshbox.app.common.R as CommonR
@@ -219,6 +229,11 @@ private const val REFRESH_SPINNER_TIMEOUT_MS = 20_000L
 
 /** 渲染进程连续崩溃的重建上限：超过即转错误覆盖层，由用户显式重试（防无限重建循环）。 */
 private const val RENDERER_REBUILD_LIMIT = 3
+
+/** 本机 DSH 页面的默认加载地址（未确证运行期地址时的 key 兜底，与
+ *  `AppDshAddressState` 未确证时的实际加载地址一致；单一事实源在
+ *  [Constants.DSH_BASE_URL]，此处不重复字面量）。 */
+private val DEFAULT_DSH_WEB_URL = Constants.DSH_BASE_URL
 
 /**
  * 系统相册选择器与它的多选上限。
@@ -979,6 +994,116 @@ fun DshWebViewScreen(
         }
     }
 
+    // ── 悬浮球自动收边（空闲隐藏）───────────────────────────────────────────
+    // 球在无交互约三秒后自动滑向最近的左/右边缘，只露出约四分之一球体宽度
+    // （可见宽度 = 直径的 1/4，球心出界半个半径，见 retractedCenterX 的几何
+    // 口径）。"占用"是**派生态**：
+    // 按住球的指针（全部指针抬起才解除）、拖动中的球（起点到抬指止）或展开的
+    // 快捷条，任一在期即占用、球保持完整显示并等待下一次空闲。
+    //
+    // 计时口径：`ballIdleArmed` 只在空闲计时跑满后才置 true —— 任何占用、页签
+    // 失活或容器尺寸变化都会取消 delay 并把 armed 清回 false，下一拍从零再凑
+    // 三秒。"手指离开球再等三秒""快捷条收起后重新计时""首次进入页面三秒后才
+    // 收边""页签失活立即回完整"全部由派生 + 重启天然达成（详见各分支注释）。
+    //
+    // 占用与滑行解耦：占用只翻转"要不要保持完整显示"，球的滑行/回弹交给动画
+    // 层自己消化目标差分（见下），快捷条展开/收起不打断正在进行的动画。
+    var ballPointerBusy by remember { mutableStateOf(false) }
+    // 拖动在阈值前的短暂按下已置占用；拖动本身不需要单独的占用位 —— 一路上
+    // 指针都按着，抬指时经 pressSettle 归位，会计线闭合。快捷条展开同样让球
+    // 保持完整显示（也免得条随球滑到边缘被裁掉）。
+    val ballBusy = ballPointerBusy || quickBarVisible
+
+    // ── 松手即收：拖动结束（抬指/取消）时球心贴边，立即进入收边态 ──────────
+    // 与空闲计时（ballIdleArmed）互不相干、同样只表达"应当收边"的意图，两者
+    // 任一为真即收；占用（ballBusy）与页签失活仍然优先压平收边 —— 松手后再次
+    // 按下/展开快捷条马上恢复完整显示，与空闲收边共用同一条恢复路径。
+    // 写回时机：新的一局拖动在 onDragStart 清掉（上次"贴边松手"的意图随这次
+    // 主动拿球作废），松手判定命中时再翻起；旋转/分屏后球心坐标已按新边界
+    // 回夹（rememberSaveable 存的是球心不是收边态），本标志不持久化也不需重算。
+    var ballReleaseRetract by remember { mutableStateOf(false) }
+    // 阈值口径：BALL_EDGE_SNAP_THRESHOLD 是 24dp，与容器 px 的换算只在
+    // density 变化时重做一次（px 随容器布局取整无影响）。
+    val ballSnapThresholdPx = with(density) { BALL_EDGE_SNAP_THRESHOLD.toPx() }
+
+    // 空闲约三秒后武装收边：**进 effect 第一拍先解除武装**，wait 期间任一占用
+    // 翻转都会取消 delay（key 变化重启 effect）并经此清回 false，下一拍从零再
+    // 凑三秒。armed 在 delay 完成后才置 true —— 保证"满三秒才收边"，修掉此前
+    // "armed 立即为 true、球在布局摆放完成前就提前收边"的计时常量错误。
+    // 容器尺寸变化（boardSize 进 keys）：重启同时**先清 armed**再从当下凑三秒
+    // —— 不清的话上一轮已凑满的 true 会残留，旋转/分屏后球在重新布局完成的
+    // 瞬间直接二次收边（尺寸变化与满计时叠放）。
+    // 页签失活/回到前台经 isActiveTab 重启本 effect 重新计时；除此之外失活还
+    // 会作废"松手即收"的残留（ballReleaseRetract 一并清掉），切回后球保持完整
+    // 显示、重新等满三秒，而不是带着上一次的贴边意图立刻滑回边缘。
+    var ballIdleArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(ballBusy, isActiveTab, boardSize, refreshBallX.isNaN()) {
+        // 任何 key 变化都先解除武装：占用/失活/尺寸变化/球心定位完成全都算
+        // 一次"从头计时"的边界。
+        ballIdleArmed = false
+        if (!isActiveTab) {
+            // 页签失活：作废松手收边意图，切回后重新等满三秒。
+            ballReleaseRetract = false
+        }
+        if (ballBusy || !isActiveTab) return@LaunchedEffect
+        if (boardSize == IntSize.Zero || refreshBallX.isNaN()) return@LaunchedEffect
+        // 完整空闲布局后开始凑三秒。
+        delay(BALL_IDLE_RETRACT_MS)
+        ballIdleArmed = true
+    }
+
+    // ── 收边滑行的动画值 ─────────────────────────────────────────────────
+    // 球心坐标 `refreshBallX/Y` 记录的永远是"完整可见"时的位置（对收边无感知），
+    // 收边偏移与体态单独各一根 Animatable、渲染时叠加，两条状态流互不污染：
+    // 恢复后拖动写回的是原始完整坐标、快捷条锚点（球心）取的也是原始完整坐标，
+    // 语义不变；收边渲染只是视觉遮蔽，无障碍语义不变（见 GlassBall 处说明）。
+    //
+    // X 偏移 = 完整球心到收边球心的带符号距离（拖到哪边就近滑向哪边）。弹簧
+    // 目标只在"应当收边"或"应当恢复"两个状态间切换，恢复时回 0 不瞬跳；容器
+    // 尺寸/球心在收边保持期间变化时目标随之重算（弹簧继续从当前位置滑向新
+    // 目标，不会跳出屏幕外 —— 收边目标直接按"可见宽度 = 直径的 1/4"反解
+    // （球心可以出界半个半径，那是收边态的本意）。
+    //
+    // 体态：收边时缩放至 ~0.96 并带回弹（轻微收缩 + 阴影变小，边缘圆润不生硬，
+    // 避免"贴住即死"的观感）；恢复时同规格回 1。缩放与偏移共用一只 effect 驱动，
+    // 两个动画天然同步启停。
+    var ballIdle by remember { mutableStateOf(false) }
+    val retractedOffsetX = remember { Animatable(0f) }
+    val retractedScale = remember { Animatable(1f) }
+    // 收边态直接由"忙/闲 + 计时已满 + 贴边松手"三个派生量合成：任何交互（含
+    // 快捷条展开）或页签切走都会先翻转 busy/active 并解除 armed，随即这里立即
+    // 回完整显示；只有凑满三秒的 armed、或拖动松手时贴边的 ballReleaseRetract
+    // 才允许滑向边缘。页签切回/交互结束重新凑三秒。
+    LaunchedEffect(ballBusy, ballIdleArmed, ballReleaseRetract, isActiveTab) {
+        ballIdle = !ballBusy && isActiveTab && (ballIdleArmed || ballReleaseRetract)
+    }
+    LaunchedEffect(ballIdle, boardSize, refreshBallX, ballRadius) {
+        if (boardSize == IntSize.Zero || refreshBallX.isNaN()) return@LaunchedEffect
+        val leftEdge = nearestHorizontalEdge(refreshBallX, boardSize.width)
+        val offsetTarget = if (ballIdle) {
+            // 反解的口径按收边**终态缩放**（BALL_RETRACT_SCALE，见 retractedCenterX
+            // 的 scale 参数说明）计入：0.96 体态会让视觉球心稍浅一丁点才能把
+            // 可见宽保持回「直径的 1/4」。动画期间的瞬时缩放由弹簧顶着滑行，
+            // 峰值误差 ≤ r·(1 − s) ≈ 0.8dp，观感无感。
+            retractedCenterX(
+                leftEdge,
+                boardSize.width,
+                ballRadius,
+                scale = BALL_RETRACT_SCALE,
+            ) - refreshBallX
+        } else {
+            0f
+        }
+        val scaleTarget = if (ballIdle) BALL_RETRACT_SCALE else 1f
+        // 两根值一起发起，规格一致，观感上是一次"滑过去收住/弹回来展开"。
+        launch {
+            retractedOffsetX.animateTo(offsetTarget, BALL_RETRACT_SPRING)
+        }
+        launch {
+            retractedScale.animateTo(scaleTarget, BALL_RETRACT_SPRING)
+        }
+    }
+
     // 未就绪（含 DSH 已退出 Ready）时的上下文动作：启动沙箱或 DSH，
     // 与 WaitingState 大按钮的分支语义一致。
     val startOrRetryAction: () -> Unit = {
@@ -1080,11 +1205,14 @@ fun DshWebViewScreen(
     // 加载统一走 `loadIfNeeded`（按 URL 去重）：本 effect 的 keys 里含 dshState，
     // 状态抖动一次就会重跑一次 —— 无条件导航会把"状态变化"放大成"页面重新导航"，
     // 用户看到的就是发消息/切页面时页面自己刷新。地址没变就不该重新导航。
-    LaunchedEffect(dshLaunchToken, dshState, webContainer) {
+    // 回车键「换行」设置并入 keys：拨动的重组即时把新档推给本机容器。
+    val enterKeyNewline = AppDshBehaviorState.enterKeyNewline
+    LaunchedEffect(dshLaunchToken, dshState, enterKeyNewline, webContainer) {
         val token = dshLaunchToken?.takeIf(String::isNotEmpty)
         // token 变化时通知容器重新武装 401 重试（见 DshWebContainer.onLaunchTokenChanged）
         val container = webContainer ?: return@LaunchedEffect
         container.onLaunchTokenChanged(token)
+        container.setEnterKeyNewline(enterKeyNewline)
         if (dshState == DshState.READY && (token != null || !container.hasNavigation)) {
             // 这里传带 token 的地址仅作为**去重键**：token 轮换后地址变了，才不会
             // 被容器的"同地址不重复导航"规则吞掉。真正下发给引擎的地址由容器
@@ -1130,7 +1258,13 @@ fun DshWebViewScreen(
             // 容器重建代数作为 key：渲染进程崩溃后自增，强制 AndroidView 丢弃旧节点、
             // 走 factory 重建全新容器（渲染进程死亡后旧实例不可靠，仅 reload 不能
             // 保证恢复）；重建后的带 token 加载由下方 LaunchedEffect 自动完成。
-            key(webViewEpoch) {
+            //
+            // 确证地址并入 key：本机容器 url 是构造期 val（烤进可信 origin 与后续
+            // 导航目标），确证地址（端口自适应换端口/重启落新端口）变化时必须换新
+            // 容器——只带 token 重载改变不了构造期 url（见 DshWebContainer）。
+            // 确证值仍指向默认 3080 时 key 不变、既有容器保留（零行为变化）。
+            val confirmedWebUrl = AppDshAddressState.confirmedBaseUrl ?: DEFAULT_DSH_WEB_URL
+            key(confirmedWebUrl, webViewEpoch) {
                 AndroidView(
                     factory = { ctx ->
                         try {
@@ -1161,6 +1295,11 @@ fun DshWebViewScreen(
                                 loadProgress = 100
                                 isRefreshing = false
                                 rendererCrashes = 0
+                                // 回车键「换行」档在页面重载后回退：安装期注入配置
+                                // 只在 document-start 生效一次，重载后的页面回到注入
+                                // 配置里的初值——这里按当前档位重推（推送是
+                                // evaluateJavascript 幂等写，拨动的档位不丢）。
+                                webContainer?.setEnterKeyNewline(AppDshBehaviorState.enterKeyNewline)
                             },
                             onError = {
                                 // 错误路径同样要复位刷新圈与进度条：主框架加载失败不触发
@@ -1474,50 +1613,112 @@ fun DshWebViewScreen(
         }
 
         // ── 悬浮球（常驻）：从 READY 分支上提到外层，未就绪/加载失败时也渲染 ──
-        // 层序：zIndex(10) 浮在 WebView/进度条/错误层（默认 0）之上、内置文件查看器
-        // （zIndex 50f）之下。与底部控制面板同层时球会浮在面板之上（面板当前不渲染，
-        // 见 PANEL_BALL_ENABLED）；面板若恢复入口，需补「面板可见时球心避让面板矩形」。
+        // 层序：球的裁剪层（fillMaxSize + clipToBounds 的 Box，zIndex 10f）浮在
+        // WebView/进度条/错误层（默认 0）之上、内置文件查看器（zIndex 50f）之下。
+        // 与底部控制面板同层时球会浮在面板之上（面板当前不渲染，见
+        // PANEL_BALL_ENABLED）；面板若恢复入口，需补「面板可见时球心避让面板矩形」。
         // 点击=展开/收起快捷条；长按=按当前状态刷新/重试（未就绪时最显眼的重试入口
         // 仍是 WaitingState 的大按钮）。无障碍名称用中性的「快捷操作」：
         // 单击行为是展开快捷条，长按动作随状态变化，「刷新」只描述次要动作。
+        //
+        // 空闲收边：渲染位置在球心基础上叠加收边偏移与体态（见前文动画段），收边
+        // 期间点击/拖动的命中区域跟随当前显示位置走（offset 驱动的矩形边界随之
+        // 移动），无障碍语义与点击行为保持不变。按下→抬指全程占用（pressFeedback/
+        // pressSettle 一对回写 ballPointerBusy），快捷条展开期间沿用 quickBarVisible
+        // 占用，三条占用线独立记账、互不踩踏。松手即收：拖动结束贴边直接置
+        // ballReleaseRetract（不走空闲计时，吸附动画共用同一根 spring）；
+        // 再次按下/拿球则作废收边意图，恢复完整显示从头再凑。
         if (!refreshBallX.isNaN()) {
-            GlassBall(
-                modifier = Modifier.zIndex(10f),
-                center = Offset(refreshBallX, refreshBallY),
-                board = boardSize,
-                radius = ballRadius,
-                onClick = { quickBarVisible = !quickBarVisible },
-                onLongClick = ballAction,
-                onDragStart = { quickBarVisible = false },
-                onCenterChange = {
-                    refreshBallX = it.x
-                    refreshBallY = it.y
-                },
+            // ── 球的裁剪层：fillMaxSize + clipToBounds 只包住球 ────────────
+            // 收边球心**有意**出界半个半径（见 retractedCenterX 口径），若这一层
+            // 无裁剪：竖屏窗口边缘恰与容器缘重合时"看起来"是 1/4 是视觉巧合；
+            // 横屏侧边栏/状态栏 insets 让 WebView 容器内缩后，容器不再被窗口边
+            // 裁住，整球（含出界的部分）会完全露在面板上。给球单独一层物理裁剪，
+            // 球所在区域可见部分恒为容器的四分之一、且可见部分仍可点击（命中
+            // 区域跟随 offset 驱动的矩形边界，被裁掉的部分不可见也不可点）。
+            // 层序：本剪层占 zIndex(10)，容器内的 WebView/进度条/错误层（0）在其
+            // 下、快捷条（11）在其上。快捷条**不**包进来：条的贴合夹取逻辑自己
+            // 保证完整可见（条全量在 board 内），包进剪层会让球的 clip 边缘吃掉
+            // 条贴边滑行的过冲帧（scaleIn spring 过冲会短暂画出 board），拖动期
+            // 条随球淡出的退场动画也别在剪层里被截断。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clipToBounds()
+                    .zIndex(10f),
             ) {
-                // 转圈反馈：刷新中，或页面正在加载（白屏/加载中有可见反馈）。
-                if (isRefreshing || (isActiveTab && loadProgress in 1..99)) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .semantics { contentDescription = resources.getString(R.string.webview_refresh) },
-                        strokeWidth = 2.dp,
-                        // 球体填充为 surface，进度圈取反色的 onSurface 才可见。
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                } else {
-                    Icon(
-                        imageVector = ImageVector.vectorResource(R.drawable.ic_layout_dashboard),
-                        contentDescription = stringResource(R.string.webview_quick_actions),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp),
-                    )
+                GlassBall(
+                    modifier = Modifier,
+                    center = Offset(refreshBallX, refreshBallY),
+                    board = boardSize,
+                    radius = ballRadius,
+                    onClick = { quickBarVisible = !quickBarVisible },
+                    onLongClick = ballAction,
+                    onDragStart = {
+                        quickBarVisible = false
+                        // 上一局"贴边松手"的收边意图随这次主动拿球作废；是否再次
+                        // 收边由本局松手位置重新判定（见下方 onDragEnd）。
+                        ballReleaseRetract = false
+                    },
+                    onDragEnd = { releasePoint ->
+                        // 松手即收：球心贴边（或在边界外）立即进入收边态，不等空闲
+                        // 三秒。收向哪一侧在动画层由 nearestHorizontalEdge 按落点
+                        // 就近判定（界外球心自然落入近侧），吸附用空闲收边同一条
+                        // spring —— 见收边动画段的口径注释。
+                        if (shouldSnapOnRelease(
+                                centerX = releasePoint.x,
+                                boardWidth = boardSize.width.toFloat(),
+                                threshold = ballSnapThresholdPx,
+                            )
+                        ) {
+                            ballReleaseRetract = true
+                        }
+                    },
+                    onCenterChange = {
+                        refreshBallX = it.x
+                        refreshBallY = it.y
+                    },
+                    pressFeedback = {
+                        // 按下只做两件事：恢复球完整显示 + 暂停空闲计时（经
+                        // ballPointerBusy 触发重启）。**不要**在这里动
+                        // quickBarVisible：快捷条展开状态下先按下、抬指处
+                        // onClick 是「切换」，若这里顺手关条，点击就会变成
+                        // 「关了又开」，快捷条收起交给 onClick 的切换与
+                        // onDragStart 的拖动收起两条路径。
+                        // 对"贴边松手"的球同样成立：按下即恢复完整显示，上次
+                        // 的松手收边意图一并作废（拾起重新判定，不再自动贴回）。
+                        ballPointerBusy = true
+                        ballReleaseRetract = false
+                    },
+                    pressSettle = { ballPointerBusy = false },
+                    visualOffsetX = { retractedOffsetX.value },
+                    visualScale = { retractedScale.value },
+                ) {
+                    // 转圈反馈：刷新中，或页面正在加载（白屏/加载中有可见反馈）。
+                    if (isRefreshing || (isActiveTab && loadProgress in 1..99)) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .semantics { contentDescription = resources.getString(R.string.webview_refresh) },
+                            strokeWidth = 2.dp,
+                            // 球体填充为 surface，进度圈取反色的 onSurface 才可见。
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = ImageVector.vectorResource(R.drawable.ic_layout_dashboard),
+                            contentDescription = stringResource(R.string.webview_quick_actions),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
         }
 
         // ── 快捷条展开时的空白点击层：点球与条之外的任意位置=收起快捷条，并吞掉该次
-        //    点击（不落到网页，防止关条的第一击误触网页控件）。层序在球(10)/条(11)之下、
-        //    WebView(0) 之上；页签失活随整树零尺寸放置，不会拦截任何事件。
+        //    点击（不落到网页，防止关条的第一击误触网页控件）。层序在球剪层(10)/条(11)
+        //    之下、WebView(0) 之上；页签失活随整树零尺寸放置，不会拦截任何事件。
         if (quickBarVisible) {
             Box(
                 modifier = Modifier
@@ -1704,16 +1905,131 @@ private fun clampBallCenter(c: Offset, board: IntSize, radius: Float): Offset {
     return Offset(c.x.coerceIn(radius, maxX), c.y.coerceIn(radius, maxY))
 }
 
+// ── 悬浮球收边（空闲隐藏）几何 ──────────────────────────────────────────────
+// 以下两个纯函数只依赖入参，不触碰任何组合状态，放本文件顶层以便 JVM 单测直接覆盖。
+
+/** 空闲多久后自动收边。 */
+private const val BALL_IDLE_RETRACT_MS = 3_000L
+
+/**
+ * 收边时球的缩放（轻微收缩让贴边看起来圆润，不生硬停靠）。收边终态体态：
+ * 该值同时作为 retractedCenterX 反解的 `scale` 参数进入几何（可见宽四分之
+ * 一的口径按这个缩放终值反解，收边后该比例不受体态影响），internal 是口径
+ * 契约的测试要求（BallRetractionGeometryTest 锁定原值）。
+ */
+internal const val BALL_RETRACT_SCALE = 0.96f
+
+/** 收边/恢复共用的弹簧规格：中等刚性 + 偏欠阻尼，滑到位后有一次自然回弹。 */
+private val BALL_RETRACT_SPRING = spring<Float>(
+    dampingRatio = 0.9f,
+    stiffness = Spring.StiffnessLow,
+)
+
+/** 收边时露在容器内的可见宽度占**直径**的比例：约四分之一球体露在边缘外。 */
+internal const val RETRACT_VISIBLE_FRACTION = 0.25f
+
+/**
+ * 松手即收判定：球心距左缘或右缘的水平距离小于 [threshold] 即视为"贴边松手"，
+ * 拖动结束后应**立即**进入收边态（不等空闲三秒计时）。
+ *
+ * 判定口径：
+ *  - 距离按**球心**到容器左/右缘计（与拖动落点、球体边界无关），两条取更近者；
+ *  - 球心越界（负值/超宽）时距离为负，自然落入判定 —— 与"已在边界外同样按收边
+ *    处理"的松手语义一致；
+ *  - **严格小于**：球心距缘恰好等于阈值不算贴边（口径固定，测试锁定）；
+ *  - 容器宽 <= 0（页签失活的零尺寸放置）没有"边缘"可言，返回 false；
+ *  - 阈值 <= 0 且球心在界内时永不命中，只有界外球心（负距离）仍会命中。
+ *
+ * 命中后收向哪一侧由 [nearestHorizontalEdge] 单独判定，本函数只回答"收不收"。
+ */
+internal fun shouldSnapOnRelease(centerX: Float, boardWidth: Float, threshold: Float): Boolean {
+    if (boardWidth <= 0f) return false
+    return minOf(centerX, boardWidth - centerX) < threshold
+}
+
+/**
+ * 松手即收的贴边阈值：球心距容器左/右缘小于 24dp 即在松手时立即收边。
+ * 单位是 dp（密度无关，按容器 px 换算后比较）；取值覆盖"拖满贴边"的口径 ——
+ * 拖动受 [clampBallCenter] 约束，贴死边缘时球心距缘恰为半径（40dp 球 = 20dp），
+ * 20dp < 24dp 必然命中，而松在离缘一个球身（约 40dp）外则不收。
+ */
+internal val BALL_EDGE_SNAP_THRESHOLD = 24.dp
+
+/**
+ * 判断球心离左缘还是右缘更近（按**球心**到两缘的水平距离，与拖动落点无关）。
+ * 正好处于容器中缝时取左缘（与快捷条 `expandRight` 的口径相反但互不干扰：
+ * 一个管球贴合哪侧、一个管条向剩余空间更大的一侧展开）。
+ *
+ * 容器宽度为 0（页签失活后的零尺寸放置）没有"边缘"可言，返回左侧作为稳定默认，
+ * 调用方不应在该状态下渲染球，也不会用到该结果。
+ */
+internal fun nearestHorizontalEdge(centerX: Float, boardWidth: Int): Boolean {
+    // 返回 true = 靠左缘，false = 靠右缘。
+    if (boardWidth <= 0) return true
+    return centerX <= boardWidth / 2f
+}
+
+/**
+ * 收边后的球心 X：球的**可见宽度**（容器内被裁剩的部分）等于
+ * [visibleFraction] × 直径 —— 露出约四分之一球体的宽度。
+ *
+ * 反解口径（左缘，不缩放）：可见宽度 = 球体右缘 − 容器左缘 = 球心 + r，令它
+ * 等于直径 × f = 2r·f，得收边球心 = r·(2f − 1)。f = 0.25 时球心 = −0.5r ——
+ * 即球心悬在容器边界**之外**半个半径；右缘镜像 = 宽 − r·(2f − 1) = 宽 + 0.5r。
+ * 收边坐标因此**有意**落在容器逻辑坐标系之外（与 clampBallCenter 只管完整
+ * 态回夹、不掺收边不同），调用方（动画/渲染层）直接用该值做收边 offset，
+ * 无需再夹回容器内。
+ *
+ * 缩放补偿（[scale]）：收边体态会缩放到 ~0.96（[BALL_RETRACT_SCALE]，见体态
+ * 动画段说明），渲染层 graphicsLayer 以球**左上角**为锚点，offset 又先抵扣了
+ * 半径·缩放，两次叠加下视觉球心 = `球心 + 收边 offset`（缩放不挪心），可见宽
+ * = 视觉球心 + 缩放半径 r·s − 容器缘。令它仍等于 2r·f 得球心 = r·(2f − s)——
+ * 缩放缺省 1 即原口径；s = 0.96 时球心 = −0.46r，比不补偿浅 0.04r。调用方
+ * 把收边**终态**缩放（常量）传进来：滑行期间瞬时缩放由弹簧驱动（1 → s），
+ * 球心目标按终态反解，可见宽在终态恰为直径的 f；过渡期偏差 ≤ r·(1 − s)
+ * ≈ 0.8dp、观感无感。选择**补偿几何而非收边不缩放**：0.96 的微缩是刻意设计
+ * 的体态反馈（边缘圆润、避免贴住即死），去掉会让贴边观感生硬。
+ *
+ * 边界口径：`radius <= 0`（无意义）或 `width <= 0`（零尺寸放置）退化为完整
+ * 贴边（球心 = 0，与容器边界对齐）；f = 0 时完全藏起（球心 = −r（s = 1），
+ * 含缩放口径为 −r·s），f = 1 时球心贴边内侧 = 完整可见位置 = r。半径大到球心
+ * 绝对值超过容器宽（极端小窗/分屏）仍按公式取值 —— 滑行目标与容器边界无关。
+ */
+internal fun retractedCenterX(
+    leftEdge: Boolean,
+    boardWidth: Int,
+    radius: Float,
+    visibleFraction: Float = RETRACT_VISIBLE_FRACTION,
+    scale: Float = 1f,
+): Float {
+    if (boardWidth <= 0 || radius <= 0f) return 0f
+    // 收边球心 = ±r·(2f − s)：f = 0.25、s = 1 → −0.5r（球心出界半半径），
+    // f = 0.25、s = 0.96（收边终态体态缩放）→ −0.46r（比不补偿浅 0.04r）；
+    // s = 1 时该式退化为原始口径 r·(2f − 1)。
+    val signedOffset = radius * (2f * visibleFraction - scale)
+    return if (leftEdge) {
+        signedOffset
+    } else {
+        boardWidth - signedOffset
+    }
+}
+
 
 /**
  * 可拖动的悬浮球。[center] 为球心（容器内坐标），拖动经 [onCenterChange] 回写；
  * 轻点经 [onClick]（展开/收起快捷条），长按经 [onLongClick]（按当前状态刷新/重试）。
- *
+ * [pressFeedback] 在按下时回调（恢复完整显示），[pressSettle] 在全部指针抬起时
+ * 回调（解除占用，空闲计时从头再凑）。[onDragEnd] 在拖动收尾（抬指或取消）时
+ * 回调，入参是松手时的球心（含 clamp，与最后一帧 onCenterChange 写回的值相同）。
  * 手势分工：`detectDragGestures` 越过触摸阈值才接管（[onDragStart] 同时收起快捷条；
  * 条在退场动画期间会短暂跟随球心移动，随淡出消失），轻点/长按落到 combinedClickable——与 clickable 同底座，
  * 保留涟漪与 OnClick/OnLongClick 两条无障碍语义（长按刷新在 TalkBack 可达）。
  * 手势层挂在球体**内部**的圆形 Box 上：挂在外层矩形边界上涟漪会按矩形铺开。
  * 球体绘制在 WebView 之上，命中球体的指针事件不会再落到页面里，页面不会被误滚动。
+ *
+ * 收边形态由 [visualOffsetX]/[visualScale] 表达：调用方在渲染外层
+ * 单独算好"期望显示位置相对球心的偏移"与体态，球对收边无语义感知 —— 拖动写回
+ * 的还是原始球心、无障碍名称与点击行为完全不变，收下看起来只是"球滚到边上"。
  *
  * 视觉方案（实心自适应底色 + 反色描边 + 投影）：填充取 surface——浅色主题下白、
  * 深色主题下深灰，与页面主体同浅深（DSH 页面主题随宿主 isLightTheme 走，
@@ -1733,7 +2049,14 @@ private fun GlassBall(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onDragStart: () -> Unit = {},
+    // 拖动终结回调：入参是松手位置（球心坐标，含 clamp）。只在真拖动（越过
+    // 触摸阈值）后触发 —— 短按/轻点走不到这里，点按语义不受影响。
+    onDragEnd: (Offset) -> Unit = {},
     onCenterChange: (Offset) -> Unit,
+    pressFeedback: () -> Unit = {},
+    pressSettle: () -> Unit = {},
+    visualOffsetX: () -> Float = { 0f },
+    visualScale: () -> Float = { 1f },
     content: @Composable () -> Unit,
 ) {
     // 手势块内要读**当前**球心，不能用捕获到的快照：pointerInput 的块只在 key 变化时重启，
@@ -1744,12 +2067,28 @@ private fun GlassBall(
 
     Box(
         modifier = modifier
-            .offset { IntOffset((center.x - radius).roundToInt(), (center.y - radius).roundToInt()) }
+            // 收边偏移乘在**偏移**上：视口偏移与球心(几何)各自独立，消费方用 visual
+            // lambda 表达"这一帧应该显示在哪"，球完全不必知道收边策略。
+            .offset {
+                val scale = visualScale()
+                IntOffset(
+                    ((center.x + visualOffsetX() - radius * scale)).roundToInt(),
+                    (center.y - radius * scale).roundToInt(),
+                )
+            }
+            .graphicsLayer {
+                // 体态缩放锚点 = 左上角（同 offset 口径），收边时整体轻缩并保持
+                // 圆形；恢复时用同规格回 1，观感与偏移合流成"滑过去收住/弹回来"。
+                scaleX = visualScale()
+                scaleY = visualScale()
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
             .size(BALL_SIZE)
             // shadow 在 clip/background 之前且不裁切：投影按圆形轮廓铺开，
-            // 球体叠在任意网页内容上都有轮廓分离度。
+            // 球体叠在任意网页内容上都有轮廓分离度。收边时随体态略降，让
+            // 半隐进边缘的球看起来"贴进去了"而不是浮在边上。
             .shadow(
-                elevation = 6.dp,
+                elevation = 6.dp * visualScale(),
                 shape = CircleShape,
                 clip = false,
                 ambientColor = Color.Black.copy(alpha = 0.22f),
@@ -1778,7 +2117,31 @@ private fun GlassBall(
                             acc += drag
                             onCenterChange(clampBallCenter(acc, board, radius))
                         },
+                        // 拖动终结（抬指或取消）把"松手位置"交给判定层：夹回后的
+                        // 最终球心与帧上刚写回的球心严格相等（onDrag 每帧写
+                        // clampBallCenter(acc)），判定输入与最后渲染位之间零跳变。
+                        onDragEnd = { onDragEnd(clampBallCenter(acc, board, radius)) },
+                        onDragCancel = { onDragEnd(clampBallCenter(acc, board, radius)) },
                     )
+                }
+                .pointerInput(Unit) {
+                    // 按下→抬指全程视为"占用球"：按下即恢复完整显示并重新记账，
+                    // 全部指针离开后解除占用（空闲计时随后从头再凑三秒）。与拖动/
+                    // 轻点/长按的判定完全正交：本观察器只记账不消费、不抢事件，
+                    // 影响不到原有手势语义。
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        pressFeedback()
+                        // 等手势收尾：所有指针都抬起（手势被取消也是事件收敛的
+                        // 一种，长等同样意味着重置）。手写等待循环：foundation 内
+                        // 部同款函数在当前版本下不可直接引用。
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.changes.fastAny { it.pressed }) continue
+                            pressSettle()
+                            break
+                        }
+                    }
                 }
                 .combinedClickable(
                     onClick = onClick,

@@ -204,7 +204,7 @@
     <string name="pm_market_state_rebuild">نسخ احتياطي وإعادة البناء</string>
     <string name="pm_market_state_rebuilt">تمت إعادة بناء ملف الحالة، وأُبقِي الأصل كنسخة احتياطية.</string>
     <string name="pm_adapt_section_title">إضافات التكيّف الخاصة بـ DSHBox</string>
-    <string name="pm_adapt_mobile">تكييف صفحة DSH للجوال</string>
+    <string name="pm_adapt_mobile">تكييف تفاعل صفحات DSH</string>
     <string name="pm_adapt_mobile_pilot">ربط الهاتف بـ DSH</string>
     <string name="pm_browser_adapter_title">أتمتة Browser في DSH</string>
     <string name="pm_browser_assembled">تم تثبيت محوّل Browser</string>

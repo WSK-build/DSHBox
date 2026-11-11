@@ -50,6 +50,14 @@ interface DshRendererAdapter {
  * `false`/a rejected dispatch where applicable. [view] must not be used after
  * release.
  */
+/** 页面触发的下载请求（直连模式）：交给宿主按同一套下载目录/下载器落盘。 */
+data class DshDownloadRequest(
+    val url: String,
+    val userAgent: String?,
+    val contentDisposition: String?,
+    val mimeType: String?,
+)
+
 interface DshRenderer {
     /** The view added to the host hierarchy. Its ownership transfers to the host. */
     val view: View
@@ -91,12 +99,32 @@ interface DshRenderer {
     fun updateToken(token: String?, tokenRevision: Long?)
 
     /**
+     * Pushes the DSH Enter-key "new line" switch into a live page without a
+     * reload.
+     *
+     * The page compatibility layer reads this switch from a mutable page
+     * global on every key press; adapters that can reach the document update
+     * that global via `evaluateJavascript`, so a settings change lands
+     * immediately in established sessions. Default implementation is a
+     * no-op: engines without an injected-page channel (gecko's build-time
+     * config) keep their as-built behaviour.
+     */
+    fun setEnterKeyNewline(newline: Boolean) {}
+
+    /**
      * Force-reloads the current session document with the latest token.
      *
      * This is the user-refresh path. It is not an Auth dispatch: a guarded
      * navigation must use [load] with a new navigation id. Returns `false` if
      * there is no document to reload or the renderer has been released.
      */
+    /**
+     * 安装下载监听（system 与 gecko 渲染器均实现：system 走 WebView
+     * setDownloadListener，gecko 走 ContentDelegate.onExternalResponse）。
+     * 远程会话直连模式下，页面触发的下载经此回调交给宿主落盘。
+     */
+    fun setDownloadListener(listener: ((DshDownloadRequest) -> Unit)?) {}
+
     fun reload(): Boolean
 
     /** Applies the host canvas theme. Repeated equal values are no-ops. */
@@ -199,6 +227,40 @@ data class DshRendererConfig(
     /** `null` lets the adapter choose its default user agent. */
     val userAgent: String? = null,
     val debuggingEnabled: Boolean = false,
+    /**
+     * 主框架导航策略（默认 [DshMainFrameNavigation.TrustedOriginOnly]，即既有
+     * 行为）：仅显式选择 [DshMainFrameNavigation.AnyHttps] 的直连会话才放宽
+     * 主框架导航口径，既有调用方不传即走原逻辑。
+     */
+    val mainFrameNavigation: DshMainFrameNavigation = DshMainFrameNavigation.TrustedOriginOnly,
+
+    /**
+     * 页面外链宿主消息通道开关（默认 false）：仅声明启用时，systemWebView
+     * 适配器才注册 `dshboxHost` 消息监听器并把页面递交的外链帧转成
+     * [DshRendererEvent.ExternalUrlRequested]（forced = true）。默认关闭保持既有
+     * 会话（本机 DSH 容器）零变化——注册会让同源 `_blank` 从「静默失败」变
+     * 为可递交，属可观察行为变化，必须由远程会话显式选择。
+     */
+    val hostMessageChannelEnabled: Boolean = false,
+
+    /**
+     * **DSH 回车键 = 换行档**（默认 true）：systemWebView 适配器把该值写进
+     * 页面注入配置，页面兼容层据此在捕获阶段把可编辑区（contenteditable /
+     * textarea）中的裸 Enter 拦截并补发带 `shiftKey` 的 keydown——DSH 自身
+     * 的 Shift+Enter 换行绑定随之生效；false（发送档）不安装任何拦截，保持
+     * 页面既有发送行为。gecko 变体的注入配置在构建期生成、不携带本开关，
+     * 生效行为固定为发送档——该变体暂不支持此开关（已知限制，DSH 升级后
+     * 复核 DSH 页面键位绑定时一并评估）。
+     */
+    val enterKeyNewline: Boolean = true,
+
+    /**
+     * 导航型下载判定（默认 null = 不启用）：命中时渲染器取消该导航并把
+     * URL 交给下载监听。跨源 `<a download>` 在引擎里是普通导航（download
+     * 属性只对同源生效），大文件响应会让页面停留在加载态且不产生外部响应；
+     * 直连会话用它把已批准的文件 CDN 收进宿主下载器。
+     */
+    val downloadUrlPredicate: ((String) -> Boolean)? = null,
 )
 
 data class DshRendererTheme(
@@ -419,6 +481,10 @@ sealed interface DshRendererEvent {
      */
     data class ExternalUrlRequested(
         val url: String,
+        /** 真 = 页面“打开新窗口”语义（宿主消息通道 / `dshbox://open-external`
+         *  递交）：一律强制外放、不得就地加载；假 = 主框架导航产生，宿主可
+         *  自行决定是否接管。 */
+        val forced: Boolean = false,
     ) : DshRendererEvent
 
     /**

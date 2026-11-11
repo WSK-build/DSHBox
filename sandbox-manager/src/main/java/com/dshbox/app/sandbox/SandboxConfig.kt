@@ -10,6 +10,17 @@ data class SandboxConfig(
     val appCacheDir: File? = null,
     val dshHost: String = "127.0.0.1",
     val dshPort: Int = 3080,
+    /**
+     * 本机 DSH 端口自适应是否启用：true = 启动前探测 3080..3099 第一个空闲端口
+     * 写入 webserver 覆盖层并把该端口作为本次请求值；false = 只请求 [dshPort]
+     * （跳过探测与覆盖层，健康检查跟随 [dshPort]）。
+     *
+     * 由 app 层按构造变体注入：systemWebView 变体启用（加载地址与健康检查全走
+     * 运行期地址）；gecko 变体关闭——其状态桥扩展 manifest/content script 与
+     * 构建期 page-compat 配置都固化 3080，端口一变即失效，该变体**固定 3080**
+     * 不自适应。
+     */
+    val dshPortAdaptationEnabled: Boolean = true,
     val healthPath: String = "/",
     val maxAutoRestartAttempts: Int = 3,
     /**

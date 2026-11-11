@@ -214,7 +214,7 @@
 
     <!-- DSHBox 专属适配插件（原设置页装配行迁移至此） -->
     <string name="pm_adapt_section_title">DSHBox专属适配插件</string>
-    <string name="pm_adapt_mobile">DSH移动端页面适配</string>
+    <string name="pm_adapt_mobile">DSH 页面交互适配</string>
     <string name="pm_adapt_mobile_pilot">DSH连接手机</string>
     <string name="pm_browser_adapter_title">DSH浏览器自动化</string>
     <string name="pm_browser_assembled">Browser 适配包已装配</string>

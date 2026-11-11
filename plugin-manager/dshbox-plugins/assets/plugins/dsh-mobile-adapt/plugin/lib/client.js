@@ -1,6 +1,14 @@
 /**
  * Browser half of @local/dsh-mobile-adapt.
  *
+ * DSH 0.2.2 自带窄屏布局（视口 < 1024 自动折叠侧栏、< 768 侧栏自动变抽屉，
+ * layout 模块内已有成套 `[data-sidebar-drawer]` 样式）。本插件**不再干预页面
+ * 布局**：不覆盖 grid 模板、不自绘 fixed 抽屉/汉堡/遮罩、不做两步式设置导航。
+ * 现在只留三件事：
+ *   ① 键盘相关（焦点抑制、键盘顶起补偿、Gecko 顶栏钉住）
+ *   ② 返回键分层（读**原生**状态：抽屉属性 / 设置 dialog / 设置子页返回控件）
+ *   ③ 设置「通用」页里的「移动端适配」开关行 + 附件直达入口
+ *
  * IMPORTANT — dsh uses CSS Modules: at runtime every class is HASH-PREFIXED
  * (e.g. `FDk7aW_centerCol`, `TLRkAa_trailing`, `vUZ1hq_trigger`). A bare
  * `.centerCol` / `.trailing` selector NEVER matches. We therefore target via
@@ -419,207 +427,375 @@ window.__ModuleLoader__.load({
       }, true);
     })(); } catch (e) { bootLog('cmd-toggle-fix:' + (e && e.message || e)); }
 
-    var SAFE_TOP = 'calc(env(safe-area-inset-top, 0px) + 12px)';
+    // =====================================================================
+    // 0d) 设置「通用」面板里的「移动端适配」开关行
+    // =====================================================================
+    // DSH 0.2.2 的设置面板（dsh-client-ui-settings-general 的 SettingsRoot）：
+    //   div[role="dialog"][aria-modal="true"]
+    //     > div.navTitle / nav.nav（分类导航）/ div.header（内含原生关闭按钮）
+    //     / div.options（内容区）
+    // 通用页最后一行是「会话日志上传」开关（dsh-client-ui-settings-session-log
+    // 的 UploadRow），结构：
+    //   div[class*="_row"] > div > div[class*="_title"] + div[class*="_description"]
+    //   …… 右侧是 primitives.Switch：button[role="switch"] > span
+    // 本插件**克隆那一行**（连同 switch 按钮，样式与原生完全一致）插到它下面，
+    // 只换文案与 aria-checked —— 不自造控件，也就不会与原生样式打架。
+    //
+    // 锚点匹配：先按已知标题文案表（DSH 各语言）精确匹配；失配时回退到该面板
+    // 最后一个带 role="switch" 的行；两者都找不到就不注入（只记 bootLog，不抛）。
+    //
+    // 开关行由插件注入，**不受 enabled 影响**：关掉适配后刷新页面，这一行仍在，
+    // 用户可以从「关」状态恢复（enabled 只控制适配逻辑与样式）。
+    var MOBILE_ROW_ATTR = 'data-dsh-mobile-row';
+    // 标题文案表：取自 @deepseek-ai/dsh-client-ui-settings-session-log 0.2.2 的
+    // locales.js（en / zh / ja / es / fr / de / ru / pt 八种语言）。
+    var SESSION_LOG_TITLES = [
+      'Upload Session Log when using the official model API',
+      '在使用官方模型 API 时上传 Session Log',
+      '公式モデル API 使用時にセッションログをアップロード',
+      'Cargar registro de sesión cuando utilice el modelo oficial API',
+      'Téléchargez le journal de session lors de l\'utilisation du modèle officiel API',
+      'Laden Sie das Sitzungsprotokoll hoch, wenn Sie das offizielle Modell API verwenden',
+      'Загрузить журнал сеансов при использовании официальной модели API',
+      'Carregar log de sessão ao usar o modelo oficial API'
+    ];
 
+    /** DSH 当前语言。DSH 会写 documentElement.lang（见 dsh-client-locale），
+     *  读不到时退回浏览器语言。 */
+    function currentLang() {
+      try {
+        var l = document.documentElement.getAttribute('lang') || '';
+        if (!l) l = navigator.language || '';
+        return String(l).toLowerCase();
+      } catch (e) { return 'en'; }
+    }
 
+    /** 文案：跟随 DSH 当前语言，至少 zh/en，其它语言回退英文。
+     *  说明写的是「关掉这个开关会怎样」——用户最容易忽略的正是关掉后的后果，
+     *  故把键盘自动弹出、Gecko 顶栏被顶出屏幕、返回键不再收抽屉/关设置
+     *  三条警告都点出来。 */
+    function mobileCopy() {
+      var l = currentLang();
+      if (l.indexOf('zh') === 0) {
+        return {
+          title: 'DSH 页面交互适配',
+          desc: '关闭后：切换对话或打开菜单时键盘可能自动弹出，输入区可能被键盘遮挡；Gecko 版打字时会话顶栏会被顶出屏幕；返回键不再优先收起抽屉/关闭设置。',
+          refresh: '请刷新页面'
+        };
+      }
+      return {
+        title: 'DSH page interaction adaptation',
+        desc: 'When off: the keyboard may pop up when switching chats or opening menus and cover the input; on Gecko the session header is pushed off-screen while typing; the back key no longer closes the drawer or settings first.',
+        refresh: 'Please refresh the page'
+      };
+    }
+
+    /** 文本归一化：折叠空白、去首尾，供标题文案比对。 */
+    function normalizeText(t) {
+      return String(t === null || t === undefined ? '' : t).replace(/\s+/g, ' ').trim();
+    }
+
+    /** 设置面板本体：**带 NAV 直接子节点**的 dialog。
+     *  JS 探测不用 :has()：目标内核的 :has() 失效缓存有 bug —— 面板卸载后
+     *  querySelector(':has(> nav)') 仍可能返回已脱离文档的 dialog。用
+     *  querySelectorAll 纯属性匹配再逐个检查直接子节点 tagName==='NAV'，
+     *  语义与 :has(> nav) 完全等价。
+     *
+     *  ⚠️ 必须排除**原生抽屉侧栏**（0.2.2 的 SidebarRoot）：它同样是
+     *  role="dialog" + aria-modal="true"（drawer 展开时），而且**直接子节点含
+     *  <nav class="panelList">**（随包 profile 的插件/定时任务面板必渲染）——
+     *  只按「有 NAV 子节点」判，会把抽屉误认成设置面板，后果有两处：
+     *    ① 返回键走 closeSettings(抽屉) → 兜底点抽屉 foot 里的设置触发键 →
+     *       **按下返回反而打开设置**，哨兵还会补压，越按越不收敛；
+     *    ② 开关行会去抽屉里找锚点（findSessionLogRow 返回 null）→ 窄屏下抽屉
+     *       常驻 aria-modal=true，「移动端适配」开关行永远不注入。
+     *  判据用官方标记：设置面板带 data-shortcut-modal="settings"，抽屉带
+     *  data-shortcut-modal="sidebar"（见 settingsBackButton 的同一守卫）。 */
+    function settingsDialog() {
+      try {
+        var list = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+        var fallback = null;
+        for (var i = 0; i < list.length; i++) {
+          var dlg = list[i];
+          var modal = dlg.getAttribute('data-shortcut-modal');
+          if (modal === 'sidebar') continue; // 原生抽屉侧栏，不是设置面板
+          if (modal === 'settings') return dlg; // 官方标记，优先认它
+          var kids = dlg.children;
+          for (var k = 0; k < kids.length; k++) {
+            if (kids[k].tagName === 'NAV') {
+              if (fallback === null) fallback = dlg;
+              break;
+            }
+          }
+        }
+        // 无官方标记的版本：退回到「有 NAV 子节点且不是抽屉」的那一个。
+        if (fallback !== null) return fallback;
+      } catch (e) { /* noop */ }
+      return null;
+    }
+
+    /** 原生抽屉所在容器：DSH 在 frame 上挂 data-sidebar-drawer / data-sidebar-collapsed。 */
+    function sidebarFrame() {
+      try {
+        return document.querySelector('[data-sidebar-drawer]') ||
+          document.querySelector('[data-sidebar-collapsed]') ||
+          document.querySelector('[class*="frame"]');
+      } catch (e) { return null; }
+    }
+
+    /** 原生抽屉是否展开。
+     *  依据（DSH 0.2.2 dsh-client-ui-layout 的 AppFrame）：
+     *    · 视口 < 768 且非 windows-titlebar 时 frame 带 data-sidebar-drawer；
+     *    · sidebarCollapsed = narrow ? !narrowExpanded : sidebar === 0，
+     *      折叠时 frame 带 data-sidebar-collapsed。
+     *  故「抽屉形态且未折叠」= 抽屉展开。
+     *  宽屏轨道形态（无 data-sidebar-drawer）不算抽屉层 —— 返回键不吞它。 */
+    function drawerOpen() {
+      var f = sidebarFrame();
+      if (!f) return false;
+      if (!f.hasAttribute('data-sidebar-drawer')) return false;
+      return !f.hasAttribute('data-sidebar-collapsed');
+    }
+
+    /** 返回控件识别：CSS Modules 类名里的 "back" 子串，或标签文案里的「返回/Back」。
+     *  类名判定用「两侧不是字母」的边界，免得 backdrop 之类误判。 */
+    var BACK_LABEL_RE = /(返回|回到|back|戻る|volver|zurück|retour|назад)/i;
+    function backButtonWithin(root) {
+      if (!root) return null;
+      var btns;
+      try { btns = root.querySelectorAll('button, [role="button"]'); } catch (e) { return null; }
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i];
+        var cls = b.getAttribute('class') || '';
+        if (/(^|[^a-z])back([^a-z]|$)/i.test(cls)) return b;
+        var label = b.getAttribute('aria-label') || b.getAttribute('title') || normalizeText(b.textContent);
+        // 标签过长多半是正文段落而不是返回控件，放弃匹配。
+        if (label && label.length <= 40 && BACK_LABEL_RE.test(label)) return b;
+      }
+      return null;
+    }
+
+    /** 设置二级页的原生返回控件。
+     *  ① 设置面板内部（子页在 options 区里渲染）的返回箭头/面包屑；
+     *  ② 叠在设置面板之上的原生二级浮层（如账号页的 PlatformOverlay，
+     *     它是 portal 出来的独立 dialog，自带 IconChevronLeft 返回按钮）。
+     *  都没有 → null（视为设置面板一级，返回键直接关面板）。
+     *  守卫与 settingsDialog 一致：原生抽屉侧栏（data-shortcut-modal="sidebar"）
+     *  既不是设置面板、也不是设置子页。 */
+    function settingsBackButton(dlg) {
+      if (!dlg) return null;
+      var b = backButtonWithin(dlg);
+      if (b) return b;
+      try {
+        var overlays = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+        for (var i = 0; i < overlays.length; i++) {
+          if (overlays[i] === dlg) continue;
+          // 原生抽屉侧栏也是 dialog，但它不是设置子页，跳过。
+          if (overlays[i].getAttribute('data-shortcut-modal') === 'sidebar') continue;
+          var ob = backButtonWithin(overlays[i]);
+          if (ob) return ob;
+        }
+      } catch (e) { /* noop */ }
+      return null;
+    }
+
+    /** 设置面板的原生关闭按钮（0.2.2：div.header 里 class 含 close 的 button）。 */
+    function nativeCloseButton(dlg) {
+      if (!dlg) return null;
+      var header = null;
+      try { header = dlg.querySelector(':scope > [class*="header"]'); } catch (e) { header = null; }
+      if (!header) { try { header = dlg.querySelector('[class*="header"]'); } catch (e) { header = null; } }
+      var scope = header || dlg;
+      var btns;
+      try { btns = scope.querySelectorAll('button'); } catch (e) { return null; }
+      for (var i = 0; i < btns.length; i++) {
+        var cls = btns[i].getAttribute('class') || '';
+        if (cls.indexOf('close') >= 0) return btns[i];
+      }
+      return btns.length ? btns[btns.length - 1] : null;
+    }
+
+    /** 关闭设置面板：走 DSH 原生 onClose（点它的关闭按钮），不改 DSH 源码。 */
+    function closeSettings(dlg) {
+      var d = dlg || settingsDialog();
+      if (!d) return false;
+      var btn = nativeCloseButton(d);
+      if (btn) {
+        try { btn.click(); return true; } catch (e) { /* 落到下面的兜底 */ }
+      }
+      try {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      } catch (e) { /* noop */ }
+      return false;
+    }
+
+    /** 会话日志行（锚点）。
+     *  ① 已知标题文案表精确匹配（DSH 各语言标题不同，按渲染后的实际文案比对）；
+     *  ② 失配回退：该面板**最后一个**带 role="switch" 的行；
+     *  ③ 都没有 → null（不注入）。 */
+    function findSessionLogRow(dlg) {
+      if (!dlg) return null;
+      var list;
+      try { list = dlg.querySelectorAll('div[class*="_row"]'); } catch (e) { return null; }
+      var rows = [];
+      for (var i = 0; i < list.length; i++) {
+        var row = list[i];
+        if (row.querySelector('div[class*="_title"]') === null) continue;
+        if (row.querySelector('button[role="switch"]') === null) continue;
+        rows.push(row);
+      }
+      if (rows.length === 0) return null;
+      for (var r = 0; r < rows.length; r++) {
+        var t = normalizeText(rows[r].querySelector('div[class*="_title"]').textContent);
+        for (var k = 0; k < SESSION_LOG_TITLES.length; k++) {
+          if (t === SESSION_LOG_TITLES[k]) return rows[r];
+        }
+      }
+      return rows[rows.length - 1];
+    }
+
+    /** 已注入行的开关态同步。 */
+    function syncMobileRowState(row, on) {
+      try {
+        if (!row) return;
+        var sw = row.querySelector('button[role="switch"]');
+        if (!sw) return;
+        var want = on ? 'true' : 'false';
+        if (sw.getAttribute('aria-checked') !== want) sw.setAttribute('aria-checked', want);
+      } catch (e) { /* noop */ }
+    }
+
+    /** 移除已注入的行（面板关闭时清理）。 */
+    function removeMobileRow() {
+      try {
+        var rows = document.querySelectorAll('[' + MOBILE_ROW_ATTR + ']');
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].parentNode) rows[i].parentNode.removeChild(rows[i]);
+        }
+      } catch (e) { /* noop */ }
+    }
+
+    /** 幂等注入「移动端适配」开关行。
+     *  opts: { isEnabled: function() → boolean, onToggle: function(next) }
+     *  返回注入的行节点；未注入时返回 null。 */
+    function ensureMobileRow(opts) {
+      try {
+        var dlg = settingsDialog();
+        if (!dlg) { removeMobileRow(); return null; }
+        var on = opts && typeof opts.isEnabled === 'function' ? !!opts.isEnabled() : false;
+        // 已在位就不动（只同步开关态）—— 保证 observer 反复触发时零 DOM 变更。
+        var existing = document.querySelector('[' + MOBILE_ROW_ATTR + ']');
+        if (existing && existing.isConnected) {
+          syncMobileRowState(existing, on);
+          return existing;
+        }
+        var anchor = findSessionLogRow(dlg);
+        if (!anchor) { bootLog('mobile-row:anchor-missing'); return null; }
+        var copy = mobileCopy();
+        var row = anchor.cloneNode(true);
+        row.setAttribute(MOBILE_ROW_ATTR, '1');
+        row.removeAttribute('id');
+        var titleEl = row.querySelector('div[class*="_title"]');
+        var descEl = row.querySelector('div[class*="_description"]');
+        var sw = row.querySelector('button[role="switch"]');
+        if (!titleEl || !sw) { bootLog('mobile-row:clone-incomplete'); return null; }
+        titleEl.textContent = copy.title;
+        if (descEl) descEl.textContent = copy.desc;
+        // 原生那一行的 switch 可能因上传未就绪而 disabled；我们的是本地开关，
+        // 必须可点。
+        sw.removeAttribute('disabled');
+        sw.setAttribute('aria-label', copy.title);
+        sw.setAttribute('title', copy.title);
+        syncMobileRowState(row, on);
+        sw.addEventListener('click', function (ev) {
+          try {
+            if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+            if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+            var cur = opts && typeof opts.isEnabled === 'function' ? !!opts.isEnabled() : false;
+            if (opts && typeof opts.onToggle === 'function') opts.onToggle(!cur);
+          } catch (e) { bootLog('mobile-row:toggle-fail:' + (e && e.message || e)); }
+        });
+        var parent = anchor.parentNode;
+        if (!parent) { bootLog('mobile-row:no-parent'); return null; }
+        parent.insertBefore(row, anchor.nextSibling);
+        return row;
+      } catch (e) {
+        bootLog('mobile-row:fail:' + (e && e.message || e));
+        return null;
+      }
+    }
+
+    // 「请刷新页面」悬浮提示：全行内样式，不依赖 MOBILE_CSS。
+    var adaptToastEl = null;
+    function showAdaptToast() {
+      try {
+        var copy = mobileCopy();
+        if (adaptToastEl === null) {
+          adaptToastEl = document.createElement('div');
+          adaptToastEl.id = 'dsh-adapt-toast';
+        }
+        if (!adaptToastEl.isConnected) document.body.appendChild(adaptToastEl);
+        adaptToastEl.textContent = copy.refresh;
+        // 磨玻璃观感：浅底深字、纵向 padding 压扁、字号 12、
+        // 半透明白 + backdrop-filter 磨砂、显示 3 秒后 3 秒渐隐。
+        // 淡入要求瞬时：先 transition:none 置 1，退场才挂 3s 过渡——两段式控制。
+        adaptToastEl.style.cssText = [
+          'position:fixed',
+          'top:calc(env(safe-area-inset-top,0px) + 12px)',
+          'left:50%', 'transform:translateX(-50%)',
+          'z-index:2147483000',
+          'padding:5px 14px', 'border-radius:14px',
+          'background:rgba(255, 255, 255, .5)',
+          'color:#111',
+          '-webkit-backdrop-filter:blur(14px) saturate(1.5)',
+          'backdrop-filter:blur(14px) saturate(1.5)',
+          'border:1px solid rgba(255, 255, 255, .45)',
+          'box-shadow:0 4px 16px rgba(0, 0, 0, .12)',
+          'font-size:12px', 'font-weight:500', 'line-height:1.35', 'white-space:nowrap',
+          'pointer-events:none',
+          'opacity:1', 'transition:none',
+        ].join(';');
+        clearTimeout(adaptToastEl.__dshToastTimer);
+        adaptToastEl.__dshToastTimer = setTimeout(function () {
+          adaptToastEl.style.transition = 'opacity 3s ease';
+          adaptToastEl.style.opacity = '0';
+        }, 3000);
+      } catch (e) { bootLog('adapt-toast-fail:' + (e && e.message || e)); }
+    }
+
+    /** 当前最上层可退层（自上而下）：设置二级页 > 设置弹窗 > 原生抽屉。
+     *  顺序依据：设置面板是**覆盖在抽屉之上**的浮层，先关它才不会出现
+     *  「按了没反应」（抽屉在浮层背后，收它用户看不见变化）。
+     *  都没有 → null（放行给宿主，不吞键）。 */
+    function topLayerKind() {
+      var dlg = settingsDialog();
+      if (dlg) return settingsBackButton(dlg) ? 'settings-sub' : 'settings';
+      if (drawerOpen()) return 'drawer';
+      return null;
+    }
+
+    // =====================================================================
+    // 移动端适配样式表。
+    // =====================================================================
+    // 0.2.2 已自带窄屏布局（视口 < 1024 自动折叠、< 768 侧栏自动变抽屉，
+    // layout 内已有成套 [data-sidebar-drawer] 样式），插件自绘的布局覆盖
+    // （grid 模板、fixed 全屏抽屉、#root 高度、handle 隐藏、rightbar 轨道
+    // 钉死、汉堡、遮罩、两步式设置）与之冲突，表现为「页面拉扯」，已全部删除。
+    // 这里只留**不与原生布局打架**的触控友好微调。
     var MOBILE_CSS = [
-      '/* === dsh-mobile-adapt: 移动端浮层抽屉 + 设置两步式 === */',
+      '/* === dsh-mobile-adapt: 触控友好微调（不干预 DSH 原生窄屏布局） === */',
+      '',
+      '/* 注入行（data-dsh-mobile-row）的说明文字较长（键盘/返回键/Gecko 顶栏三条警告），',
+      '   必须整段换行显示：若沿用原生的单行截断样式，长文案会被截掉或省略成「…」，',
+      '   用户就看不到「关掉后会怎样」。故只对注入行放开换行，不动原生行的样式。 */',
+      '[data-dsh-mobile-row] div[class*="_description"] {',
+      '  white-space: normal !important;',
+      '  overflow: visible !important;',
+      '  text-overflow: clip !important;',
+      '}',
+      '',
       '@media (max-width: 1024px) {',
-      '  /* 全宽内容：侧栏使用脱离文档流的抽屉，侧栏轨道宽度为 0。',
-      '     中栏填满剩余宽度，第三条轨道由 DSH 按内容确定宽度。',
-      '     右栏面板使用绝对定位，auto 轨道同时允许其他内容申请宽度。',
-      '     centerCol 保留在文档流中，',
-      '     以便浏览器在键盘弹出时',
-      '     自动将输入框滚动到可见区域。 */',
-      '  [class*="frame"] { grid-template-columns: 0px minmax(0, 1fr) auto !important; }',
-      '  [class*="frame"][data-sidebar-collapsed] [class*="sidebarCol"] {',
-      '    display: none !important;',
-      '  }',
-      '  /* 右侧列（上游 0.1.1 名 detailsCol，0.1.5 起同一模块内改名 rightbarCol；两个类名都匹配）。',
-      '     ⚠️ 不得写成 `display: none !important`：',
-      '     dsh 的右栏本身是「零宽网格项」（CSS：min-width:0; position:relative; overflow:visible），',
-      '     它的面板贴着该列右缘悬挂到中栏之上——列宽为 0 是**设计如此**。',
-      '     把整列 display:none 会连同面板一起干掉：用户点「打开右侧栏」时列被隐藏，',
-      '     表现为「按钮点了没反应/面板打不开」。',
-      '     正确做法：保留该列参与布局（只钉到第 3 条轨道、不许撑开），让 dsh 自己控制显隐。',
-      '     注意必须显式钉 grid-column:3 —— 因为 sidebarCol 被我们改成 position:fixed',
-      '     脱离了网格流，自动放置会把右栏排到第 1 条轨道（宽度 0，看不见）。 */',
-      '  [class*="detailsCol"], [class*="rightbarCol"] {',
-      '    grid-column: 3 !important;',
-      '    min-width: 0 !important;',
-      '  }',
-      '  [class*="centerCol"] {',
-      '    grid-column: 2 !important; /* sidebar/details 被隐藏后不占 grid 位，需显式钉在第2列 */',
-      '    min-width: 0 !important;',
-      '    display: flex !important; flex-direction: column;',
-      '  }',
-      '  #root { height: 100dvh !important; }',
-      '  /* 折叠态：侧栏移出屏幕左侧 */',
-      '  [class*="frame"][data-sidebar-collapsed] [class*="sidebarCol"] {',
-      '    position: fixed; top: 0; left: 0;',
-      '    width: 100%; height: 100dvh;',
-      '    transform: translateX(-100%);',
-      '    transition: transform .25s var(--ds-ease-in-out, ease);',
-      '    z-index: 1000; box-shadow: none;',
-      '    overflow-y: auto; overscroll-behavior: contain;',
-      '  }',
-      '  /* 展开态：侧栏全屏抽屉滑入 */',
-      '  [class*="frame"]:not([data-sidebar-collapsed]) [class*="sidebarCol"] {',
-      '    position: fixed; top: 0; left: 0;',
-      '    width: 100%; height: 100dvh;',
-      '    transform: translateX(0);',
-      '    transition: transform .25s var(--ds-ease-in-out, ease);',
-      '    z-index: 1000;',
-      '    box-shadow: 2px 0 24px rgba(0, 0, 0, .35);',
-      '    overflow-y: auto; overscroll-behavior: contain;',
-      '  }',
-      '  /* 抽屉内容撑满全宽：SidebarRoot 的根节点自带**内联 width**',
-      '     = dsh 算出的侧栏轨道宽（窄屏展开态 sidebarPreference = 280px）。',
-      '     内联样式优先于样式表 → 只把外壳 sidebarCol 撑成 100% 的话外壳变宽，',
-      '     内容仍停在左侧 280px，右侧留一大片同色空白。',
-      '     唯一办法：在**同一个元素**上以 !important 覆盖该内联值。',
-      '     选择器只取侧栏列的直接子级/孙级且类名含 root —— CSS Modules 的哈希前缀',
-      '     随构建变、`root` 子串不变；限深可避免波及列表行等其它同名元素。',
-      '     必须保持 .root 自带的 box-sizing:border-box，否则 width:100% 会把它那',
-      '     12px 的左右内边距额外加出去、重现横向溢出。 */',
-      '  [class*="frame"]:not([data-sidebar-collapsed]) [class*="sidebarCol"] > [class*="root"],',
-      '  [class*="frame"]:not([data-sidebar-collapsed]) [class*="sidebarCol"] > * > [class*="root"] {',
-      '    width: 100% !important;',
-      '    max-width: none !important;',
-      '  }',
-      '  /* 触屏不需要拖拽手柄 */',
-      '  [class*="handle"] { display: none !important; }',
-      '  /* 汉堡按钮：下移 8px 避让「对话」标题，外框 34px，',
-      '     背景高透明白 ~35% 不遮挡下方内容；旧内核不支持 color-mix，自动落回上一行实底。 */',
-      '  /* 汉堡按钮贴边定位：left 6px */',
-      '  #dsh-mobile-menu {',
-      '    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 6px; z-index: 1100;',
-      '    width: 34px; height: 34px;',
-      '    display: flex; align-items: center; justify-content: center;',
-      '    font-size: 17px; line-height: 1;',
-      '    border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12));',
-      '    border-radius: 9px;',
-      '    background: var(--dsw-alias-bg-float, #fff);',
-      '    background: color-mix(in srgb, var(--dsw-alias-bg-float, #fff) 35%, transparent);',
-      '    color: var(--dsw-alias-text-primary, #111);',
-      '    cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, .08);',
-      '    padding: 0;',
-      '  }',
-      '  /* 遮罩 */',
-      '  .dsh-mobile-backdrop {',
-      '    position: fixed; inset: 0; background: rgba(0, 0, 0, .4);',
-      '    z-index: 999; display: none;',
-      '  }',
-      '  body.dsh-mobile-drawer-open .dsh-mobile-backdrop { display: block; }',
-      '',
-      '  /* ===== 设置面板：全屏铺满可见视口（dvh 防地址栏撑爆） =====',
-      '     仅对带 nav 的真实设置面板生效，不劫持首屏/命令面板 ===== */',
-      '  [role="dialog"][aria-modal="true"]:has(> nav) {',
-      '    position: fixed !important; inset: 0 !important;',
-      '    width: 100% !important; height: 100dvh !important;',
-      '    max-width: none !important; max-height: none !important;',
-      '    margin: 0 !important;',
-      '    border-radius: 0 !important; overflow: hidden !important;',
-      '    overscroll-behavior: contain;',
-      '    background: var(--dsw-alias-bg-layer-2, #fff);',
-      '    display: flex !important;',
-      '    z-index: 1100 !important;',
-      '  }',
-      '',
-      '  /* 两步式 · 第一步：导航全屏铺满、靠上、留安全区；内容区隐藏。',
-      '     导航列表保持 dsh 原样(左对齐)，不做居中 —— 用户要求的是"内容页"居中 */',
-      '  [role="dialog"][aria-modal="true"]:has(> nav) > nav {',
-      '    width: 100% !important; flex: none !important;',
-      '    height: 100dvh;',
-      '    overflow-y: auto !important;',
-      '    background: var(--dsw-alias-bg-layer-2, #fff);',
-      '    padding-top: ' + SAFE_TOP + ' !important;',
-      '    padding-left: max(24px, env(safe-area-inset-left, 0px)) !important;',
-      '    padding-right: max(24px, env(safe-area-inset-right, 0px)) !important;',
-      '    justify-content: flex-start !important;',
-      '  }',
-      '  [role="dialog"][aria-modal="true"]:has(> nav) > div {',
-      '    display: none !important;',
-      '  }',
-      '',
-      '  /* 两步式 · 第二步：内容全屏覆盖，导航隐藏。',
-      '     注意：content 本身不加左右 padding —— dsh 原生 .options 自带 0 24px，',
-      '     叠加会导致左边距 48/右边距 24，内容整体偏右(靠右根因)。 */',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > nav {',
-      '    display: none !important;',
-      '  }',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div {',
-      '    display: flex !important;',
-      '    position: fixed !important; inset: 0 !important;',
-      '    width: 100% !important; height: 100dvh !important;',
-      '    z-index: 20; overflow-y: auto !important;',
-      '    overscroll-behavior: contain;',
-      '    background: var(--dsw-alias-bg-layer-2, #fff);',
-      '    padding-left: 0 !important; padding-right: 0 !important;',
-      '  }',
-      '  /* 内容页(options 区)：自适应填满视口宽，不限制死；换任何宽度手机都自动适配。',
-      '     四层防线杜绝横向滑动：content 禁横向滚动 → options 禁横向滚动 →',
-      '     内容块允许收缩(min-width:0,max-width:100%) → html/body 禁横向滚动。',
-      '     options 用 nth-child(2) 定位（dsh 源码 content 固定 [header, options]），',
-      '     左下角返回键内嵌为 content 列第 3 子节点，无需再为浮层留 120px 避让。 */',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div {',
-      '    overflow-x: hidden !important; overflow-y: auto !important;',
-      '  }',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div > div:nth-child(2) {',
-      '    width: 100% !important;',
-      '    /* 内容页偏右/被裁的根因：dsh 无全局 border-box 重置，.VOzbGW_options',
-      '       自身未声明 box-sizing → content-box；上面 width:100% 只算内容盒，',
-      '       原生 0 24px 的左右 padding 额外加出去 → 内容整体右移、右缘越屏 ~24px',
-      '       （权限/语言下拉、外观卡、字号值全被裁）。补 border-box 让 100% 含进',
-      '       padding → 双侧对称 24px，内容自然左右居中；max-width 为防御性上限。 */',
-      '    box-sizing: border-box !important;',
-      '    max-width: 100vw !important;',
-      '    overflow-x: hidden !important; overflow-y: auto !important;',
-      '    padding-bottom: 24px !important;',
-      '  }',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div > div:nth-child(2) > * {',
-      '    width: 100% !important;',
-      '    max-width: 100% !important;',
-      '    min-width: 0 !important;',
-      '    margin: 0 !important;',
-      '  }',
-      '  /* 内容页所有元素一律收缩到容器内(不裁切、不超出右侧) */',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div > div:nth-child(2) * {',
-      '    max-width: 100% !important;',
-      '    min-width: 0 !important;',
-      '    box-sizing: border-box !important;',
-      '  }',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div > div:nth-child(2) [class*="row"],',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div > div:nth-child(2) [class*="item"],',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div > div:nth-child(2) [class*="cell"] {',
-      '    width: 100% !important;',
-      '    flex-wrap: wrap !important;',
-      '  }',
-      '  /* 防横向滑动：任何元素不得撑破视口宽 */',
-      '  html, body { overflow-x: hidden !important; }',
-      '  /* 内容页头部吸顶+安全区，左右留白让叉号不贴边 */',
-      '  body.dsh-settings-content-open [role="dialog"][aria-modal="true"]:has(> nav) > div > div:first-child {',
-      '    padding-top: ' + SAFE_TOP + ' !important;',
-      '    padding-left: 18px !important; padding-right: 18px !important;',
-      '    position: sticky; top: 0; z-index: 2;',
-      '    background: var(--dsw-alias-bg-layer-2, #fff);',
-      '  }',
-      '  /* 叉号加大点按区并内移 */',
-      '  [role="dialog"][aria-modal="true"]:has(> nav) [data-dsh-close] {',
-      '    min-width: 38px !important; min-height: 38px !important;',
-      '    margin-right: 6px !important;',
-      '  }',
-      '  /* 内嵌左下角返回键的 hover 反馈（对齐 dsh navCell 观感） */',
-      '  #dsh-mobile-back-inline:hover {',
-      '    background: var(--dsw-specific-sidebar-nav-item-hover, rgba(0, 0, 0, .05)) !important;',
-      '  }',
-      '',
-      '  /* 汉堡显隐不放 CSS 隐藏规则：body-has 嵌套选择器与 dialogObs 的内联显隐',
-      '     属冗余双机制，且在 :has() 失效的旧内核 WebView 上会永久锁死汉堡',
-      '     （内联 flex 输给 !important，表现：切换适配后返回页面汉堡消失、刷新才恢复）。',
-      '     隐藏通道只保留 dialogObs 一处，按实时 DOM 计算，不存在失效残留。 */',
-      '',
-      '  /* 触屏友好：输入框不缩放 */',
+      '  /* 输入框字号 16px：低于 16px 会触发移动端浏览器自动放大页面 */',
       '  textarea, input { font-size: 16px; }',
       '',
       '  /* ===== 主页输入框：模型选择紧贴发送键，菜单弹出不出屏 =====',
@@ -942,16 +1118,34 @@ window.__ModuleLoader__.load({
       installGeckoTopBarPin: installGeckoTopBarPin,
       pinSpace: pinSpace,
       keyboardReservedPadding: keyboardReservedPadding,
+      // 开关行注入
+      MOBILE_ROW_ATTR: MOBILE_ROW_ATTR,
+      SESSION_LOG_TITLES: SESSION_LOG_TITLES,
+      currentLang: currentLang,
+      mobileCopy: mobileCopy,
+      normalizeText: normalizeText,
+      findSessionLogRow: findSessionLogRow,
+      ensureMobileRow: ensureMobileRow,
+      removeMobileRow: removeMobileRow,
+      syncMobileRowState: syncMobileRowState,
+      // 返回键分层（读原生状态）
+      settingsDialog: settingsDialog,
+      sidebarFrame: sidebarFrame,
+      drawerOpen: drawerOpen,
+      settingsBackButton: settingsBackButton,
+      backButtonWithin: backButtonWithin,
+      nativeCloseButton: nativeCloseButton,
+      closeSettings: closeSettings,
+      topLayerKind: topLayerKind,
     };
-
     exports.apply = function apply(ctx) {
       if (!ctx || !ctx.layout) return;
 
       // body-ready 守卫：本插件脚本注入在 <head>，若模块系统抢在 <body> 解析
-      // 完成前调用 apply()，段 2/3/7/8 的 document.body 操作会抛 TypeError 并
-      // 连累其后所有段（表现为汉堡+设置面板一起消失、刷新又好）。
+      // 完成前调用 apply()，段 1/3/4/5 的 document.body 操作会抛 TypeError 并
+      // 连累其后所有段（表现为开关行与返回键一起消失、刷新又好）。
       // 未就绪则挂 DOMContentLoaded 重入一次；重入安全（所有创建均幂等：
-      // getElementById 判存 + __dsh_mobile_nav_bound 标志）。
+      // 注入行判存 + __dsh_mobile_nav_bound 标志）。
       if (!document.body) {
         bootLog('apply-deferred(no-body)');
         document.addEventListener('DOMContentLoaded', function () {
@@ -961,23 +1155,10 @@ window.__ModuleLoader__.load({
       }
       bootLog('apply');
 
-      // JS 探测不用 :has()：目标内核的 :has() 失效缓存有 bug —— 设置面板卸载后
-      // querySelector(':has(> nav)') 仍可能返回已脱离文档的 dialog，使所有实时
-      // 通道误判"面板还开着"、汉堡维持隐藏（刷新才恢复）。
-      // 用 querySelectorAll 纯属性匹配（不走 :has 缓存）再逐个检查直接子节点
-      // tagName==='NAV'，语义与 :has(> nav) 完全等价。
-      function settingsDialog() {
-        var list = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
-        for (var i = 0; i < list.length; i++) {
-          var kids = list[i].children;
-          for (var k = 0; k < kids.length; k++) {
-            if (kids[k].tagName === 'NAV') return list[i];
-          }
-        }
-        return null;
-      }
-
-      // 1) Inject the global stylesheet (idempotent).
+      // 1) 注入全局样式（幂等）。
+      //    只保留**不与 DSH 0.2.2 原生窄屏布局冲突**的触控友好微调；布局类规则
+      //    （grid 模板覆盖 / 固定全屏抽屉 / #root 高度 / handle 隐藏 / rightbar
+      //    轨道钉死 / 汉堡 / 遮罩 / 两步式设置）已随 0.2.2 的原生窄屏布局删除。
       var style = document.querySelector('style[data-plugin="@local/dsh-mobile-adapt"]');
       if (style === null) {
         style = document.createElement('style');
@@ -986,442 +1167,71 @@ window.__ModuleLoader__.load({
         document.head.appendChild(style);
       }
 
-      // 1b) Mobile-adapt on/off switch (hot toggle, persisted).
-      //     开关内嵌在设置标题(navTitle)旁，做成手机图标 chip，不做底部悬浮浮层。
-      //     chip 用行内样式（不依赖 MOBILE_CSS），官方原版
-      //     模式下依然可见可点，能切回。dsh 结构（源码 dsh-client-ui-settings-general
-      //     SettingsRoot）：dialog[role=dialog] > nav > div.navTitle(纯文本"设置")
-      //     —— 在 navTitle 末尾 append 一个 inline-flex <button>，天然跟在标题文字
-      //     之后，中英文标题长度不同都不受影响。
-      // localStorage 在部分 WebView 配置下会抛 SecurityError，裸读会杀死本段及
-      // 其后全部段——读失败按默认开处理，仅失去跨刷新持久化。
+      // 2) 适配开关状态（热切换、持久化）。
+      //    localStorage 在部分 WebView 配置下会抛 SecurityError，裸读会杀死本段
+      //    及其后全部段 —— 读失败按默认开处理，仅失去跨刷新持久化。
       var enabled = true;
       try { enabled = localStorage.getItem('dsh-mobile-enabled') !== '0'; } catch (e) { bootLog('ls-read-fail'); }
-      // 清理遗留的底部浮层节点（同页面从旧 bundle 热切换过来时可能残留）
-      var stalePill = document.getElementById('dsh-mobile-toggle');
-      if (stalePill && stalePill.parentNode) stalePill.parentNode.removeChild(stalePill);
-
-      function chipCopy() {
-        var l = (document.documentElement.getAttribute('lang') || navigator.language || 'en').toLowerCase();
-        if (l.indexOf('zh') === 0) return { on: '开', off: '关', label: '移动端适配', back: '← 返回', backAria: '返回上级', refresh: '请刷新页面' };
-        return { on: 'On', off: 'Off', label: 'Mobile adaptation', back: '← Back', backAria: 'Go back', refresh: 'Please refresh the page' };
-      }
-      // 切换适配后，顶部居中**悬浮**提示"请刷新页面"5 秒。
-      // 全行内样式，不依赖 MOBILE_CSS（汉堡实时显隐在该内核上不可靠：其定位/尺寸
-      // 依赖 style.disabled 生效，存在"存在但未定位=隐形"的风险通道），悬浮件免疫。
-      var adaptToastEl = null;
-      function showAdaptToast() {
-        try {
-          var copy = chipCopy();
-          if (adaptToastEl === null) {
-            adaptToastEl = document.createElement('div');
-            adaptToastEl.id = 'dsh-adapt-toast';
-          }
-          if (!adaptToastEl.isConnected) document.body.appendChild(adaptToastEl);
-          adaptToastEl.textContent = copy.refresh;
-          // 磨玻璃观感：浅底深字、纵向 padding 压扁、字号 12、
-          // 半透明白 + backdrop-filter 磨砂、显示 3 秒后 3 秒渐隐。
-          // 淡入要求瞬时：先 transition:none 置 1，退场才挂 3s 过渡——两段式控制。
-          adaptToastEl.style.cssText = [
-            'position:fixed',
-            'top:calc(env(safe-area-inset-top,0px) + 12px)',
-            'left:50%', 'transform:translateX(-50%)',
-            'z-index:2147483000',
-            'padding:5px 14px', 'border-radius:14px',
-            'background:rgba(255, 255, 255, .5)',
-            'color:#111',
-            '-webkit-backdrop-filter:blur(14px) saturate(1.5)',
-            'backdrop-filter:blur(14px) saturate(1.5)',
-            'border:1px solid rgba(255, 255, 255, .45)',
-            'box-shadow:0 4px 16px rgba(0, 0, 0, .12)',
-            'font-size:12px', 'font-weight:500', 'line-height:1.35', 'white-space:nowrap',
-            'pointer-events:none',
-            'opacity:1', 'transition:none',
-          ].join(';');
-          clearTimeout(adaptToastEl.__dshToastTimer);
-          adaptToastEl.__dshToastTimer = setTimeout(function () {
-            adaptToastEl.style.transition = 'opacity 3s ease';
-            adaptToastEl.style.opacity = '0';
-          }, 3000);
-        } catch (e) { bootLog('adapt-toast-fail:' + (e && e.message || e)); }
-      }
-      // 12px 手机图标，stroke 走 currentColor，深浅主题自动反色
-      var PHONE_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" ' +
-        'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">' +
-        '<rect x="4.2" y="1.6" width="7.6" height="12.8" rx="2"/>' +
-        '<line x1="6.9" y1="12.1" x2="9.1" y2="12.1"/></svg>';
-      function styleChipBase(chip) {
-        // 贴合 navTitle 的 24px 行高：20px 高的小胶囊，跟在文字后
-        chip.style.cssText = [
-          'display:inline-flex', 'align-items:center', 'gap:4px',
-          'vertical-align:middle', 'margin-left:8px',
-          'height:20px', 'padding:0 8px',
-          'border:none', 'border-radius:10px',
-          'font-family:inherit', 'font-size:11px', 'font-weight:600', 'line-height:1',
-          'cursor:pointer', 'white-space:nowrap',
-          '-webkit-tap-highlight-color:transparent', 'touch-action:manipulation',
-        ].join(';');
-      }
-      function renderChip(chip) {
-        var copy = chipCopy();
-        chip.dataset.state = enabled ? '1' : '0'; // 幂等哨兵：防 dialogObs 重建循环
-        chip.setAttribute('aria-label', copy.label);
-        chip.title = copy.label;
-        styleChipBase(chip);
-        // 开=深色实底(与 web 主题反色自动适配)，关=浅灰底次要文字
-        chip.style.background = enabled
-          ? 'var(--dsw-alias-text-primary,#111)'
-          : 'var(--dsw-alias-interactive-bg-hover,#e5e5e5)';
-        chip.style.color = enabled
-          ? 'var(--dsw-alias-bg-float,#fff)'
-          : 'var(--dsw-alias-label-secondary,#666)';
-        chip.textContent = '';
-        var icon = document.createElement('span');
-        icon.style.cssText = 'display:inline-flex;align-items:center';
-        icon.innerHTML = PHONE_SVG;
-        var txt = document.createElement('span');
-        txt.textContent = enabled ? copy.on : copy.off;
-        chip.appendChild(icon);
-        chip.appendChild(txt);
-      }
-      // 注入点：dialog > nav > 第一个 div（即 navTitle，React useId 的 aria-labelledby 目标）
-      function ensureChip(dlg) {
-        var nav = dlg.querySelector(':scope > nav');
-        if (!nav) return;
-        var titleBox = nav.firstElementChild;
-        if (!titleBox) return;
-        var chip = titleBox.querySelector('#dsh-mobile-chip');
-        if (chip !== null) {
-          // 仅当状态/语言与已渲染不符才重建（重建=DOM 变更，会再触发 observer，
-          // 不符判断保证收敛，杜绝观察循环）
-          var want = enabled ? '1' : '0';
-          if (chip.dataset.state !== want) renderChip(chip);
-          return;
-        }
-        chip = document.createElement('button');
-        chip.id = 'dsh-mobile-chip';
-        chip.type = 'button';
-        chip.addEventListener('click', function (ev) {
-          ev.stopPropagation();
-          setEnabled(!enabled);
-        });
-        renderChip(chip);
-        titleBox.appendChild(chip);
-      }
-      function refreshChips() {
-        var chips = document.querySelectorAll('#dsh-mobile-chip');
-        for (var i = 0; i < chips.length; i++) renderChip(chips[i]);
-      }
 
       function setEnabled(v) {
         enabled = !!v;
         try { localStorage.setItem('dsh-mobile-enabled', enabled ? '1' : '0'); } catch (e) { /* 存不下也要当场生效 */ }
-        if (style) style.disabled = !enabled; // 整张移动 CSS 热切换
-        // 清理残留状态
-        document.body.classList.remove('dsh-settings-content-open');
-        // 汉堡/返回键/遮罩随模式显隐（返回键还受设置面板状态控制，由 dialogObs 统一处理）
-        if (menu) menu.style.display = (!enabled || settingsOpen) ? 'none' : 'flex';
-        if (backdrop) backdrop.style.display = 'none';
+        if (style) style.disabled = !enabled; // 触控微调随开关热切换
         // 键盘修复的 transform 清理
         if (window.__dsh_kb_lift) { window.__dsh_kb_lift.style.transform = ''; window.__dsh_kb_lift = null; }
         // Gecko 顶栏钉住清理：开关关闭时还原顶栏（即便键盘此刻正弹起）。
         if (typeof window.__dsh_kb_topbar_restore === 'function') {
           try { window.__dsh_kb_topbar_restore(); } catch (e) { /* noop */ }
         }
-        // brand 文本随模式切换
+        // brand 文本随模式切换（当前为 no-op，见段 10 的说明）
         applyBrand();
-        // 已注入的 chip 全部刷新（可能同时存在多实例：重开面板未卸载时）
-        refreshChips();
-        // 兜底再同步：下一个任务里按"当下"的 DOM 重算汉堡显隐，
-        // 覆盖任何错过/迟到的 observer 拍（dialogObs 仍是主通道，这里只是保险）。
-        setTimeout(function () {
-          try {
-            var d = settingsDialog();
-            if (menu) menu.style.display = (d || !enabled) ? 'none' : 'flex';
-          } catch (e) { /* noop */ }
-        }, 0);
-        // 悬浮提示"请刷新页面"（5 秒淡出）。开/关两个方向都提示，
-        // 因为布局热切换在该内核上不可靠，刷新才是确定性生效路径。
+        // 已注入的开关行同步开关态（可能有多个实例：面板重开未卸载时）
+        syncMobileRows();
         // 关模式要确定性把已压的返回哨兵吃净（见段 7b）：不能只靠 toast 挂载产生的
         // 突变把对账"顺带"带起来——toast 整段在 try/catch 里，失败就漏吃。
         reconcileBackSentinels();
+        // 悬浮提示"请刷新页面"：适配逻辑（键盘抑制等）在装载期安装，开关要刷新
+        // 才是确定性生效路径。开/关两个方向都提示。
         showAdaptToast();
       }
-      var settingsOpen = false;
 
-      // 2) Hamburger button (created once, on <body>).
-      var menu = null;
-      try {
-        menu = document.getElementById('dsh-mobile-menu');
-        if (menu === null) {
-          menu = document.createElement('button');
-          menu.id = 'dsh-mobile-menu';
-          menu.textContent = '☰';
-          menu.setAttribute('aria-label', '切换侧边栏');
-          menu.addEventListener('click', function () {
-            try { ctx.layout.toggleSidebar(); } catch (e) { /* noop */ }
-          });
-          document.body.appendChild(menu);
-        }
-      } catch (e) { bootLog('menu-fail:' + (e && e.message || e)); }
-
-      // 3) Backdrop to close the drawer by tapping outside.
-      var backdrop = null;
-      try {
-        backdrop = document.querySelector('.dsh-mobile-backdrop');
-        if (backdrop === null) {
-          backdrop = document.createElement('div');
-          backdrop.className = 'dsh-mobile-backdrop';
-          backdrop.addEventListener('click', function () {
-            try { ctx.layout.toggleSidebar(); } catch (e) { /* noop */ }
-          });
-          document.body.appendChild(backdrop);
-        }
-      } catch (e) { bootLog('backdrop-fail:' + (e && e.message || e)); }
-
-      // 4) 左下角「返回」键：**内嵌**在 nav/content 列内，不做 position:fixed 悬浮胶囊——
-      //    第一步(导航页)：nav 列尾子节点，margin-top:auto 贴底左下角，观感对齐 dsh navCell；
-      //    第二步(内容页)：content 列尾子节点(第 3 子)，options 已改 nth-child(2) 定位不受波及。
-      //    官方原版模式下不注入（dsh 原生 X 即可关闭），dialogObs 统一驱动。
-      var staleBack = document.getElementById('dsh-settings-back-lb');
-      if (staleBack && staleBack.parentNode) staleBack.parentNode.removeChild(staleBack);
-      var backInline = null;
-      function ensureBack(dlg) {
-        if (!enabled) { hideBack(); return; }
-        if (backInline === null) {
-          backInline = document.createElement('button');
-          backInline.id = 'dsh-mobile-back-inline';
-          backInline.type = 'button';
-          var c0 = chipCopy();
-          backInline.textContent = c0.back;
-          backInline.setAttribute('aria-label', c0.backAria);
-          backInline.style.cssText = [
-            'display:flex', 'align-items:center', 'gap:8px', 'flex:none',
-            'width:auto', 'min-width:88px', 'max-width:100%',
-            'height:40px', 'padding:0 12px',
-            'margin-top:auto', // 贴 flex 列底部（nav 列高 100dvh；content 列 options 已 flex:1）
-            'margin-bottom:calc(env(safe-area-inset-bottom,0px) + 14px)',
-            'border:none', 'border-radius:12px',
-            'background:transparent',
-            'color:var(--dsw-alias-label-primary,#111)',
-            'font-family:inherit', 'font-size:14px', 'font-weight:400', 'line-height:22px',
-            'text-align:left', 'cursor:pointer',
-            '-webkit-tap-highlight-color:transparent', 'touch-action:manipulation',
-          ].join(';');
-          backInline.addEventListener('click', function (ev) {
-            ev.stopPropagation();
-            if (document.body.classList.contains('dsh-settings-content-open')) {
-              goToNav();
-            } else {
-              closeSettings();
-            }
-          });
-        }
-        // 语言可能已切换：仅当文案不符才更新（textContent 赋值即使等值也会产生
-        // childList 突变，会再触发 observer——等值判断保证收敛，杜绝循环）
-        var c1 = chipCopy();
-        if (backInline.textContent !== c1.back) backInline.textContent = c1.back;
-        var host = document.body.classList.contains('dsh-settings-content-open')
-          ? dlg.querySelector(':scope > div')   // content 列（第二步）
-          : dlg.querySelector(':scope > nav');  // nav 列（第一步）
-        if (!host) return;
-        // 已在位则零 DOM 变更（appendChild 会跨父移动并触发 observer，必须幂等守卫）
-        if (host.lastElementChild !== backInline) host.appendChild(backInline);
-      }
-
-      // 5) Close the settings panel by invoking dsh's real onClose.
-      var closing = false;
-      function closeSettings() {
-        closing = true;
-        var dlg = document.querySelector('[role="dialog"][aria-modal="true"]');
-        if (!dlg) { closing = false; return; }
-        var content = dlg.querySelector(':scope > div');
-        if (content) {
-          var header = content.firstElementChild;
-          if (header) {
-            var btns = header.querySelectorAll('button');
-            var btn = btns[btns.length - 1];
-            if (btn) {
-              btn.removeAttribute('data-dsh-close');
-              btn.click();
-              setTimeout(function () { closing = false; }, 400);
-              return;
-            }
-          }
-        }
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        setTimeout(function () { closing = false; }, 400);
-      }
-
-      function showBack() {
-        var dlg = settingsDialog();
-        if (dlg) { try { ensureBack(dlg); } catch (e) { /* noop */ } }
-      }
-      function hideBack() {
-        if (backInline && backInline.parentNode) backInline.parentNode.removeChild(backInline);
-      }
-
-      function goToContent() {
-        document.body.classList.add('dsh-settings-content-open');
-        showBack();
-        // 内容列是独立一层（见段 7b）：类名变化不产生 childList 突变，dialogObs 收不到，
-        // 这里显式对账哨兵，不依赖内嵌返回键换父节点那次副产物。
-        reconcileBackSentinels();
-      }
-      function goToNav() {
-        document.body.classList.remove('dsh-settings-content-open');
-        showBack();
-        reconcileBackSentinels();
-      }
-
-      // 6) Two-step settings navigation + sidebar session-row handling.
-      if (!document.__dsh_mobile_nav_bound) {
-        document.__dsh_mobile_nav_bound = true;
-        document.addEventListener('click', function (e) {
-          if (closing) return;
-
-          // 点侧栏里的"对话记录"→ dsh 切换会话后自动收起侧栏，回到对话主界面。
-          // 行内交互子树（⋯菜单钮/重命名输入框/菜单项等）不得排定收起。
-          //   dsh 三点钮就在 sessionRow 内（row > span.rowActions > Menu anchor），
-          //   其 React stopPropagation 只挡 React 合成层，拦不住本 capture 监听——
-          //   不排行的话点⋯→350ms 后抽屉收起→菜单锚点被 display:none 吞→菜单闪现即灭。
-          var sbRow = e.target && e.target.closest ? e.target.closest('[class*="sessionRow"]') : null;
-          if (sbRow && enabled) {
-            if (e.target.closest('[class*="rowActions"], button, input, [role="menu"], [role="menuitem"]')) return;
-            setTimeout(function () {
-              // 定时器到点二次核查——任一行的菜单仍打开
-              // （dsh 源码确认：菜单打开时行加 YDXeBa_menuOpen 类）或存在菜单 portal
-              // 时跳过本次收起，兜住"排定后菜单才被打开"的竞态。
-              if (document.querySelector('[class*="menuOpen"]') || document.querySelector('[role="menu"]')) return;
-              var f = document.querySelector('[class*="frame"]');
-              if (f && !f.hasAttribute('data-sidebar-collapsed')) {
-                try { ctx.layout.toggleSidebar(); } catch (err) { /* noop */ }
-              }
-            }, 350); // 等 dsh 完成会话切换再收起，避免竞争
-            return;
-          }
-
-          // 点侧栏顶部的「全局面板行」（插件 / 自动化任务 …）→ 同样要自动收起抽屉。
-          // 根因：这两项不是链接/路由，PanelRow 的 onClick 只调
-          //   ctx.layout.selectPanel(id)，而该动作**只写 panelInfo.activePanelId**
-          //   （ui-layout stores：selectPanel 不碰 narrowExpanded/sidebar），
-          //   于是目标页被换到**中栏 main 插槽**；本插件在 ≤1024px 又把侧栏改成
-          //   全屏 fixed 抽屉(z-index:1000)，正好把中栏整个盖住 —— 用户看到的是
-          //   「点了没反应、不会自己跳转」。面板行与会话行一样，必须由本插件
-          //   主动收起抽屉。（官方原版不做此收起：原生侧栏是窄轨道，不遮挡中栏）
-          // 注意：面板行本身就是 <button>，不能沿用会话行那套 `button` 排除项，
-          //   只排除行内真正独立的交互子树（将来若加行内菜单/开关）。
-          var sbPanel = e.target && e.target.closest ? e.target.closest('[class*="panelRow"]') : null;
-          if (sbPanel && enabled) {
-            if (e.target.closest('[class*="rowActions"], input, [role="menu"], [role="menuitem"]')) return;
-            setTimeout(function () {
-              // 二次核查只判"抽屉此刻是否仍开着"，不查 [role="menu"]：
-              //   面板行没有行内菜单，而 dsh 的下拉/命令面板都可能
-              //   短暂挂着 role="menu" 节点，查它会让收起被无关菜单永久抑制。
-              var f = document.querySelector('[class*="frame"]');
-              if (f && !f.hasAttribute('data-sidebar-collapsed')) {
-                try { ctx.layout.toggleSidebar(); } catch (err) { /* noop */ }
-              }
-            }, 180); // selectPanel 是同步 store 写入，180ms 足够其完成一帧提交，再收起不会看到闪跳
-            return;
-          }
-
-          if (!enabled) return; // 官方原版：设置面板保持 dsh 原生，不干预
-          var dlg = document.querySelector('[role="dialog"][aria-modal="true"]');
-          if (!dlg) return;
-          var navBtn = e.target && e.target.closest ? e.target.closest('nav button') : null;
-          if (navBtn && dlg.contains(navBtn)) {
-            // 内嵌 chip/返回键同样位于 nav 内，但语义不是「进入分类」。
-            // 不放行则 capture 的 goToContent 与控件自身逻辑互相抵消（返回键失灵、
-            // 表现为整行 tap 高亮残留、页面无反应）。放行给目标自身的 handler。
-            if (navBtn.id === 'dsh-mobile-chip' || navBtn.id === 'dsh-mobile-back-inline') return;
-            goToContent();
-            return;
-          }
-          var closeBtn = e.target && e.target.closest ? e.target.closest('[data-dsh-close]') : null;
-          if (closeBtn && dlg.contains(closeBtn)) {
-            if (document.body.classList.contains('dsh-settings-content-open')) {
-              e.preventDefault();
-              e.stopPropagation();
-              goToNav();
-            }
-            return;
-          }
-        }, true);
-      }
-
-      // 7) Watch the dialog: tag native close, keep the back key synced.
-      function tagCloseButton(dlg) {
-        var content = dlg.querySelector(':scope > div');
-        if (!content) return;
-        var header = content.firstElementChild;
-        if (!header) return;
-        var btns = header.querySelectorAll('button');
-        var btn = btns[btns.length - 1];
-        if (btn && !btn.hasAttribute('data-dsh-close')) {
-          btn.setAttribute('data-dsh-close', '1');
-        }
-      }
-
-      var dialogObs = new MutationObserver(function () {
-        // 仅当"真实设置面板"(含 NAV 直接子节点的 dialog)存在时才隐藏汉堡、显示返回键/开关
-        var dlg = settingsDialog();
-        settingsOpen = !!dlg;
-        // 自愈：宿主重渲染若摘除过我们挂在 body 的节点，下一拍补挂
+      // =====================================================================
+      // 3) 设置「通用」面板里的「移动端适配」开关行
+      // =====================================================================
+      // 0.2.2 的 navTitle 是网格项、内含省略号文本，塞内联按钮会偏移/被裁，故
+      // 开关不再放在标题旁，改为克隆通用页的原生会话日志行插到它下面。
+      // 注入节点带稳定标记 data-dsh-mobile-row，由 observer 幂等重插；面板关闭
+      // 时清理。
+      function syncMobileRows() {
         try {
-          if (menu && !menu.isConnected) document.body.appendChild(menu);
-          if (backdrop && !backdrop.isConnected) document.body.appendChild(backdrop);
+          var rows = document.querySelectorAll('[' + MOBILE_ROW_ATTR + ']');
+          for (var i = 0; i < rows.length; i++) syncMobileRowState(rows[i], enabled);
         } catch (e) { /* noop */ }
-        if (menu) menu.style.display = (dlg || !enabled) ? 'none' : 'flex';
-        // 开关 chip 内嵌到设置标题旁。两个模式都要注入（官方原版下也能切回）；
-        // 任何异常只吞掉 chip，不影响本回调其余逻辑（tagCloseButton/返回键等）。
-        if (dlg) {
-          try { ensureChip(dlg); } catch (e) { /* noop */ }
-        }
-        if (!dlg) {
-          document.body.classList.remove('dsh-settings-content-open');
-          hideBack();
-          reconcileBackSentinels();
-          return;
-        }
-        if (!enabled) {
-          // 官方原版：设置面板保持 dsh 原生（不做两步式）
-          hideBack();
-          reconcileBackSentinels();
-          return;
-        }
-        tagCloseButton(dlg);
-        showBack();
-        reconcileBackSentinels();
-      });
-      try { dialogObs.observe(document.body, { childList: true, subtree: true }); }
-      catch (e) { bootLog('dialogObs-fail:' + (e && e.message || e)); }
+      }
+      var rowOps = {
+        isEnabled: function () { return enabled; },
+        onToggle: function (next) { setEnabled(next); }
+      };
+      // 面板可能在插件装载前就已打开（热切换/刷新竞态）：先补一次。
+      ensureMobileRow(rowOps);
 
-      // 7b) 返回键层级：哨兵历史条目 + popstate 分发。
-      //     DSH 前端不使用浏览历史（无 pushState、无路由），页面内各级浮层也不是历史
-      //     条目，于是原生返回键的 goBack() 在 DSH 内部无处可退。这里在"打开一层"时
-      //     向历史栈压一条哨兵条目：原生返回键弹出它时本页收到 popstate，按层级关掉
-      //     对应浮层——"逐级返回"就借原生既有链路完成，原生侧无需任何改动。
-      //     层级（自上而下）：设置内容列 → 设置面板整体 → 侧栏抽屉 → 右栏 → 全局中央面板；
-      //     一层都没有时不压哨兵（DSH 根 / 会话页的返回交原生宿主处理）。
-      //     自己关层（内嵌返回键、汉堡、遮罩、DSH 自己的关闭按钮）时必须把对应哨兵
-      //     一并吃掉，否则留下幽灵条目，下一次按返回会空转一次。
-      //     右栏（停靠呈现的浏览器 / 终端 / 工作区文件等）用官方服务面判定与收起，且
-      //     必须**软读取**：`ctx.get('sidebarRight')`。不能把服务名写进本 bundle 的
-      //     `exports.inject`——cordis 的 inject 没有可选形态，写进去会让整插件在缺该
-      //     服务的 DSH 版本上永远 PENDING（汉堡/设置一起失效）；而反射层明确提供
-      //     "无需 inject 的读取"，未提供时返回 undefined 而不抛（官方 chat / conversation
-      //     两个插件就是用 ctx.get 读可选服务的）。
-      //     判据：`isExpanded()`（类型声明原文 "true while expanded; false while collapsed
-      //     to its rail"）；服务读不到时退回 DOM 语义属性 `[data-sidebar-right-open]`
-      //     （展开时才渲染该属性，官方自己也这么判）。动作：`toggleExpanded()`
-      //     （"Collapse the column…"，非破坏性——折叠成 rail，tab 与内容都保留）；服务
-      //     不可用时退回点它自己的收起按钮 `[data-sidebar-right-toggle]`（同一动作）。
-      //     仍未覆盖（有意）：右栏各面板**内部**的层级（内置浏览器/预览在 iframe 里，
-      //     其导航属 iframe 自己的历史，主框架历史没有条目）；以及只有调用方显式
-      //     `float()` 才会出现的浮动面板（它在列收起时仍渲染、且不属内置入口路径）。
-      //     状态挂在 window 上并只绑一次 popstate：本插件支持同页面热切换（重复
-      //     apply），实例换了但历史条目还在，共享状态才不会算错条数。
+      // =====================================================================
+      // 4) 返回键层级：哨兵历史条目 + popstate 分发
+      // =====================================================================
+      // DSH 前端不使用浏览历史（无 pushState、无路由），页面内各级浮层也不是历史
+      // 条目，于是原生返回键的 goBack() 在 DSH 内部无处可退。这里在"打开一层"时
+      // 向历史栈压一条哨兵条目：原生返回键弹出它时本页收到 popstate，按层级关掉
+      // 对应浮层——"逐级返回"就借原生既有链路完成，原生侧无需任何改动。
+      //
+      // 层级判定**全部读原生状态**（不再依赖插件自建 DOM）：
+      //   · 原生抽屉展开：frame[data-sidebar-drawer] 且未折叠 → toggleSidebar()
+      //   · 设置弹窗一级：role=dialog + aria-modal 且含 NAV 子节点 → 原生 close
+      //   · 设置弹窗二级页：设置内存在原生返回控件 → 触发它，回一级
+      //   · 其余（右栏、中央面板）：沿用既有服务面判定
+      //   · 没有可退层：放行给宿主，不吞键、不死循环
+      // 自己关层时必须把对应哨兵一并吃掉，否则留下幽灵条目，下一次按返回会空转。
+      // 状态挂在 window 上并只绑一次 popstate：本插件支持同页面热切换（重复
+      // apply），实例换了但历史条目还在，共享状态才不会算错条数。
       var backState = window.__dshboxBackState ||
         (window.__dshboxBackState = { pushed: 0, swallow: 0, lastSelfPopAt: 0, mark: 0 });
       function panelActive() {
@@ -1452,26 +1262,33 @@ window.__ModuleLoader__.load({
         } catch (e) { /* 落到 DOM 兜底 */ }
         return !!rightbarPanelEl();
       }
-      function drawerOpen() {
-        return document.body.classList.contains('dsh-mobile-drawer-open');
-      }
       function openLayerDepth() {
+        // 官方原版（适配开关关）：不接管返回键，一层都不压 —— 返回键交还原生宿主。
         if (!enabled) return 0;
-        var dlg = settingsDialog();
         var depth = 0;
-        if (dlg && document.body.classList.contains('dsh-settings-content-open')) depth += 1;
-        if (dlg) depth += 1;
-        if (drawerOpen()) depth += 1;
+        var dlg = settingsDialog();
+        if (dlg) {
+          depth += 1; // 设置弹窗（一级）
+          if (settingsBackButton(dlg)) depth += 1; // 设置二级页
+        }
+        if (drawerOpen()) depth += 1; // 原生抽屉
         if (rightbarOpen()) depth += 1;
         if (panelActive()) depth += 1;
         return depth;
       }
       function closeTopLayer() {
-        if (settingsDialog() && document.body.classList.contains('dsh-settings-content-open')) {
-          goToNav();
-          return true;
+        // 官方原版（适配开关关）：不接管返回键，放行给宿主。
+        if (!enabled) return false;
+        var dlg = settingsDialog();
+        if (dlg) {
+          // 设置二级页 → 触发原生返回控件回一级；否则原生关闭设置面板。
+          var back = settingsBackButton(dlg);
+          if (back) {
+            try { back.click(); } catch (e) { bootLog('settings-back-fail:' + (e && e.message || e)); }
+            return true;
+          }
+          return closeSettings(dlg);
         }
-        if (settingsDialog()) { closeSettings(); return true; }
         if (drawerOpen()) {
           try { ctx.layout.toggleSidebar(); } catch (e) { /* noop */ }
           return true;
@@ -1526,7 +1343,7 @@ window.__ModuleLoader__.load({
           if (!history || typeof history.pushState !== 'function') return;
           var depth = openLayerDepth();
           if (depth > backState.pushed) {
-            // 合法层级最深 5（设置内容列 + 设置面板 + 抽屉 + 右栏 + 中央面板）；到 6 说明
+            // 合法层级最深 5（设置子页 + 设置面板 + 抽屉 + 右栏 + 中央面板）；到 6 说明
             // 记账已经跑飞（例如某层关不掉又被反复补压）。此时停止补压，让返回键能继续
             // 弹真实条目直到退出 DSH——原生侧 goBack() 之外没有兜底，锁死不可接受。
             if (backState.pushed >= 6) { bootLog('back-repush-cap'); return; }
@@ -1574,61 +1391,71 @@ window.__ModuleLoader__.load({
               backState.mark = dest;
             }
           } catch (e) { bootLog('back-pop-fail:' + (e && e.message || e)); }
-          // 关层会改 DOM/状态，但 dialogObs 与 syncUI 的触发不保证覆盖所有路径；
-          // 这里无条件补一次对账，避免 pushed 与真实层数漂移后"按返回空转一次"。
+          // 关层会改 DOM/状态，但 childList 观察器与属性观察器的触发不保证覆盖所有
+          // 路径；这里无条件补一次对账，避免 pushed 与真实层数漂移后"按返回空转一次"。
           if (typeof window.__dshboxReconcileBack === 'function') window.__dshboxReconcileBack();
         });
       }
-      // 右栏开合的唯一对账触发源：面板常驻挂载，开/收只是给它加/摘
-      // `data-sidebar-right-open` 并靠 CSS 滑出滑入，不产生 childList 变更，
-      // dialogObs 与 syncUI（只订 data-sidebar-collapsed）都收不到——不订这一条，
-      // 打开右栏时哨兵不会压，返回键便直接穿透到原生宿主。
-      // 订 body 的这条属性而不是订面板元素：面板随会话 surface 增删，body 才不丢生命周期。
-      // 整棵面板子树被卸载时本观察器收不到（脱离观察子树），那个方向由 dialogObs 的
-      // childList 通道兜住——两端各管一向，不要改成订面板元素或加 childList。
+      // 原生状态变化的观察通道：抽屉开合（frame 的 data-sidebar-collapsed）、
+      // 抽屉形态（data-sidebar-drawer）与右栏开合（data-sidebar-right-open）
+      // 都只是**属性变化**，不产生 childList 突变，childList 通道收不到 ——
+      // 不订这一条，打开抽屉时哨兵不会压，返回键便直接穿透到原生宿主。
+      // 订 body 的属性而不是订具体元素：抽屉 frame 与右栏面板都会随会话增删，
+      // body 才不丢生命周期。整棵子树被卸载时本观察器收不到（脱离观察子树），
+      // 那个方向由 childList 通道兜住——两端各管一向。
       // 本观察器有意不做 teardown：它必须活过热切换，回调经 window 转发到最新实例的
-      // 对账函数（仍受"最新实例动账"守卫），按实例 teardown 会让右栏通道在热切换后失效。
-      if (!window.__dshboxRightObsBound) {
-        window.__dshboxRightObsBound = true;
+      // 对账函数（仍受"最新实例动账"守卫），按实例 teardown 会让通道在热切换后失效。
+      if (!window.__dshboxStateObsBound) {
+        window.__dshboxStateObsBound = true;
         try {
           new MutationObserver(function () {
             if (typeof window.__dshboxReconcileBack === 'function') window.__dshboxReconcileBack();
           }).observe(document.body, {
             attributes: true,
             subtree: true,
-            attributeFilter: ['data-sidebar-right-open']
+            attributeFilter: ['data-sidebar-collapsed', 'data-sidebar-drawer', 'data-sidebar-right-open']
           });
-        } catch (e) { bootLog('rightbar-obs-fail:' + (e && e.message || e)); }
+        } catch (e) { bootLog('state-obs-fail:' + (e && e.message || e)); }
       }
 
-      // 8) Sync drawer-open state onto <body> so CSS shows the backdrop.
-      //    Use a hash-tolerant selector for the frame container.
-      function syncUI(frame) {
-        if (!enabled) {
-          document.body.classList.remove('dsh-mobile-drawer-open');
+      // 5) 面板观察：设置面板开合 → 注入/清理开关行 + 哨兵对账。
+      var panelObs = new MutationObserver(function () {
+        var dlg = settingsDialog();
+        if (!dlg) {
+          // 面板关闭：清掉注入行（正常情况下它随面板一起卸载，这里是兜底）。
+          removeMobileRow();
           reconcileBackSentinels();
           return;
         }
-        var collapsed = frame.hasAttribute('data-sidebar-collapsed');
-        document.body.classList.toggle('dsh-mobile-drawer-open', !collapsed);
-        // 抽屉开合是纯 body 类名变化（不产生 childList 变更），dialogObs 收不到，
-        // 所以哨兵条数在这里对账：抽屉开 → 压一条；关 → 吃掉一条。
+        ensureMobileRow(rowOps);
         reconcileBackSentinels();
+      });
+      try { panelObs.observe(document.body, { childList: true, subtree: true }); }
+      catch (e) { bootLog('panelObs-fail:' + (e && e.message || e)); }
+
+      // 6) 点侧栏里的会话行 → 收起原生抽屉（窄屏下抽屉盖住会话区）。
+      //    行内交互子树（⋯菜单钮/重命名输入框/菜单项等）不得排定收起：
+      //      dsh 三点钮就在 sessionRow 内（row > span.rowActions > Menu anchor），
+      //      其 React stopPropagation 只挡 React 合成层，拦不住本 capture 监听——
+      //      不排行的话点⋯→350ms 后抽屉收起→菜单锚点被隐藏吞掉→菜单闪现即灭。
+      //    只在**原生抽屉展开**时收起：宽屏轨道形态不受影响。
+      if (!document.__dsh_mobile_nav_bound) {
+        document.__dsh_mobile_nav_bound = true;
+        document.addEventListener('click', function (e) {
+          if (!enabled) return; // 官方原版：不干预
+          var sbRow = e.target && e.target.closest ? e.target.closest('[class*="sessionRow"]') : null;
+          if (!sbRow) return;
+          if (e.target.closest('[class*="rowActions"], button, input, [role="menu"], [role="menuitem"]')) return;
+          setTimeout(function () {
+            // 定时器到点二次核查——任一行的菜单仍打开
+            // （dsh 源码确认：菜单打开时行加 YDXeBa_menuOpen 类）或存在菜单 portal
+            // 时跳过本次收起，兜住"排定后菜单才被打开"的竞态。
+            if (document.querySelector('[class*="menuOpen"]') || document.querySelector('[role="menu"]')) return;
+            if (!drawerOpen()) return;
+            try { ctx.layout.toggleSidebar(); } catch (err) { /* noop */ }
+          }, 350); // 等 dsh 完成会话切换再收起，避免竞争
+        }, true);
       }
-      function whenFrameReady(cb) {
-        var frame = document.querySelector('[class*="frame"]');
-        if (frame) { cb(frame); return; }
-        var obs = new MutationObserver(function () {
-          var f = document.querySelector('[class*="frame"]');
-          if (f) { obs.disconnect(); cb(f); }
-        });
-        obs.observe(document.body, { childList: true, subtree: true });
-      }
-      try { whenFrameReady(function (frame) {
-        syncUI(frame);
-        var attrObs = new MutationObserver(function () { syncUI(frame); });
-        attrObs.observe(frame, { attributes: true, attributeFilter: ['data-sidebar-collapsed'] });
-      }); } catch (e) { bootLog('frame-ready-fail:' + (e && e.message || e)); }
 
       // 9) Keyboard fix: when the input is focused and the on-screen keyboard
       //    pops up, keep the composer visible above the keyboard.
@@ -1752,32 +1579,15 @@ window.__ModuleLoader__.load({
       })(); } catch (e) { bootLog('brand-fail:' + (e && e.message || e)); }
       */
 
-      // 11) Initial enabled state application (style.disabled + hamburger).
+      // 11) 初始开关态应用（样式热切换 + 对外暴露状态）。
       if (style) style.disabled = !enabled;
-      if (menu) menu.style.display = enabled ? 'flex' : 'none';
-      if (backdrop) backdrop.style.display = 'none';
       // Expose for the session-row handler to check.
       window.__dsh_mobile_enabled = function () { return enabled; };
 
-      // 11b) 安全网：1Hz 轻量复查（一次 querySelectorAll + 子节点扫描，开销可忽略）。
-      // 即使 observer/兜底同步等全部事件通道被内核缓存愚弄，汉堡显隐最迟 1 秒内
-      // 自动纠正；真实发生纠正才记面包屑（供事后诊断"哪条通道瞎了"）。
-      var menuSafetySeen = null;
-      setInterval(function () {
-        try {
-          var d = settingsDialog();
-          settingsOpen = !!d;
-          var want = (d || !enabled) ? 'none' : 'flex';
-          if (menu) {
-            if (!menu.isConnected) { document.body.appendChild(menu); bootLog('menu-safety-reattach'); }
-            else if (menu.style.display !== want) {
-              if (menuSafetySeen !== want) { bootLog('menu-safety-fix:' + want); menuSafetySeen = want; }
-              menu.style.display = want;
-            }
-          }
-          if (backdrop && !backdrop.isConnected) document.body.appendChild(backdrop);
-        } catch (e) { /* noop */ }
-      }, 1000);
+      // 11b) 首次对账：按当下的原生状态压哨兵（设置面板/抽屉可能在插件装载前
+      //      就已经开着），并在下一拍再对一次（等 React 把 frame 属性写上）。
+      reconcileBackSentinels();
+      setTimeout(function () { reconcileBackSentinels(); }, 0);
 
       // =====================================================================
       // 14) 附件直达按钮（工具行「+」右侧）

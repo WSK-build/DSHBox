@@ -12,6 +12,15 @@ extensions.configure<com.android.build.api.dsl.LibraryExtension> {
         consumerProguardFiles("consumer-rules.pro")
     }
 
+    testOptions {
+        unitTests {
+            // 启动确认门的代次时序单测直接实例化 DefaultSandboxManager，其中
+            // android.util.Log 在 JVM 上没有真实现：未打桩方法返回默认值而不是
+            // 抛出「not mocked」。仅影响测试运行时，不改变生产行为。
+            isReturnDefaultValues = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

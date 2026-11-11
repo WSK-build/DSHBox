@@ -270,6 +270,35 @@ object Constants {
         ".dsh/dshbox/dsh-official-plugin/dsh-official-plugin-overlay.yml"
 
     /**
+     * **webserver host/port 覆盖层**（本机 DSH 端口自适应）。
+     *
+     * 取证（@deepseek-ai/dsh-web-app@0.2.2-rc.1 的 `cordis.patch.yml`，发布层源）：
+     * webserver 条目为 `- id: webserver, name: '@deepseek-ai/dsh-host-webserver'`，
+     * `config.host`（127.0.0.1|0.0.0.0，构造函数训注：通配地址被拒）、
+     * `config.port`（natural，max 65535；`dsh-host-webserver/lib/index.js` 的
+     * `z.object({host, port})`）。本层只逐键覆盖 host/port，条目其余键
+     * （inject/tls/compression 等）不动 —— patch 语义本就是"替换整个 config"，
+     * 因此**必须把要保的键一起带上**（见 DshWebserverOverlay.render）。
+     *
+     * 独立一层，与既有三层互不覆盖（`--patch` 可重复、按存在追加）；
+     * 由宿主在每次启动 DSH 前整份重写，host/port 永远是本层说了算。
+     */
+    const val DSH_WEBSERVER_OVERLAY_GUEST_PATH =
+        "/root/projects/.dsh/dshbox/webserver-port/webserver-port-overlay.yml"
+
+    /** 宿主侧相对 user-data 的同一份文件：guest 内 `/root/projects` 绑定的
+     *  正是 user-data，因此该相对路径 + [DSH_WEBSERVER_OVERLAY_GUEST_PATH]
+     *  指向同一份文件——写入方与 DSH 读方一一映射，端口覆盖层必然可达。 */
+    const val DSH_WEBSERVER_OVERLAY_RELATIVE_PATH =
+        ".dsh/dshbox/webserver-port/webserver-port-overlay.yml"
+
+    /** webserver 覆盖层的目标 loader 条目 id（见上取证）。 */
+    const val DSH_WEBSERVER_ENTRY_ID = "webserver"
+
+    /** webserver 条目的提供者包名（覆盖行必须复述它，同 DshOfficialPlugins 的安全栓）。 */
+    const val DSH_WEBSERVER_ENTRY_NAME = "@deepseek-ai/dsh-host-webserver"
+
+    /**
      * 「移动端适配插件已装配」的偏好键（持久化于应用偏好，不进 user-data）。
      *
      * 由设置页在装配/移除成功时翻转。bootstrap 用它决定是否要把 profile 里的

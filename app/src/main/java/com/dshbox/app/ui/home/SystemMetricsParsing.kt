@@ -3,9 +3,6 @@ package com.dshbox.app.ui.home
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** 温度读数与来源：芯片热区读不到时退回电池温度，来源要在界面上如实标注。 */
-internal data class Temperature(val celsius: Int, val fromBattery: Boolean)
-
 /** 已用/总量读数（内存与存储共用）：占用率 + 具体字节数。 */
 internal data class Usage(val percent: Int, val usedBytes: Long, val totalBytes: Long)
 
@@ -46,12 +43,6 @@ internal enum class CpuSource { SYSTEM, SYSTEM_LOAD, APP, NONE }
  */
 internal object SystemMetricsParsing {
 
-    /** 读数合理性上限（℃）：热区/电池文件偶发给出万分位或负值时据此丢弃。 */
-    const val TEMP_SANE_MAX_CELSIUS = 120
-
-    /** 温度条形图满格刻度（℃）。 */
-    const val TEMP_BAR_FULL_CELSIUS = 80f
-
     /** CPU 差值窗口下限（jiffies）：刚记完基线就采时窗口过短，宁可不给值也不给假读数。 */
     const val MIN_CPU_DELTA_TICKS = 10L
 
@@ -63,35 +54,6 @@ internal object SystemMetricsParsing {
 
     /** 读不到的项统一画这个占位符。 */
     const val UNAVAILABLE_TEXT = "—"
-
-    /**
-     * SoC 热区识别黑名单（小写子串，命中即排除，**先于白名单**判断）。
-     *
-     * 各类非 CPU 热区（电池、充电、外壳、射频、显示、PMIC 电源轨等）在部分机型上会带
-     * 「cpu」字样：Google Tensor 的 `S2M_VDD_CPUCL2` 是电源轨温度，含 cpu 会被白名单
-     * 误捞成 CPU 结温（静默的错值），所以先黑后白。`tsens_tz_sensor` 是高通旧式纯序号名，
-     * 无法从名字判语义，宁可退回电池档也不给错值。
-     */
-    private val SOC_ZONE_DENY = listOf(
-        "gpu", "g3d", "battery", "batt", "charg", "usb", "skin", "quiet",
-        "pa_therm", "pa-therm", "mtktspa", "modem", "wlan", "wifi", "wmt",
-        "display", "lcd", "cam", "isp", "ddr", "dram", "pmic", "vdd", "s2m_",
-        "npu", "tpu", "audio", "speaker", "flash", "ufs", "mmc",
-        "cooldev", "uspace", "user_space", "hotplug", "virtual",
-        "tsens_tz_sensor",
-    )
-
-    /**
-     * SoC 热区识别白名单（小写子串，命中即纳入候选）。
-     *
-     * 除通用 cpu/soc/cluster/core 外，补上各家 SoC 私有命名：Exynos 的 atlas/apollo、
-     * 联发科的 mif、Kirin 的 cls、以及 big/mid/little 大小核分档名。
-     */
-    private val SOC_ZONE_ALLOW = listOf(
-        "cpu", "soc", "cluster", "core", "acpu",
-        "atlas", "apollo", "mif", "cls", "bigcore", "smallcore",
-        "big", "mid", "little", "ap_therm", "ap-therm",
-    )
 
     private val WHITESPACE = Regex("\\s+")
 
@@ -223,40 +185,6 @@ internal object SystemMetricsParsing {
         return (used.coerceAtLeast(0L) * 100.0 / total).roundToInt().coerceIn(0, 100)
     }
 
-    /** 热区名（thermal_zone 的 type）是否属于 SoC 一类：先黑名单排除，再白名单纳入。 */
-    fun isSocZone(type: String): Boolean {
-        val normalized = type.trim().lowercase(Locale.US)
-        if (SOC_ZONE_DENY.any { normalized.contains(it) }) return false
-        return SOC_ZONE_ALLOW.any { normalized.contains(it) }
-    }
-
-    /**
-     * 热区 temp 文本 → ℃。
-     *
-     * 内核 ABI 规定 thermal_zone 的 temp 恒为毫摄氏度
-     * （Documentation/ABI/testing/sysfs-class-thermal），故定死 /1000，不做「大于 1000 才
-     * 换算」的猜测。0 与负值是「驱动未上电/未接线」的常见哨兵值，一律当坏值丢弃。
-     * 判界在 Long 域内完成再窄化：先 toInt() 会让超范围值静默回绕成本地看上去合法的读数。
-     */
-    fun socCelsius(tempText: String): Int? {
-        val raw = tempText.trim().toLongOrNull() ?: return null
-        if (raw <= 0L) return null
-        val celsius = raw / 1_000L
-        if (celsius !in 1L..TEMP_SANE_MAX_CELSIUS.toLong()) return null
-        return celsius.toInt()
-    }
-
-    /** 电池温度原始值（0.1℃ 单位）→ ℃；越界或缺失返回 null。 */
-    fun batteryCelsius(tenths: Long?): Int? {
-        if (tenths == null) return null
-        if (tenths !in 0..(TEMP_SANE_MAX_CELSIUS * 10L)) return null
-        return (tenths / 10L).toInt()
-    }
-
-    /** 温度条形图比例（0..1）：按 0~[TEMP_BAR_FULL_CELSIUS]℃ 铺满。 */
-    fun temperatureFraction(celsius: Int): Float =
-        (celsius / TEMP_BAR_FULL_CELSIUS).coerceIn(0f, 1f)
-
     /** 「已用/总量」文案：GB 起按 GB 显示（一位小数），更小按 MB 显示。 */
     fun formatUsage(usage: Usage): String {
         val gib = 1024.0 * 1024.0 * 1024.0
@@ -283,9 +211,6 @@ internal object SystemMetricsParsing {
             "${percent.roundToInt()}%"
         }
     }
-
-    /** 温度文案；无读数用占位符。 */
-    fun temperatureText(celsius: Int?): String = celsius?.let { "$it°C" } ?: UNAVAILABLE_TEXT
 
     /** 从 "MemTotal:  7864320 kB" 这类行里取第一个整数（kB）。 */
     private fun firstNumber(line: String): Long =

@@ -75,6 +75,22 @@ val mobileAdaptKeyboardSemantics = tasks.register<Exec>("testMobileAdaptKeyboard
     commandLine("node", "dshbox-plugins/tools/mobile-adapt/client-keyboard-gecko.test.cjs")
 }
 
+// mobile-adapt 设置开关行与返回键分层的 standalone 行为测试（会话日志行锚点
+// 文案匹配与回退、注入幂等、点击翻转、面板关闭清理、返回键按原生状态分层：
+// 原生抽屉 / 设置一级 / 设置二级页 / 无层放行）。同样只依赖 Node 内置模块。
+val mobileAdaptSettingsSwitchBackSemantics =
+    tasks.register<Exec>("testMobileAdaptSettingsSwitchBackJavaScript") {
+        group = "verification"
+        inputs.files(
+            "dshbox-plugins/assets/plugins/dsh-mobile-adapt/plugin/lib/client.js",
+            "dshbox-plugins/assets/plugins/dsh-mobile-adapt/plugin/package.json",
+            "dshbox-plugins/tools/mobile-adapt/client-settings-switch-back.test.cjs",
+        )
+        workingDir(projectDir)
+        commandLine("node", "dshbox-plugins/tools/mobile-adapt/client-settings-switch-back.test.cjs")
+    }
+
 tasks.matching { it.name.startsWith("testDebugUnitTest") }.configureEach {
     dependsOn(mobileAdaptKeyboardSemantics)
+    dependsOn(mobileAdaptSettingsSwitchBackSemantics)
 }
