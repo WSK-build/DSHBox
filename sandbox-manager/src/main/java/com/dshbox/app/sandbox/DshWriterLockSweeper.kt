@@ -21,6 +21,8 @@ import java.io.File
  */
 internal class DshWriterLockSweeper(
     private val workspaceDir: File,
+    /** 实例 home 相对目录名（主实例 `.dsh`；应急实例 `.dsh-emergency`）。 */
+    private val homeRelativeDir: String = DSH_RELATIVE_DIR,
     /** PID 存活判定；由调用方注入，便于单测。 */
     private val isProcessAlive: (Long) -> Boolean,
     /** 自检：判定链路是否可用（例如本进程自己的 PID 必须被判为存活）。 */
@@ -35,7 +37,7 @@ internal class DshWriterLockSweeper(
     )
 
     fun sweep(): Result {
-        val root = File(workspaceDir, DSH_RELATIVE_DIR)
+        val root = File(workspaceDir, homeRelativeDir)
         if (!root.isDirectory) return Result(scanned = 0, removed = emptyList())
         if (!selfCheck()) {
             return Result(scanned = 0, removed = emptyList(), skipped = true)

@@ -26,7 +26,12 @@ object DeveloperAccessWiring {
      * @param filesDir App 私有 files 目录。
      * @return 形如 `["--bind=<宿主目录>:/opt/elevation"]`；目录已确保存在。
      */
-    fun guestBinds(filesDir: File, baseRootfs: File? = null): List<String> {
+    fun guestBinds(
+        filesDir: File,
+        baseRootfs: File? = null,
+        /** 活跃实例的随包 CLI 目录（登录 shell PATH 补回）；缺省主实例。 */
+        workspaceCliDir: String = ElevationPaths.GUEST_WORKSPACE_CLI_DIR,
+    ): List<String> {
         val dirs = ElevationDirs(filesDir)
         dirs.ensureLayout()
         val binds = mutableListOf(
@@ -47,7 +52,7 @@ object DeveloperAccessWiring {
             override.writeText(
                 "# DSHBox developer mode: restore guest PATH after /etc/profile reset.\n" +
                     "export PATH=\"${ElevationPaths.GUEST_ELEVATION_BIN_DIR}:" +
-                    "${ElevationPaths.GUEST_WORKSPACE_CLI_DIR}:\$PATH\"\n",
+                    "$workspaceCliDir:\$PATH\"\n",
             )
         }
         val profileDir = baseRootfs?.let { File(it, "etc/profile.d/$BASE_PROFILE_SCRIPT") }

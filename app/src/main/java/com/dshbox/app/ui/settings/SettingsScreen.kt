@@ -570,7 +570,7 @@ fun SettingsScreen(
             // 仅本机 DSH 页面、不影响远程页面，不再另设副标题。
             SettingsDivider()
             SettingsRow(
-                title = stringResource(R.string.settings_dsh_status_bar),
+                title = stringResource(R.string.settings_dsh_status_bar_short),
                 value = stringResource(
                     if (AppDshBehaviorState.localStatusBarVisible) {
                         R.string.settings_dsh_status_bar_on

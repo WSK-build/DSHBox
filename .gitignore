@@ -15,6 +15,7 @@ terminal-emulator/build/
 terminal-view/build/
 terminal-session/build/
 plugin-manager/build/
+instance-manager/build/
 dsh-renderer/api/build/
 dsh-renderer/system/build/
 dsh-renderer/gecko/build/

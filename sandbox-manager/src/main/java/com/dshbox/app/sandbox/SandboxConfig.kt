@@ -1,6 +1,7 @@
 package com.dshbox.app.sandbox
 
 import com.dshbox.app.common.Constants
+import com.dshbox.app.common.DshInstance
 import java.io.File
 
 data class SandboxConfig(
@@ -62,6 +63,11 @@ data class SandboxConfig(
      * 与 [extraGuestBindsProvider] 配套：绑定提供目录，此处让该目录出现在 PATH 上。
      */
     val extraPathEntriesProvider: () -> List<String> = { emptyList() },
+    /**
+     * 活跃 DSH 实例提供者：启动 DSH 时现取，`DSH_HOME`、覆盖层与资产路径随槽切换。
+     * 缺省主实例——未接线的调用方（测试等）行为与单实例模型一致。
+     */
+    val activeDshInstanceProvider: () -> DshInstance = { DshInstance.MAIN },
 ) {
     val runtimeDir: File = File(appFilesDir, "runtime")
     val sandboxDir: File = File(appFilesDir, "sandbox")

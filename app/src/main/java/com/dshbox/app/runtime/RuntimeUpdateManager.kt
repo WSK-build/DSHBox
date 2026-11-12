@@ -134,6 +134,36 @@ class RuntimeUpdateManager(
         }
     }
 
+    /**
+     * 修复性重装当前已装版本（层文件损坏嫌疑）：探测各源取可达且延迟最低者，
+     * 以 allowDowngrade=true 强制同版本覆盖。进度经 [installState] 发布。
+     * 无已装版本或无可达源时落失败态。
+     */
+    fun reinstallCurrentDshOnline() {
+        if (_installState.value.running || com.dshbox.app.instance.InstanceOpState.state.value.running) return
+        val version = sandboxManager.installedDshVersion()
+        if (version.isNullOrBlank()) {
+            _installState.value = DshOnlineInstallState(
+                running = false,
+                result = AppResult.Failure(AppError("DSH_NO_INSTALLED_VERSION", "no installed DSH version to reinstall")),
+            )
+            return
+        }
+        scope.launch {
+            val probes = mutableListOf<DshSourceProbe>()
+            probeSources { probes.add(it) }
+            val best = probes.filter { it.reachable }.minByOrNull { it.latencyMs }
+            if (best == null) {
+                _installState.value = DshOnlineInstallState(
+                    running = false,
+                    result = AppResult.Failure(AppError("DSH_NO_REACHABLE_SOURCE", "no reachable npm source")),
+                )
+                return@launch
+            }
+            startDshInstall(best.source, version, allowDowngrade = true)
+        }
+    }
+
     // -------------------------------------------------------------- installing
 
     /**
@@ -143,7 +173,7 @@ class RuntimeUpdateManager(
      * than the installed one (the UI double-confirms such a choice first).
      */
     fun startDshInstall(source: DshNpmSource, version: String, allowDowngrade: Boolean) {
-        if (_installState.value.running) return
+        if (_installState.value.running || com.dshbox.app.instance.InstanceOpState.state.value.running) return
         installCancelled = false
         activeGuestProcess = null
         _installState.value = DshOnlineInstallState(

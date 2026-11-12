@@ -35,7 +35,7 @@ object TerminalEnvFactory {
         // DSH 官方 CLI 需要的三件事，取值与 app 启动网页端 DSH 时**完全一致**
         // （见 DefaultSandboxManager.buildProotEnv 的层 env 替换表）：
         // profile 在 $DSH_HOME/profiles 下，否则 `dsh` 找不到 web/tui/headless 模板。
-        "DSH_HOME=/root/projects/.dsh",
+        "DSH_HOME=${paths.dshHomeGuest}",
         "DSH_BIN=/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
         // 非交互式会话没有审批 UI：与 app 一致走完全放行模式，否则 CLI 会卡在等审批。
         "DSH_PERMISSION_MODE=danger-full-access",
@@ -48,7 +48,7 @@ object TerminalEnvFactory {
      * 追加目录来自宿主注入（[TerminalPaths.extraPathEntries]），本模块不解释其语义。
      */
     private fun buildGuestPath(paths: TerminalPaths): String {
-        val head = "/root/projects/.dsh/dshbox/bin"
+        val head = paths.dshboxBinGuest
         val extra = paths.extraPathEntries.filter { it.isNotBlank() }
         val tail = listOf(
             "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin",

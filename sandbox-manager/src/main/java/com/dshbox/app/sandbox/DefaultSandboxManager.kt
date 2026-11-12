@@ -3,6 +3,7 @@ package com.dshbox.app.sandbox
 import com.dshbox.app.common.AppError
 import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.Constants
+import com.dshbox.app.common.DshInstance
 import com.dshbox.app.common.UiText
 import com.dshbox.app.common.LogRedactor
 import com.dshbox.app.common.coroutineFailureHandler
@@ -62,6 +63,8 @@ class DefaultSandboxManager(
 
     private val _dshUnresponsive = MutableStateFlow(false)
     override val dshUnresponsive: StateFlow<Boolean> = _dshUnresponsive.asStateFlow()
+    private val _dshRecoverySuggested = MutableStateFlow(false)
+    override val dshRecoverySuggested: StateFlow<Boolean> = _dshRecoverySuggested.asStateFlow()
 
     private val _dshVersion = MutableStateFlow<String?>(null)
     override val dshVersion: StateFlow<String?> = _dshVersion.asStateFlow()
@@ -368,7 +371,7 @@ class DefaultSandboxManager(
                             // 自适应启用且 3080 被占时，写失败意味着 DSH 必然按 3080 起并
                             // 撞上占用者；判启动失败并给出可诊断错误比"必然失败"更明确。
                             val wroteOverlay = DshWebserverOverlay.refresh(
-                                config.userDataDir, Constants.DSH_DEFAULT_HOST, probedPort,
+                                config.userDataDir, Constants.DSH_DEFAULT_HOST, probedPort, activeDshInstance(),
                             )
                             if (!wroteOverlay) {
                                 startAbortReason =
@@ -504,6 +507,7 @@ class DefaultSandboxManager(
         dshProcess = null
         _dshState.value = DshState.STOPPED
         _dshUnresponsive.value = false
+        _dshRecoverySuggested.value = false
         Log.i(TAG, "stopDsh(): dsh=STOPPED")
     }
 
@@ -1178,6 +1182,38 @@ class DefaultSandboxManager(
         return AppResult.Success(outcome)
     }
 
+    override suspend fun rollbackDshLayer(): AppResult<DshUpdateOutcome> {
+        // 先校验备份存在，避免无备份时停掉健康实例却不重启。
+        if (!dshPreviousLayerAvailable()) {
+            return AppResult.Failure(AppError("DSH_NO_PREVIOUS", "no valid previous DSH layer to roll back to"))
+        }
+        // 与 updateDsh 同构：锁内停 DSH + 换层，锁外按需重启。
+        val outcome = lifecycleMutex.withLock {
+            _dshUpdateProgress.value = "rolling back DSH"
+            try {
+                val dshActive = _dshState.value != DshState.STOPPED &&
+                    _dshState.value != DshState.UNINITIALIZED
+                if (dshActive) stopDshLocked()
+                when (val r = dshLayer.rollbackToPrevious()) {
+                    is AppResult.Success -> r.value
+                    is AppResult.Failure -> return r
+                }
+            } finally {
+                _dshUpdateProgress.value = null
+            }
+        }
+        _dshVersion.value = dshLayer.installedVersion()
+        if (outcome.changed && _sandboxState.value == SandboxState.RUNNING) {
+            restartDsh()
+        }
+        return AppResult.Success(outcome)
+    }
+
+    override fun dshPreviousLayerAvailable(): Boolean =
+        File(dshLayer.previousDshDir(), DshLayer.DSHPK_GUEST_PATH).isFile
+
+    override fun installedDshVersion(): String? = dshLayer.installedVersion()
+
     /**
      * build + install a fresh DSH layer from an npm registry by running
      * npm INSIDE the guest Debian — replicating runtime-bundle/scripts/install_dsh.sh,
@@ -1363,9 +1399,10 @@ class DefaultSandboxManager(
         // DSH 绑到非 3080 而 gecko 侧固化 3080。准入判定收口在伴生对象的
         // [webserverOverlayConsumable]；关闭时不但不传，还清理宿主侧旧文件
         // （清理失败不阻塞启动，overlay 已不传入即不会消费）。
-        val webserverFile = DshWebserverOverlay.hostFile(config.userDataDir)
+        val instance = activeDshInstance()
+        val webserverFile = DshWebserverOverlay.hostFile(config.userDataDir, instance)
         val webserverPresent = webserverFile.isFile && webserverFile.length() > 0L
-        val webserverGuest = Constants.DSH_WEBSERVER_OVERLAY_GUEST_PATH
+        val webserverGuest = Constants.dshWebserverOverlayGuestPath(instance)
             .takeIf { webserverOverlayConsumable(config.dshPortAdaptationEnabled, webserverPresent) }
         if (webserverGuest == null && !config.dshPortAdaptationEnabled && webserverFile.isFile) {
             runCatching {
@@ -1374,11 +1411,12 @@ class DefaultSandboxManager(
             }.onFailure { Log.w(TAG, "stale webserver-port overlay delete failed: ${it.message}") }
         }
         return listOf(
-            Constants.DSH_OFFICIAL_PLUGIN_OVERLAY_RELATIVE_PATH to
-                Constants.DSH_OFFICIAL_PLUGIN_OVERLAY_GUEST_PATH,
-            Constants.DSH_PLUGIN_MARKET_OVERLAY_RELATIVE_PATH to Constants.DSH_PLUGIN_MARKET_OVERLAY_GUEST_PATH,
-            Constants.DSH_SAFE_MODE_ABSOLUTE_OVERLAY_RELATIVE_PATH to
-                Constants.DSH_SAFE_MODE_ABSOLUTE_OVERLAY_GUEST_PATH,
+            Constants.dshOfficialPluginOverlayRelativePath(instance) to
+                Constants.dshOfficialPluginOverlayGuestPath(instance),
+            Constants.dshPluginMarketOverlayRelativePath(instance) to
+                Constants.dshPluginMarketOverlayGuestPath(instance),
+            Constants.dshSafeModeAbsoluteOverlayRelativePath(instance) to
+                Constants.dshSafeModeAbsoluteOverlayGuestPath(instance),
         ).mapNotNull { (relative, guest) ->
             val overlay = File(config.userDataDir, relative)
             guest.takeIf { overlay.isFile && overlay.length() > 0L }
@@ -1420,6 +1458,9 @@ class DefaultSandboxManager(
         return binds
     }
 
+    /** 活跃 DSH 实例：启动期现取，DSH_HOME 与 home 相对路径随槽切换。 */
+    private fun activeDshInstance(): DshInstance = config.activeDshInstanceProvider()
+
     /**
      * 构造网页端 DSH 与 guest 命令的 guest PATH。
      *
@@ -1427,7 +1468,7 @@ class DefaultSandboxManager(
      * CLI 包装脚本目录其后（`dsh` 等命令由此命中）。
      */
     private fun buildGuestPathForDsh(): String {
-        val head = "${Constants.DSHBOX_ASSETS_GUEST_DIR}/bin"
+        val head = "${Constants.dshboxAssetsGuestDir(activeDshInstance())}/bin"
         val extra = config.extraPathEntriesProvider().filter { it.isNotBlank() }
         val tail = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         // CLI 包装脚本目录保持首位（android-root 等 shim 在此，不被能力目录遮蔽），
@@ -1464,7 +1505,7 @@ class DefaultSandboxManager(
             "@NODE_BIN@" to "/usr/local/bin/node",
             "@DSH_PERMISSION_MODE@" to "danger-full-access",
             "@DSH_BIN@" to "/opt/dshapp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
-            "@DSH_HOME@" to "/root/projects/.dsh",
+            "@DSH_HOME@" to activeDshInstance().guestHome,
         )
         for (layerName in profile.assembly) {
             val layer = profile.layer(layerName) ?: continue
@@ -1497,7 +1538,7 @@ class DefaultSandboxManager(
         // the app-managed user data (bound at /root/projects) so the DSH web server
         // serves the app's WebView / health endpoint (default port 3080).
         if (role == "dsh") {
-            base["DSH_HOME"] = "/root/projects/.dsh"
+            base["DSH_HOME"] = activeDshInstance().guestHome
             // PORT 仅作旧版 DSH 的兜底通道：真实端口以 webserver 覆盖层请求 +
             // 启动输出确证为准。本次请求值尚未确证时保持默认。
             base["PORT"] = (nextDshLaunchPass ?: Constants.DSH_DEFAULT_PORT).toString()
@@ -1519,7 +1560,7 @@ class DefaultSandboxManager(
                 ?: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             base["PATH"] = (listOf(
                 Constants.DSH_LINK_SHIM_GUEST_DIR,
-                "${Constants.DSHBOX_ASSETS_GUEST_DIR}/bin",
+                "${Constants.dshboxAssetsGuestDir(activeDshInstance())}/bin",
             ) + extraPath + ambientPath.split(':'))
                 .filter { it.isNotBlank() }
                 .distinct()
@@ -1686,6 +1727,7 @@ class DefaultSandboxManager(
     private fun sweepDeadWriterLocks() {
         val sweeper = DshWriterLockSweeper(
             workspaceDir = config.userDataDir,
+            homeRelativeDir = activeDshInstance().homeLeaf,
             isProcessAlive = { pid -> File("/proc/$pid").exists() },
             selfCheck = { File("/proc/${android.os.Process.myPid()}").exists() },
         )
@@ -1781,7 +1823,7 @@ class DefaultSandboxManager(
                 } ?: continue
                 if (config.dshPortAdaptationEnabled) {
                     val wroteOverlay = DshWebserverOverlay.refresh(
-                        config.userDataDir, Constants.DSH_DEFAULT_HOST, requestedPort,
+                        config.userDataDir, Constants.DSH_DEFAULT_HOST, requestedPort, activeDshInstance(),
                     )
                     if (!wroteOverlay) {
                         Log.e(TAG, "dsh restart attempt=$attempt: webserver overlay write failed")
@@ -1863,7 +1905,10 @@ class DefaultSandboxManager(
                 _dshUnresponsive.value = !health.webUiReady &&
                     unresponsiveForMs >= DshHealthPolicy.UNRESPONSIVE_HINT_MS
                 when (decision) {
-                    is DshHealthDecision.Ready -> _dshState.value = DshState.READY
+                    is DshHealthDecision.Ready -> {
+                        _dshRecoverySuggested.value = false
+                        _dshState.value = DshState.READY
+                    }
                     is DshHealthDecision.Observe -> Unit
                     is DshHealthDecision.Restart -> {
                         Log.i(
@@ -1878,6 +1923,7 @@ class DefaultSandboxManager(
                         // give up after only a few fast probe failures.
                         Log.w(TAG, "dsh health: initial start timed out, alive=$alive portOpen=${health.portOpen}")
                         teardownDshOnGiveUp()
+                        _dshRecoverySuggested.value = true
                         _dshState.value = DshState.ERROR
                         return@launch
                     }
@@ -1897,6 +1943,7 @@ class DefaultSandboxManager(
                                 unresponsiveSinceMs = null,
                                 healthyStreak = DshHealthPolicy.HEALTHY_STREAK_TO_CLOSE,
                             )
+                            _dshRecoverySuggested.value = false
                             _dshState.value = DshState.READY
                         } else {
                             Log.w(
@@ -1905,6 +1952,7 @@ class DefaultSandboxManager(
                                     "alive=$alive portOpen=${health.portOpen} addressConfirmed=$addressConfirmed",
                             )
                             teardownDshOnGiveUp()
+                            _dshRecoverySuggested.value = true
                             _dshState.value = DshState.ERROR
                             return@launch
                         }

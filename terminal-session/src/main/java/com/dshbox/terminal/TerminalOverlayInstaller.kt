@@ -61,7 +61,7 @@ class TerminalOverlayInstaller(
             stage.deleteRecursively()
             return null
         }
-        return INIT_SNIPPET
+        return initSnippet(paths.dshboxBinGuest)
     }
 
     companion object {
@@ -101,7 +101,7 @@ class TerminalOverlayInstaller(
          *  package. `--no-same-owner` never chowns. The screen is cleared before
          *  the notice (also wipes the session-start linker notice some devices
          *  print); the app-side guard re-runs whenever vim/htop are missing. */
-        internal const val INIT_SNIPPET =
+        internal fun initSnippet(dshboxBinGuest: String): String =
             "ok=1; for f in /root/dshpkgs/*.deb; do " +
                 "dpkg-deb --fsys-tarfile \$f | tar -x --no-same-owner -p -C / || " +
                 "dpkg -x \$f / || ok=0; done; " +
@@ -119,7 +119,7 @@ class TerminalOverlayInstaller(
                 // 登录 shell 的 /etc/profile 重置 PATH 后加载 profile.d，
                 // 在该目录追加 DSH CLI 路径，避免被默认 PATH 覆盖。
                 "mkdir -p /etc/profile.d; " +
-                "printf '%s\n' 'export PATH=\"/root/projects/.dsh/dshbox/bin:\$PATH\"' " +
+                "printf '%s\n' 'export PATH=\"$dshboxBinGuest:\$PATH\"' " +
                 "> /etc/profile.d/zz-dshbox-path.sh; " +
                 // 容器通行做法：policy-rc.d 返回 101，使维护脚本里的服务启停被跳过。
                 // 当前环境没有 systemd，跳过服务启停，避免维护脚本中断包事务。

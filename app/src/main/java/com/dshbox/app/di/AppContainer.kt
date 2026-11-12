@@ -6,6 +6,7 @@ import com.dshbox.app.runtime.OnlineRuntimeImportManager
 import com.dshbox.app.runtime.RuntimeUpdateManager
 import com.dshbox.app.sandbox.SandboxConfig
 import com.dshbox.app.sandbox.SandboxManager
+import com.dshbox.instance.InstanceRegistry
 import com.dshbox.terminal.DshTerminalManager
 
 /**
@@ -19,4 +20,5 @@ class AppContainer(
     val dshTerminalManager: DshTerminalManager,
     val runtimeUpdateManager: RuntimeUpdateManager,
     val onlineRuntimeImportManager: OnlineRuntimeImportManager,
+    val instanceRegistry: InstanceRegistry,
 )

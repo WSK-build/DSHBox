@@ -127,8 +127,9 @@ private const val RENDER_LIMIT_CHARS = 200 * 1024
  * 把日志正文按行着色：**启动标记行**用强调色（红），其余用正文色。
  *
  * 纯函数（只吃文本与两个颜色），便于单测断言"只有标记行被着色"。
+ * 公开供 app 侧 DSH 运行日志面板复用（同一份启动日志的着色口径）。
  */
-internal fun bootLogAnnotated(text: String, markerColor: Color, bodyColor: Color): AnnotatedString =
+fun bootLogAnnotated(text: String, markerColor: Color, bodyColor: Color): AnnotatedString =
     buildAnnotatedString {
         text.split("\n").forEachIndexed { index, line ->
             if (index > 0) append("\n")

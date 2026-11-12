@@ -9,6 +9,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -54,6 +56,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import com.dshbox.app.DshApp
+import com.dshbox.app.common.DshInstance
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,6 +120,7 @@ private val HomeTabLabels =
  * 宿主底部导航同步隐藏，整屏让给子页；insets 让位随之切换——子页顶栏自让状态栏、
  * 子页内容区自让手势条（模块侧 embedded / fullscreen 两态语义）。子页返回根页后壳层原样恢复。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
@@ -190,6 +196,20 @@ fun HomeScreen(
     // 「局域网访问」子页：DSH 卡片「更多」菜单的第二入口，有
     // 专整屏层级，与「本地 DSH 访问」同用一个整屏提升通道。
     var showLanAccess by rememberSaveable { mutableStateOf(false) }
+    // 「应急修复与实例切换」子页：DSH 卡片「更多」菜单的第三入口。
+    var showInstanceManager by rememberSaveable { mutableStateOf(false) }
+    // 活跃实例（应急徽标 + 子页判定）；ERROR 恢复弹窗一次性触发标记。
+    val activeInstance by (context.applicationContext as DshApp)
+        .container.instanceRegistry.active.collectAsState()
+    // 恢复弹窗：仅健康环预算用尽/首启超时（dshRecoverySuggested）触发，且只在本页签可见时弹；
+    // dismiss 按 episode 持久（旋转/重建不重弹），信号复位后允许下一次。
+    val recoverySuggested by (context.applicationContext as DshApp)
+        .container.sandboxManager.dshRecoverySuggested.collectAsState()
+    var recoveryDismissed by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(recoverySuggested) {
+        if (!recoverySuggested) recoveryDismissed = false
+    }
+    val showRecoveryDialog = recoverySuggested && isActive && !recoveryDismissed
     var dshNeedsSandboxToast by remember { mutableStateOf(false) }
     var dshElapsedSeconds by remember { mutableLongStateOf(0L) }
 
@@ -214,8 +234,8 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(showAccessSettings, showLanAccess, isActive) {
-        onSubPageVisibilityChanged((showAccessSettings || showLanAccess) && isActive)
+    LaunchedEffect(showAccessSettings, showLanAccess, showInstanceManager, isActive) {
+        onSubPageVisibilityChanged((showAccessSettings || showLanAccess || showInstanceManager) && isActive)
     }
     DisposableEffect(Unit) {
         onDispose { onSubPageVisibilityChanged(false) }
@@ -240,6 +260,53 @@ fun HomeScreen(
             modifier = modifier,
         )
         return
+    }
+
+    if (showInstanceManager) {
+        BackHandler(enabled = isActive) { showInstanceManager = false }
+        InstanceManagerScreen(
+            onBack = { showInstanceManager = false },
+            modifier = modifier,
+        )
+        return
+    }
+
+    if (showRecoveryDialog) {
+        AlertDialog(
+            onDismissRequest = { recoveryDismissed = true },
+            title = { Text(stringResource(R.string.recovery_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.instance_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(stringResource(R.string.recovery_dialog_message))
+                }
+            },
+            confirmButton = {
+                // 三键统一放进 confirmButton 的 FlowRow：窄屏自动换行不挤压；
+                // 不撑满宽，避免弹窗被按钮区恒撑到最大宽。
+                FlowRow(
+                    horizontalArrangement = Arrangement.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = {
+                        recoveryDismissed = true
+                        SandboxService.restartDsh(context)
+                    }) { Text(stringResource(R.string.recovery_dialog_retry)) }
+                    TextButton(onClick = { recoveryDismissed = true }) {
+                        Text(stringResource(R.string.recovery_dialog_later))
+                    }
+                    TextButton(onClick = {
+                        recoveryDismissed = true
+                        SandboxService.createEmergency(context)
+                    }) { Text(stringResource(R.string.instance_create_emergency)) }
+                }
+            },
+            dismissButton = null,
+        )
     }
 
     // 四页签外壳：选中态由 Pager 持有（rememberPagerState 内部经 rememberSaveable
@@ -473,6 +540,8 @@ fun HomeScreen(
                         onOpenInBrowser = onOpenInBrowser,
                         onOpenBrowserMore = { showAccessSettings = true },
                         onOpenLanAccess = { showLanAccess = true },
+                        onOpenInstanceManager = { showInstanceManager = true },
+                        emergencyActive = activeInstance == DshInstance.EMERGENCY,
                     )
 
                     // 版本更新要点卡：开关开启且本版本未展示过时出现一次，
@@ -810,6 +879,8 @@ private fun DshStatusCard(
     onOpenInBrowser: () -> Unit,
     onOpenBrowserMore: () -> Unit,
     onOpenLanAccess: () -> Unit,
+    onOpenInstanceManager: () -> Unit,
+    emergencyActive: Boolean,
 ) {
     val statusText = stringResource(dshStatusTextRes(dshReady, dshError, dshUnresponsive, dshStarting))
     // 配色只随 异常 / 无响应 / 就绪 三档走；「启动中」只改文案，圆点与底色同「已停止」。
@@ -856,6 +927,17 @@ private fun DshStatusCard(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                     )
+                    if (emergencyActive) {
+                        Text(
+                            text = stringResource(R.string.home_instance_badge),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onError,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.error, MaterialTheme.shapes.small)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     // 「浏览器」入口：**必须带 token**，否则外部浏览器会停在鉴权页。
                     // 位于状态卡右上角，沿用与下方 启动/重启/关闭 完全相同的 OutlinedButton
                     // 变色逻辑（可用=主题色、不可用=灰，透明底 + 描边方框），不做深绿实底。
@@ -952,6 +1034,13 @@ private fun DshStatusCard(
                                 onClick = {
                                     moreMenuOpen = false
                                     onOpenBrowserMore()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.instance_manager_title)) },
+                                onClick = {
+                                    moreMenuOpen = false
+                                    onOpenInstanceManager()
                                 },
                             )
                         }

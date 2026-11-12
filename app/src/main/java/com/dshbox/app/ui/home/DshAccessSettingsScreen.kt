@@ -39,6 +39,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
@@ -46,6 +50,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dshbox.app.R
+import androidx.compose.runtime.collectAsState
+import com.dshbox.app.DshApp
+import com.dshbox.app.dsh.DshDiagnosticLogs
+import com.dshbox.app.sandbox.DshState
+import com.dshbox.pluginmanager.ui.bootLogAnnotated
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.ui.webview.dshUrlWithToken
 import com.dshbox.app.ui.webview.openDefaultAppsSettings
@@ -157,6 +169,7 @@ internal fun DshAccessSettingsScreen(
                         )
                     },
                 )
+                DshRunLogSection()
             }
 
             SettingsSection(stringResource(R.string.home_browser_more_section_external)) {
@@ -312,6 +325,142 @@ private fun AddressRow(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(start = 32.dp, top = 8.dp),
             )
+        }
+    }
+}
+
+/**
+ * DSH 运行日志折叠面板：标题行在 DSH 运行失败（ERROR）时变红；点击展开定高面板，
+ * 滚动查看最近启动日志（经 [DshDiagnosticLogs.readTail] 脱敏），右上复制。
+ * 日志源与插件面板「插件加载记录」同一份 process-dsh.log，着色复用 [bootLogAnnotated]。
+ */
+@Composable
+private fun DshRunLogSection() {
+    val context = LocalContext.current
+    val dshState by (context.applicationContext as DshApp)
+        .container.sandboxManager.dshState.collectAsState()
+    val failed = dshState == DshState.ERROR
+    var expanded by remember { mutableStateOf(false) }
+    var logText by remember { mutableStateOf("") }
+    var copied by remember { mutableStateOf(false) }
+    val markerColor = MaterialTheme.colorScheme.error
+    val bodyColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            logText = withContext(Dispatchers.IO) {
+                val file = File(context.filesDir, "logs/process-dsh.log")
+                DshDiagnosticLogs.readTail(file, lineLimit = 4000, byteLimit = 200 * 1024)
+                    .lines.joinToString("\n")
+            }
+        } else {
+            logText = ""
+        }
+    }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500)
+            copied = false
+        }
+    }
+    val annotated = remember(logText, markerColor, bodyColor) {
+        bootLogAnnotated(logText, markerColor, bodyColor)
+    }
+
+    // 嵌套滚动隔离：日志框内滚动剩余量由此消费，不再外溢带动整页滚动。
+    val scrollIsolation = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = Offset.Zero
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+        }
+    }
+
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 4.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = ImageVector.vectorResource(CommonR.drawable.ic_browser_history),
+            contentDescription = null,
+            tint = if (failed) markerColor else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.dsh_run_log_title),
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (failed) markerColor else MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(
+                    if (failed) R.string.dsh_run_log_failed else R.string.dsh_run_log_hint,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (failed) markerColor else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = if (expanded) "▴" else "▾",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (expanded) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Text(
+                text = stringResource(
+                    if (copied) R.string.dsh_run_log_copied else R.string.dsh_run_log_copy,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable(enabled = logText.isNotBlank()) {
+                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("dsh-run-log", logText))
+                            copied = true
+                        }
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(280.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .nestedScroll(scrollIsolation),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            if (logText.isBlank()) {
+                Text(
+                    text = stringResource(R.string.dsh_run_log_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(12.dp),
+                )
+            } else {
+                Text(
+                    text = annotated,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp),
+                )
+            }
         }
     }
 }

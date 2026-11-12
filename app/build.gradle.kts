@@ -48,8 +48,8 @@ extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
         minSdk = 29
         targetSdk = 36
         // 多语言版本：联合国六语 + 语言选择器 + 硬编码清零 + 布局恒 LTR + i18n 门禁。
-        versionCode = 11
-        versionName = "1.5.2"
+        versionCode = 12
+        versionName = "1.5.3"
         buildConfigField("String", "DSH_GECKOVIEW_VERSION", "\"${libs.versions.geckoview.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -127,6 +127,8 @@ dependencies {
     implementation(project(":terminal-session"))
     implementation(project(":terminal-view"))
     implementation(project(":plugin-manager"))
+    // 实例注册表：应急实例槽位与 home 目录操作。
+    implementation(project(":instance-manager"))
     // 手机助手适配层。核心层（interlock-relay-core）由它 api 传递，故此处不必再写一行。
     implementation(project(":pilot:dshbox-adapter"))
     // 远程连接面板：首页「远程」页签的内容模块。

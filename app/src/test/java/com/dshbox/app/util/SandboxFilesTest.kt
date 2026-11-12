@@ -41,6 +41,21 @@ class SandboxFilesTest {
         assertFalse(isAppManagedAsset("/root/projects/.dsh/dshbox/bin/dsh", workspace))
     }
 
+    @Test
+    fun `emergency home is protected like main home`() {
+        val dir = File(workspace, ".dsh-emergency/dshbox").absolutePath
+        assertTrue(isAppManagedAsset(dir, workspace))
+        assertTrue(isAppManagedAsset("$dir/bin/dsh", workspace))
+        assertFalse(isAppManagedAsset(File(workspace, ".dsh-emergency/profiles/web").absolutePath, workspace))
+        assertFalse(isAppManagedAsset(File(workspace, "myproj/.dsh-emergency/dshbox/x").absolutePath, workspace))
+        assertEquals(RiskLevel.DSH_DATA, riskOf(".dsh-emergency", isTopLevelRootfs = false))
+        val roots = LayerRoots(sandboxRoot = base, workspaceRoot = workspace, nodeLayer = null, dshLayer = null)
+        assertEquals(
+            Layer.DSH_DATA,
+            layerOf(File(workspace, ".dsh-emergency/sessions/s.json").absolutePath, roots),
+        )
+    }
+
     // ---------- guestPathOf：物理路径 → guest 绝对路径 ----------
 
     private val base = File("/data/user/0/com.dshbox.app/files/runtime/runtime-current/base")
