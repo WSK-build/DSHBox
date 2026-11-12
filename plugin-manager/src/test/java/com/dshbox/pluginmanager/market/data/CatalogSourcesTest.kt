@@ -23,8 +23,8 @@ class CatalogSourcesTest {
     }
 
     @Test
-    fun defaultIsTheMobileCatalog() {
-        assertEquals(CatalogSource.MOBILE, CatalogSource.DEFAULT)
+    fun defaultIsTheOfficialCatalog() {
+        assertEquals(CatalogSource.OFFICIAL, CatalogSource.DEFAULT)
     }
 
     @Test
