@@ -263,6 +263,8 @@ private fun <S> OnlineLayerImportScreen(
     val probes = remember { mutableStateMapOf<String, OnlineSourceProbe>() }
     var probing by remember { mutableStateOf(false) }
     var selectedUrl by remember { mutableStateOf<String?>(null) }
+    // 用户手选标记：一旦手选，自动预选不再覆盖（探测仍在后台刷新列表）。
+    var manualSelected by remember { mutableStateOf(false) }
     var confirmStart by remember { mutableStateOf(false) }
 
     // 安装状态检测口：null = 尚未检完。进入页面查一次；导入开始/结束、用户点行重检时再查。
@@ -277,6 +279,9 @@ private fun <S> OnlineLayerImportScreen(
     // 弹窗语义在**点击那一刻定死**：`installed` 是异步查出来的状态，若在弹窗打开后由
     // "检测中(null)" 变成"已安装(true)"，组合期读取会让用户正在读的对话框**自己换文案**。
     var confirmReinstall by remember { mutableStateOf(false) }
+    // 点击安装那一刻冻结选中源：探测仍在刷新 selectedUrl，确认弹窗须用冻结值，
+    // 避免「确认的源 ≠ 实际安装的源」。
+    var confirmUrl by remember { mutableStateOf<String?>(null) }
 
     // 该次导入是否刚刚成功。成功后**停在页面上**（不自动返回），把检测口那一行改成
     // "已安装 · 刚刚更新"，让用户确认后再点返回 —— 若成功后直接 onBack()，
@@ -304,12 +309,13 @@ private fun <S> OnlineLayerImportScreen(
         probing = true
         probes.clear()
         selectedUrl = null
+        manualSelected = false
         scope.launch {
             onProbe { source, probe ->
                 probes[urlOf(source)] = probe
-                // 预选：延迟最低且含所需内容的可达源（不覆盖用户手选）。
+                // 预选：延迟最低且含所需内容的可达源；用户手选后不再覆盖。
                 val cur = selectedUrl?.let(probes::get)
-                if (probe.reachable && probe.hasTarget &&
+                if (!manualSelected && probe.reachable && probe.hasTarget &&
                     (cur == null || !cur.hasTarget || probe.latencyMs < cur.latencyMs)
                 ) {
                     selectedUrl = urlOf(source)
@@ -382,10 +388,11 @@ private fun <S> OnlineLayerImportScreen(
             // 启动按钮置于镜像源列表上方（先看动作，再挑源）。
             Button(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = selectedUrl != null && !probing && blockedReason == null,
+                enabled = selectedUrl != null && blockedReason == null,
                 onClick = {
                     // 语义在点击时定死（见 confirmReinstall 注释）。
                     confirmReinstall = installed == true
+                    confirmUrl = selectedUrl
                     confirmStart = true
                 },
             ) {
@@ -405,8 +412,8 @@ private fun <S> OnlineLayerImportScreen(
                     note = noteOf(source),
                     probe = probes[url],
                     selected = selectedUrl == url,
-                    enabled = !probing,
-                    onClick = { selectedUrl = url },
+                    enabled = !state.running,
+                    onClick = { selectedUrl = url; manualSelected = true },
                 )
             }
             if (probing) {
@@ -426,7 +433,7 @@ private fun <S> OnlineLayerImportScreen(
     }
 
     if (confirmStart) {
-        val ordered = sources.sortedBy { urlOf(it) != selectedUrl }
+        val ordered = sources.sortedBy { urlOf(it) != confirmUrl }
         // 已安装 → 重装确认（与离线导入运行环境包同款弹窗，正文按层给）；
         // 未安装（或点击时仍在检测中）→ 原有通用确认，语义不变。
         val reinstalling = confirmReinstall

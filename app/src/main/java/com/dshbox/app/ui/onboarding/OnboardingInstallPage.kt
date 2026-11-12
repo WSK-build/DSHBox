@@ -126,6 +126,8 @@ internal fun <S> OnboardingInstallPage(
     var probeDone by remember { mutableStateOf(false) }
     // 重试以自增触发：失败后选中源与探测结果都不变，靠它重新发起同一份安装。
     var retryTick by remember { mutableIntStateOf(0) }
+    // 已开装的 retryTick 闩：选中首个可用源即开装，探测继续刷新选中源时不重复触发。
+    var startedTick by remember { mutableIntStateOf(-1) }
 
     val blocked = blockedText != null
     val activeReady = if (activeLayer == OnboardingLayer.DEBIAN) {
@@ -166,12 +168,14 @@ internal fun <S> OnboardingInstallPage(
         probeDone = true
     }
 
-    // 前置满足 + 探测完成 → 以当前选中源开装（排序后的全清单，选中源排第一，
-    // 与设置页同一底层语义）。安装中源选择锁定（startDebianImport 在途时会早退），
-    // 失败重试与尚未开装时换源都会经本效果重开一次。
-    LaunchedEffect(gateOpen, probeDone, selectedUrl, retryTick) {
-        if (!gateOpen || !probeDone) return@LaunchedEffect
+    // 前置满足 + 选中可用源即开装（不必等全部源探测完成，慢网无需久等）；排序后
+    // 全清单选中源排第一，与设置页同一底层语义。startedTick 闩保证每个 retryTick
+    // 只开装一次：探测继续刷新选中源时不重复触发，安装中由 importBusy 早退兜底，
+    // 完成后 gateOpen=false 防重装；失败重试自增 retryTick 重新放行。
+    LaunchedEffect(gateOpen, selectedUrl, retryTick) {
+        if (!gateOpen || startedTick == retryTick) return@LaunchedEffect
         val chosen = selectedUrl ?: return@LaunchedEffect
+        startedTick = retryTick
         onStart(sources.sortedBy { urlOf(it) != chosen })
     }
 

@@ -84,7 +84,8 @@ class DshApp : Application() {
         if (layout.changed) android.util.Log.i("DshApp", "dshbox layout migrated $layout")
 
         // 功能开关预置层：用 dsh 官方的 `--patch` 入口打开上游"按 profile 默认关闭"
-        // 的官方条目（当前为侧边栏「浏览器」）。各层互不覆盖。
+        // 的官方条目（当前为侧边栏「浏览器」）。各层互不覆盖。与面板一致恒锚主 home：
+        // 应急 home 的覆盖层由其自身 provisioning 负责，不在启动期把主偏好写入应急 home。
         OfficialPluginOverlay.refresh(this)
         // 解析应用语言（delegate 优先、prefs 镜像兜底），供设置页与
         // 前台服务通知取用；早于 SandboxService.start 构建首条通知。

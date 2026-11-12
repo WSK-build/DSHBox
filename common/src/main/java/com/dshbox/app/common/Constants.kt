@@ -292,6 +292,60 @@ object Constants {
     const val DSH_WEBSERVER_OVERLAY_RELATIVE_PATH =
         ".dsh/dshbox/webserver-port/webserver-port-overlay.yml"
 
+    // ---- 实例参数化路径（活跃 home 随槽切换；上方常量为 [DshInstance.MAIN] 的特化） ----
+    // 一致性由 ConstantsInstancePathsTest 锁定：常量必须恒等于对应函数(MAIN)。
+
+    /** 我方随包资产目录（相对 user-data），按实例 home 解析。 */
+    fun dshboxAssetsRelativeDir(instance: DshInstance): String = "${instance.homeLeaf}/dshbox"
+
+    /** 同上，guest 侧绝对路径。 */
+    fun dshboxAssetsGuestDir(instance: DshInstance): String =
+        "$SANDBOX_WORKSPACE/${dshboxAssetsRelativeDir(instance)}"
+
+    /** 自有插件装配暂存目录（相对 user-data），按实例 home 解析。 */
+    fun dshboxPluginsRelativeDir(instance: DshInstance): String =
+        "${dshboxAssetsRelativeDir(instance)}/$DSHBOX_PLUGINS_LEAF"
+
+    /** 同上，guest 侧绝对路径。 */
+    fun dshboxPluginsGuestDir(instance: DshInstance): String =
+        "$SANDBOX_WORKSPACE/${dshboxPluginsRelativeDir(instance)}"
+
+    /** DSH `web` profile 的 guest 目录，按实例 home 解析。 */
+    fun dshWebProfileGuestDir(instance: DshInstance): String =
+        "$SANDBOX_WORKSPACE/${instance.homeLeaf}/profiles/$DSH_WEB_PROFILE"
+
+    /** 插件市场覆盖层（相对 user-data），按实例 home 解析。 */
+    fun dshPluginMarketOverlayRelativePath(instance: DshInstance): String =
+        "${dshboxAssetsRelativeDir(instance)}/plugin-market/market-and-safe-mode-overlay.yml"
+
+    /** 同上，guest 侧绝对路径。 */
+    fun dshPluginMarketOverlayGuestPath(instance: DshInstance): String =
+        "$SANDBOX_WORKSPACE/${dshPluginMarketOverlayRelativePath(instance)}"
+
+    /** 绝对安全模式覆盖层（相对 user-data），按实例 home 解析。 */
+    fun dshSafeModeAbsoluteOverlayRelativePath(instance: DshInstance): String =
+        "${dshboxAssetsRelativeDir(instance)}/safe-mode/absolute-safe-mode.yml"
+
+    /** 同上，guest 侧绝对路径。 */
+    fun dshSafeModeAbsoluteOverlayGuestPath(instance: DshInstance): String =
+        "$SANDBOX_WORKSPACE/${dshSafeModeAbsoluteOverlayRelativePath(instance)}"
+
+    /** 「DSH官方插件」覆盖层（相对 user-data），按实例 home 解析。 */
+    fun dshOfficialPluginOverlayRelativePath(instance: DshInstance): String =
+        "${dshboxAssetsRelativeDir(instance)}/dsh-official-plugin/dsh-official-plugin-overlay.yml"
+
+    /** 同上，guest 侧绝对路径。 */
+    fun dshOfficialPluginOverlayGuestPath(instance: DshInstance): String =
+        "$SANDBOX_WORKSPACE/${dshOfficialPluginOverlayRelativePath(instance)}"
+
+    /** webserver host/port 覆盖层（相对 user-data），按实例 home 解析。 */
+    fun dshWebserverOverlayRelativePath(instance: DshInstance): String =
+        "${dshboxAssetsRelativeDir(instance)}/webserver-port/webserver-port-overlay.yml"
+
+    /** 同上，guest 侧绝对路径。 */
+    fun dshWebserverOverlayGuestPath(instance: DshInstance): String =
+        "$SANDBOX_WORKSPACE/${dshWebserverOverlayRelativePath(instance)}"
+
     /** webserver 覆盖层的目标 loader 条目 id（见上取证）。 */
     const val DSH_WEBSERVER_ENTRY_ID = "webserver"
 

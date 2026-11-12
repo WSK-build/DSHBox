@@ -32,7 +32,7 @@
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.2">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.3">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -54,7 +54,7 @@
         "applicationCategory": "MobileApplication",
         "applicationSubCategory": "Local and remote AI / LLM assistant",
         "operatingSystem": "Android (ARM64, Android 10+)",
-        "softwareVersion": "1.5.1",
+        "softwareVersion": "1.5.3",
         "inLanguage": ["en", "zh-CN"],
         "description": "Run DeepSeek Harness locally on Android and connect to DSH remotely over LAN or the web, with an AI browser assistant, phone tools, shared folders and a terminal. Guided Debian and Node.js setup, no root or Termux required. 中文：在安卓手机与平板上本地运行 DSH，也可通过扫码或配对链接远程连接 DSH；集成 AI 浏览器助手、手机助手、系统文件共享区与终端，无需 Root 或单独安装 Termux。",
         "featureList": [
@@ -188,16 +188,16 @@
               <h2 class="whats-new-title" id="whats-new-hero-title">
                 <span class="lang-en">What's new</span><span class="lang-zh">最新版本变化</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.1</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.3</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>System WebView / embedded Gecko APKs</strong> — one DSH page and host UI, with the same package and signature for seamless switching.</span>
-                <span class="lang-zh"><strong>系统 WebView / 内置 Gecko 双 APK</strong> — 共用同一 DSH 页面与宿主，同包名、同签名，可覆盖切换并保留数据。</span>
+                <span class="lang-en"><strong>Emergency repair instance</strong> — when DSH crashes, start a fresh emergency instance and switch back after fixing the main one.</span>
+                <span class="lang-zh"><strong>应急修复实例</strong> — DSH 崩溃时快速启动全新应急实例应急，修好主实例后一键切回。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Developer mode</strong> — independent ADB and Root channels with wireless pairing, devices, keys and sandbox tooling.</span>
-                <span class="lang-zh"><strong>开发者模式</strong> — 独立 ADB / Root 通道，支持无线调试配对、设备、密钥和沙箱工具管理。</span>
+                <span class="lang-en"><strong>Backup &amp; reset</strong> — reset the main instance with automatic backup, and restore or delete backups per item.</span>
+                <span class="lang-zh"><strong>备份与重置</strong> — 一键重置主实例并自动备份，备份列表逐项还原 / 删除，还原可逆。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -232,18 +232,18 @@
     <section class="stats" aria-label="Current release facts">
       <div class="container">
         <dl class="stats-strip reveal">
-          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.1</dd></div>
+          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.3</dd></div>
           <div class="stat" style="--i:1">
             <dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt>
             <dd class="stat-apk-sizes">
-              <span><span class="stat-label lang-en">System</span><span class="stat-label lang-zh">系统</span><b data-fact="apkSizeSystem">118.7 MB</b></span>
-              <span><span class="stat-label">Gecko</span><b data-fact="apkSizeGecko">207.5 MB</b></span>
+              <span><span class="stat-label lang-en">System</span><span class="stat-label lang-zh">系统</span><b data-fact="apkSizeSystem">154.4 MB</b></span>
+              <span><span class="stat-label">Gecko</span><b data-fact="apkSizeGecko">243.2 MB</b></span>
             </dd>
           </div>
           <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime setup</span><span class="lang-zh">环境准备</span></dt><dd><span class="lang-en">Guided setup</span><span class="lang-zh">分步安装</span></dd></div>
           <div class="stat" style="--i:3"><dt><span class="lang-en">Android</span><span class="lang-zh">系统要求</span></dt><dd>10+ (ARM64)</dd></div>
           <div class="stat" style="--i:4"><dt><span class="lang-en">JVM tests</span><span class="lang-zh">JVM 测试项</span></dt><dd data-fact="testCount">1823</dd></div>
-          <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd data-fact="dshVersion">0.2.1-rc.5</dd></div>
+          <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd data-fact="dshVersion">0.2.2-rc.2</dd></div>
         </dl>
       </div>
     </section>
@@ -513,7 +513,7 @@
             <ul>
               <li><span class="lang-en">Debian user-space via PRoot</span><span class="lang-zh">PRoot 提供的 Debian 用户态</span></li>
               <li><span class="lang-en">Node.js runtime</span><span class="lang-zh">Node.js 运行时</span></li>
-              <li><span class="lang-en">DSH <span data-fact="dshVersion">0.2.1-rc.5</span></span><span class="lang-zh">DSH <span data-fact="dshVersion">0.2.1-rc.5</span></span></li>
+              <li><span class="lang-en">DSH <span data-fact="dshVersion">0.2.2-rc.2</span></span><span class="lang-zh">DSH <span data-fact="dshVersion">0.2.2-rc.2</span></span></li>
               <li><span class="lang-en">System WebView or embedded GeckoView, plus a local web server</span><span class="lang-zh">系统 WebView 或内置 GeckoView，配合本地 Web 服务</span></li>
             </ul>
           </div>
@@ -601,29 +601,29 @@
                 <span class="lang-en">What's new in this version</span>
                 <span class="lang-zh">本次版本更新内容</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.1</span>
-              <span class="whats-new-date" data-release-date>2026-11-01</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.3</span>
+              <span class="whats-new-date" data-release-date>2026-11-12</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>System WebView / embedded Gecko APKs</strong> — one shared DSH page, host and user data, with matching package IDs and signatures.</span>
-                <span class="lang-zh"><strong>系统 WebView / 内置 Gecko 双 APK</strong> — 共用 DSH 页面、宿主和用户数据，同包名、同签名，可覆盖切换。</span>
+                <span class="lang-en"><strong>Emergency repair instance</strong> — a fresh emergency instance on crash, sharing the current runtime, with a recovery dialog and a permanent switching entry.</span>
+                <span class="lang-zh"><strong>应急修复实例</strong> — 崩溃时启动全新应急实例，共享当前运行层，配恢复弹窗与常驻切换入口。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Broader System WebView compatibility</strong> — startup-time API shims for older providers, with clear upgrade guidance when document-start injection is unavailable.</span>
-                <span class="lang-zh"><strong>更广泛的 System WebView 兼容</strong> — 为旧内核补齐启动期 API；缺少 document-start 时给出明确升级提示。</span>
+                <span class="lang-en"><strong>Backup &amp; reset</strong> — reset the main instance with automatic backup; per-item restore / delete with reversible restore.</span>
+                <span class="lang-zh"><strong>备份与重置</strong> — 重置主实例自动备份；备份逐项还原 / 删除，还原可逆、原备份保留。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Developer mode</strong> — independent ADB and Root channels, wireless debugging pairing, device management, keys and sandbox integration.</span>
-                <span class="lang-zh"><strong>开发者模式</strong> — 独立 ADB / Root 通道，支持无线调试配对、设备、密钥和沙箱集成。</span>
+                <span class="lang-en"><strong>DSH 0.2.2-rc.2</strong> — bundled runtime upgraded, pure upstream, provisioned by version arbitration.</span>
+                <span class="lang-zh"><strong>DSH 0.2.2-rc.2</strong> — 随包运行层升级，保持上游纯净，按版本仲裁装配。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Plugin marketplace reliability</strong> — official plugin addition, bundled plugin protection and consistent registry, store and activation handling.</span>
-                <span class="lang-zh"><strong>插件市场可靠性</strong> — 接通官方添加插件，保护随包插件，并统一 registry、store 与启停处理。</span>
+                <span class="lang-en"><strong>Faster online runtime import</strong> — install as soon as a usable mirror is selected, no waiting for all probes.</span>
+                <span class="lang-zh"><strong>在线获取运行环境提速</strong> — 选中可用镜像源即可安装，不必等全部探测完成。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>DSH 0.2.1-rc.5 and diagnostics</strong> — unmodified upstream DSH, unified renderer diagnostics and complete System WebView / Gecko page-flow adaptation.</span>
-                <span class="lang-zh"><strong>DSH 0.2.1-rc.5 与诊断</strong> — 保持 DSH 上游纯净，统一双渲染诊断，并补齐 System WebView / Gecko 页面链路。</span>
+                <span class="lang-en"><strong>Local DSH run log</strong> — a run-log panel on the local access page, red on failure, collapsible viewing and redacted copying.</span>
+                <span class="lang-zh"><strong>本地 DSH 运行日志</strong> — 本地访问页新增运行日志面板，失败变红、折叠查看、脱敏复制。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -736,8 +736,8 @@
               <span class="lang-zh">如何升级 DSH？</span>
             </summary>
             <p>
-              <span class="lang-en">The bundled version is <span data-fact="dshVersion">0.2.1-rc.5</span>. Use Settings → Update DSH to check online mirrors. Back up before trying Alpha versions: reverting to RC can cause conversation-data incompatibility.</span>
-              <span class="lang-zh">随包版本为 <span data-fact="dshVersion">0.2.1-rc.5</span>，可在设置 → 在线更新 DSH 中选择镜像源升级。体验 Alpha 前请备份，回退 RC 可能出现对话数据兼容问题。</span>
+              <span class="lang-en">The bundled version is <span data-fact="dshVersion">0.2.2-rc.2</span>. Use Settings → Update DSH to check online mirrors. Back up before trying Alpha versions: reverting to RC can cause conversation-data incompatibility.</span>
+              <span class="lang-zh">随包版本为 <span data-fact="dshVersion">0.2.2-rc.2</span>，可在设置 → 在线更新 DSH 中选择镜像源升级。体验 Alpha 前请备份，回退 RC 可能出现对话数据兼容问题。</span>
             </p>
           </details>
           <details class="faq-item reveal" style="--i:8">
@@ -841,6 +841,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.5.2" defer></script>
+  <script src="./assets/js/main.js?v=1.5.3" defer></script>
 </body>
 </html>

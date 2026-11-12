@@ -20,6 +20,10 @@ object TerminalPathsResolver {
         extraGuestBinds: List<String> = emptyList(),
         /** 追加到 guest PATH 的目录；与 [extraGuestBinds] 配套。 */
         extraPathEntries: List<String> = emptyList(),
+        /** 活跃实例的 guest DSH_HOME；缺省主实例。 */
+        dshHomeGuest: String = "/root/projects/.dsh",
+        /** 活跃实例的随包 CLI 目录；缺省主实例。 */
+        dshboxBinGuest: String = "/root/projects/.dsh/dshbox/bin",
     ): TerminalPaths? {
         val runtimeCurrent = File(File(appFilesDir, "runtime"), "runtime-current")
         // Layered layout: base is the L0 rootfs (Node is a separate L1 layer
@@ -78,6 +82,8 @@ object TerminalPathsResolver {
             shareBinds = shareBinds,
             extraGuestBinds = extraGuestBinds,
             extraPathEntries = extraPathEntries,
+            dshHomeGuest = dshHomeGuest,
+            dshboxBinGuest = dshboxBinGuest,
         )
     }
 }

@@ -10,6 +10,8 @@ import com.dshbox.app.runtime.RuntimeUpdateManager
 import com.dshbox.app.sandbox.DefaultSandboxManager
 import com.dshbox.app.sandbox.SandboxConfig
 import com.dshbox.app.util.shareBinds
+import com.dshbox.instance.InstanceRegistry
+import com.dshbox.instance.PrefsSlotStore
 import com.dshbox.terminal.DshTerminalManager
 
 /**
@@ -18,6 +20,11 @@ import com.dshbox.terminal.DshTerminalManager
  */
 object ServiceLocator {
     fun createAppContainer(context: Context): AppContainer {
+        // 实例注册表先于沙箱配置：活跃槽位经提供者注入，DSH_HOME 与 home 相对路径随槽切换。
+        val instanceRegistry = InstanceRegistry(
+            userDataDir = java.io.File(context.filesDir, "user-data"),
+            store = PrefsSlotStore(context),
+        )
         val sandboxConfig = SandboxConfig(
             appFilesDir = context.filesDir,
             nativeLibraryDir = context.applicationInfo.nativeLibraryDir,
@@ -33,6 +40,7 @@ object ServiceLocator {
                 developer.access.DeveloperAccessWiring.guestBinds(
                     context.filesDir,
                     java.io.File(context.filesDir, "runtime/runtime-current/base"),
+                    workspaceCliDir = com.dshbox.app.common.Constants.dshboxAssetsGuestDir(instanceRegistry.active.value) + "/bin",
                 )
             },
             extraPathEntriesProvider = {
@@ -43,6 +51,7 @@ object ServiceLocator {
             // 固化本机 origin `http://127.0.0.1:3080`，端口一变即整链失效——该变体
             // **固定 3080 不自适应**；systemWebView 变体按运行期地址走，启用。
             dshPortAdaptationEnabled = !DshRendererFactory.isGeckoVariant,
+            activeDshInstanceProvider = { instanceRegistry.active.value },
         )
         // 设备交互状态（唤醒且亮屏）交给健康循环：休眠期间 guest 会被整体冻结，
         // 端口在听但 HTTP 不应答，此时的探测失败是暂时状态，不该判为 DSH 宕机。
@@ -126,6 +135,7 @@ object ServiceLocator {
         )
         val dshTerminalManager = DshTerminalManager(
             pathsProvider = {
+                val activeInstance = instanceRegistry.active.value
                 com.dshbox.terminal.TerminalPathsResolver.resolve(
                     appFilesDir = sandboxConfig.appFilesDir,
                     nativeLibraryDir = sandboxConfig.nativeLibraryDir,
@@ -133,8 +143,11 @@ object ServiceLocator {
                     extraGuestBinds = developer.access.DeveloperAccessWiring.guestBinds(
                         sandboxConfig.appFilesDir,
                         java.io.File(sandboxConfig.runtimeDir, "runtime-current/base"),
+                        workspaceCliDir = com.dshbox.app.common.Constants.dshboxAssetsGuestDir(activeInstance) + "/bin",
                     ),
                     extraPathEntries = developer.access.DeveloperAccessWiring.guestPathEntries(),
+                    dshHomeGuest = activeInstance.guestHome,
+                    dshboxBinGuest = com.dshbox.app.common.Constants.dshboxAssetsGuestDir(activeInstance) + "/bin",
                 )
             },
             overlayInstaller = overlayInstaller,
@@ -151,6 +164,6 @@ object ServiceLocator {
         val onlineRuntimeImportManager = com.dshbox.app.runtime.OnlineRuntimeImportManager(
             context, sandboxConfig, sandboxManager,
         )
-        return AppContainer(context, sandboxConfig, sandboxManager, bridgeRouter, dshTerminalManager, runtimeUpdateManager, onlineRuntimeImportManager)
+        return AppContainer(context, sandboxConfig, sandboxManager, bridgeRouter, dshTerminalManager, runtimeUpdateManager, onlineRuntimeImportManager, instanceRegistry)
     }
 }

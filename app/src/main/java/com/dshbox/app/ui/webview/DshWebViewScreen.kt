@@ -115,6 +115,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dshbox.app.R
 import com.dshbox.app.ui.configurationAwareResources
 import com.dshbox.app.common.Constants
+import com.dshbox.app.DshApp
+import com.dshbox.app.common.DshInstance
 import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.ui.theme.AppDshAddressState
 import com.dshbox.app.ui.theme.AppDshBehaviorState
@@ -387,6 +389,10 @@ internal const val DSHBOX_ACTION_OPEN_EXTERNAL = "open-external"
 internal const val SETTINGS_DOCUMENT_RELATIVE_PATH =
     "user-data/.dsh/profiles/${Constants.DSH_WEB_PROFILE}/cordis.patch.yml"
 
+/** 按活跃实例 home 解析配置文件相对路径（主实例即 [SETTINGS_DOCUMENT_RELATIVE_PATH]）。 */
+internal fun settingsDocumentRelativePath(instance: DshInstance): String =
+    "user-data/${instance.homeLeaf}/profiles/${Constants.DSH_WEB_PROFILE}/cordis.patch.yml"
+
 /**
  * profile patch 文件缺失时写入的初始正文。
  *
@@ -416,8 +422,8 @@ private const val PROFILE_PATCH_TEMPLATE = """# Your patch layer for this dsh pr
  *
  * @return 可用于内置查看器的绝对路径；创建失败/路径不可用时返回 null。
  */
-internal fun prepareSettingsDocument(filesDir: File): String? {
-    val file = File(filesDir, SETTINGS_DOCUMENT_RELATIVE_PATH)
+internal fun prepareSettingsDocument(filesDir: File, instance: DshInstance = DshInstance.MAIN): String? {
+    val file = File(filesDir, settingsDocumentRelativePath(instance))
     if (!file.isFile) {
         runCatching {
             file.parentFile?.mkdirs()
@@ -1366,8 +1372,10 @@ fun DshWebViewScreen(
                                 when (actionUri.host?.lowercase()) {
                                     DSHBOX_ACTION_SETTINGS_DOCUMENT -> {
                                         // 补齐上游 prepareDocument()（插件拦截后它不会执行）：
-                                        // 文件缺失时按上游语义建一个空文件再打开。
-                                        val path = prepareSettingsDocument(context.filesDir)
+                                        // 文件缺失时按上游语义建一个空文件再打开。落点随活跃实例。
+                                        val activeInstance =
+                                            (context.applicationContext as DshApp).container.instanceRegistry.active.value
+                                        val path = prepareSettingsDocument(context.filesDir, activeInstance)
                                         if (path != null) {
                                             viewerPath = path
                                         } else {
@@ -1377,7 +1385,7 @@ fun DshWebViewScreen(
                                                 // 一处定义，资源里不重复一份会漂移的字面量。
                                                 resources.getString(
                                                     R.string.webview_settings_doc_missing,
-                                                    SETTINGS_DOCUMENT_RELATIVE_PATH,
+                                                    settingsDocumentRelativePath(activeInstance),
                                                 ),
                                                 Toast.LENGTH_SHORT,
                                             ).show()

@@ -26,6 +26,20 @@ class TerminalEnvFactoryTest {
     )
 
     @Test
+    fun `sandbox env follows active emergency instance`() {
+        val emergency = paths().copy(
+            dshHomeGuest = "/root/projects/.dsh-emergency",
+            dshboxBinGuest = "/root/projects/.dsh-emergency/dshbox/bin",
+        )
+        val env = TerminalEnvFactory.sandboxEnv(emergency).associate {
+            val idx = it.indexOf('=')
+            it.take(idx) to it.substring(idx + 1)
+        }
+        assertEquals("/root/projects/.dsh-emergency", env["DSH_HOME"])
+        assertTrue(env["PATH"]!!.startsWith("/root/projects/.dsh-emergency/dshbox/bin:"))
+    }
+
+    @Test
     fun `sandbox env is complete for clearenv semantics`() {
         val env = TerminalEnvFactory.sandboxEnv(paths()).associate {
             val idx = it.indexOf('=')

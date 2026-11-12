@@ -27,13 +27,19 @@ import com.dshbox.app.util.BackgroundOps
 import com.dshbox.app.R
 import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.Constants
+import com.dshbox.app.common.DshInstance
 import com.dshbox.app.common.coroutineFailureHandler
+import com.dshbox.instance.InstancePolicy
 import com.dshbox.app.runtime.AptSourceProvisioner
 import com.dshbox.app.runtime.DpkgLedgerGuard
 import com.dshbox.app.runtime.GuestUserProvisioner
 import com.dshbox.app.sandbox.BundledRuntimeInstaller
 import com.dshbox.app.sandbox.DshState
 import com.dshbox.app.sandbox.SandboxState
+import com.dshbox.app.sandbox.OfficialPluginOverlay
+import com.dshbox.app.sandbox.DshUpdateOutcome
+import com.dshbox.app.common.AppError
+import com.dshbox.app.instance.InstanceOpState
 import com.dshbox.pluginmanager.core.BrowserAdapterAssemblyGate
 import com.dshbox.app.ui.theme.AppLocaleState
 import kotlinx.coroutines.CoroutineScope
@@ -95,6 +101,9 @@ class SandboxService : Service() {
 
     private val sandboxManager
         get() = (application as DshApp).container.sandboxManager
+
+    private val instanceRegistry
+        get() = (application as DshApp).container.instanceRegistry
 
     private val terminalManager
         get() = (application as DshApp).container.dshTerminalManager
@@ -168,6 +177,213 @@ class SandboxService : Service() {
         }
     }
 
+    // ---- 实例生命周期编排（切换 / 创建应急 / 删除应急 / 层修复）----
+
+    /** 实例操作统一门禁：后台操作或另一实例操作进行中拒绝；更新可观察状态。 */
+    private suspend fun runInstanceOp(
+        kind: InstanceOpState.Kind,
+        block: suspend () -> AppResult<Unit>,
+    ): AppResult<Unit> {
+        // 原子 CAS 进入运行态；拒绝路径不触碰状态（避免清掉进行中操作的 running）。
+        if (BackgroundOps.isBusy || !InstanceOpState.tryBegin(kind)) {
+            return AppResult.Failure(AppError("INSTANCE_OP_BUSY", "another operation is in progress"))
+        }
+        return try {
+            // 登记后台操作：阻止设置页清理并发删除暂存/换层中间产物。
+            val result = BackgroundOps.runTracked { block() }
+            InstanceOpState.finish(result is AppResult.Success, (result as? AppResult.Failure)?.error?.message)
+            result
+        } catch (t: CancellationException) {
+            InstanceOpState.finish(false, "cancelled")
+            throw t
+        } catch (t: Throwable) {
+            Log.e(TAG, "instance op $kind failed: ${t.message}", t)
+            InstanceOpState.finish(false, t.message)
+            AppResult.Failure(AppError("INSTANCE_OP_FAILED", t.message ?: "instance operation failed"))
+        }
+    }
+
+    /** 切换活跃实例：停 DSH → 翻槽 → 沙箱在运行则重启 DSH（不停沙箱）。 */
+    private suspend fun switchInstanceInternal(target: DshInstance): AppResult<Unit> {
+        if (instanceRegistry.active.value == target) return AppResult.Success(Unit)
+        val sandboxWasRunning = sandboxManager.sandboxState.value == SandboxState.RUNNING
+        sandboxManager.stopDsh()
+        instanceRegistry.switchTo(target)
+        if (sandboxWasRunning) {
+            val r = sandboxManager.startDsh()
+            if (r is AppResult.Failure) return AppResult.Failure(r.error)
+        }
+        return AppResult.Success(Unit)
+    }
+
+    suspend fun switchInstance(target: DshInstance): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.SWITCH) { switchInstanceInternal(target) }
+
+    /**
+     * 懒创建应急实例：建 home → 翻槽 → 暂存应急资产 → 首启 DSH 自建 profile →
+     * 装配 mobile-adapt → 重启生效。仅在用户确认后触发。
+     */
+    suspend fun createEmergencyInstance(): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.CREATE_EMERGENCY) {
+            val sandboxWasRunning = sandboxManager.sandboxState.value == SandboxState.RUNNING
+            sandboxManager.stopDsh()
+            when (val r = instanceRegistry.createEmergencyHome()) {
+                is AppResult.Failure -> return@runInstanceOp r
+                else -> Unit
+            }
+            instanceRegistry.switchTo(DshInstance.EMERGENCY)
+            // 翻槽后 provision 落入应急 home（资产目录随活跃槽解析）。
+            setDshboxAssetsWritable(true)
+            try {
+                pluginAssemblyMutex.withLock {
+                    provisionMobileAdaptPlugin()
+                    provisionDshCliShim()
+                }
+                OfficialPluginOverlay.refresh(applicationContext, DshInstance.EMERGENCY)
+            } finally {
+                hardenDshboxAssets()
+            }
+            if (sandboxWasRunning) {
+                val started = sandboxManager.startDsh()
+                if (started is AppResult.Failure) return@runInstanceOp AppResult.Failure(started.error)
+                // profile 首启后才存在；装配 mobile-adapt 后重启生效。
+                ensureOwnPluginsAssembled()
+                val restarted = sandboxManager.restartDsh()
+                if (restarted is AppResult.Failure) return@runInstanceOp AppResult.Failure(restarted.error)
+            }
+            AppResult.Success(Unit)
+        }
+
+    /** 删除应急实例：若应急活跃先切回主实例，再删 home（注册表守卫非活跃）。 */
+    suspend fun deleteEmergencyInstance(): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.DELETE_EMERGENCY) {
+            if (!instanceRegistry.emergencyExists()) return@runInstanceOp AppResult.Success(Unit)
+            if (instanceRegistry.active.value == DshInstance.EMERGENCY) {
+                when (val r = switchInstanceInternal(DshInstance.MAIN)) {
+                    is AppResult.Failure -> return@runInstanceOp r
+                    else -> Unit
+                }
+            }
+            // 先解锁应急 home 固化资产（bin 0555）再删，否则只读文件 EACCES 致半毁。
+            setDshboxAssetsWritable(true, DshInstance.EMERGENCY)
+            try {
+                instanceRegistry.deleteEmergencyHome()
+            } finally {
+                // 删除成功则 home 已不存在（harden 空操作）；失败则回固化保护残留资产。
+                hardenDshboxAssets(DshInstance.EMERGENCY)
+            }
+        }
+
+    /** 层修复：回滚到上一版本（previous/dsh）。 */
+    suspend fun repairLayerRollback(): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.REPAIR_LAYER) {
+            when (val r = sandboxManager.rollbackDshLayer()) {
+                is AppResult.Success -> AppResult.Success(Unit)
+                is AppResult.Failure -> AppResult.Failure(r.error)
+            }
+        }
+
+    /** 层修复：恢复随包基线（强制覆盖，可降/平/升；语义由界面按 Versions.compare 提示）。 */
+    suspend fun repairLayerRestoreBaseline(): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.REPAIR_LAYER) {
+            when (val r = provisionBundledDsh(allowDowngrade = true)) {
+                null -> AppResult.Failure(AppError("DSH_NO_BUNDLED", "no bundled DSH baseline in this APK"))
+                is AppResult.Success -> AppResult.Success(Unit)
+                is AppResult.Failure -> AppResult.Failure(r.error)
+            }
+        }
+
+    /**
+     * 重置主实例：备份或删除主 home → 切回主实例 → 重新暂存资产 → 首启自建 profile →
+     * 按开关装配 → 重启生效。仅删 `user-data/.dsh`，不碰用户项目文件与运行层版本。
+     */
+    suspend fun resetMainInstance(backup: Boolean): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.RESET_MAIN) {
+            val active = instanceRegistry.active.value
+            val sandboxWasRunning = sandboxManager.sandboxState.value == SandboxState.RUNNING
+            // 主实例在运行才停它；应急活跃时主 home 未被占用，无需停应急。
+            if (active == DshInstance.MAIN) sandboxManager.stopDsh()
+            // 先解锁主 home 资产再删：bin 目录固化 0555，未解锁直接删会 EACCES 半毁 home。
+            setDshboxAssetsWritable(true, DshInstance.MAIN)
+            val reset = instanceRegistry.resetMainHome(backup)
+            if (reset is AppResult.Failure) {
+                hardenDshboxAssets(DshInstance.MAIN)
+                return@runInstanceOp reset
+            }
+            // 重置成功才切回主实例（应急活跃时在此停应急），失败则保持原槽位。
+            if (active != DshInstance.MAIN) sandboxManager.stopDsh()
+            try {
+                instanceRegistry.switchTo(DshInstance.MAIN)
+                pluginAssemblyMutex.withLock {
+                    provisionMobileAdaptPlugin()
+                    provisionMobilePilotPlugin()
+                    provisionBrowserUsePlugin()
+                    provisionDshCliShim()
+                }
+                OfficialPluginOverlay.refresh(applicationContext, DshInstance.MAIN)
+            } finally {
+                hardenDshboxAssets(DshInstance.MAIN)
+            }
+            if (sandboxWasRunning) {
+                val started = sandboxManager.startDsh()
+                if (started is AppResult.Failure) return@runInstanceOp AppResult.Failure(started.error)
+                ensureOwnPluginsAssembled()
+                val restarted = sandboxManager.restartDsh()
+                if (restarted is AppResult.Failure) return@runInstanceOp AppResult.Failure(restarted.error)
+            }
+            AppResult.Success(Unit)
+        }
+
+    /**
+     * 还原指定备份到主实例（复制模式）：空间预检 → 自动备份现状 → 复制选中备份为
+     * `.dsh`（原备份保留）→ 切回主实例 → 重新暂存装配 → 重启。原备份不删除。
+     */
+    suspend fun restoreBackupInstance(name: String): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.RESTORE_BACKUP) {
+            val active = instanceRegistry.active.value
+            val sandboxWasRunning = sandboxManager.sandboxState.value == SandboxState.RUNNING
+            val entry = instanceRegistry.listBackups().firstOrNull { it.name == name }
+                ?: return@runInstanceOp AppResult.Failure(AppError("INSTANCE_BACKUP_INVALID", "backup not found: $name"))
+            val userDataDir = (application as DshApp).container.sandboxConfig.userDataDir
+            val free = runCatching { android.os.StatFs(userDataDir.absolutePath).availableBytes }.getOrDefault(Long.MAX_VALUE)
+            if (free < entry.sizeBytes) {
+                return@runInstanceOp AppResult.Failure(
+                    AppError("INSTANCE_RESTORE_NO_SPACE", "insufficient space: need ${entry.sizeBytes}, free $free"),
+                )
+            }
+            if (active == DshInstance.MAIN) sandboxManager.stopDsh()
+            val restored = instanceRegistry.restoreBackup(name)
+            if (restored is AppResult.Failure) return@runInstanceOp restored
+            if (active != DshInstance.MAIN) sandboxManager.stopDsh()
+            setDshboxAssetsWritable(true, DshInstance.MAIN)
+            try {
+                instanceRegistry.switchTo(DshInstance.MAIN)
+                pluginAssemblyMutex.withLock {
+                    provisionMobileAdaptPlugin()
+                    provisionMobilePilotPlugin()
+                    provisionBrowserUsePlugin()
+                    provisionDshCliShim()
+                }
+                OfficialPluginOverlay.refresh(applicationContext, DshInstance.MAIN)
+            } finally {
+                hardenDshboxAssets(DshInstance.MAIN)
+            }
+            if (sandboxWasRunning) {
+                val started = sandboxManager.startDsh()
+                if (started is AppResult.Failure) return@runInstanceOp AppResult.Failure(started.error)
+                ensureOwnPluginsAssembled()
+                val restarted = sandboxManager.restartDsh()
+                if (restarted is AppResult.Failure) return@runInstanceOp AppResult.Failure(restarted.error)
+            }
+            AppResult.Success(Unit)
+        }
+
+    /** 删除指定备份（逐项）。不影响运行中的 DSH；红线守卫在注册表内。 */
+    suspend fun deleteBackupInstance(name: String): AppResult<Unit> =
+        runInstanceOp(InstanceOpState.Kind.DELETE_BACKUP) {
+            instanceRegistry.deleteBackup(name)
+        }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_SANDBOX -> serviceScope.launch { startSandbox() }
@@ -179,6 +395,26 @@ class SandboxService : Service() {
             ACTION_START_ALL -> serviceScope.launch { startSandboxAndDsh() }
             ACTION_RESTART_DSH -> serviceScope.launch { restartDsh() }
             ACTION_STOP_DSH -> serviceScope.launch { stopDsh() }
+            ACTION_SWITCH_INSTANCE -> {
+                val target = DshInstance.fromHomeLeaf(intent?.getStringExtra(EXTRA_INSTANCE))
+                serviceScope.launch { switchInstance(target) }
+            }
+            ACTION_CREATE_EMERGENCY -> serviceScope.launch { createEmergencyInstance() }
+            ACTION_DELETE_EMERGENCY -> serviceScope.launch { deleteEmergencyInstance() }
+            ACTION_REPAIR_ROLLBACK -> serviceScope.launch { repairLayerRollback() }
+            ACTION_REPAIR_BASELINE -> serviceScope.launch { repairLayerRestoreBaseline() }
+            ACTION_RESET_MAIN -> {
+                val backup = intent?.getBooleanExtra(EXTRA_BACKUP, true) ?: true
+                serviceScope.launch { resetMainInstance(backup) }
+            }
+            ACTION_RESTORE_BACKUP -> {
+                val name = intent?.getStringExtra(EXTRA_BACKUP_NAME)
+                if (name != null) serviceScope.launch { restoreBackupInstance(name) }
+            }
+            ACTION_DELETE_BACKUP -> {
+                val name = intent?.getStringExtra(EXTRA_BACKUP_NAME)
+                if (name != null) serviceScope.launch { deleteBackupInstance(name) }
+            }
             ACTION_STOP_ALL -> {
                 serviceScope.launch {
                     terminalManager.stopAll()
@@ -301,8 +537,11 @@ class SandboxService : Service() {
             // 两侧的 chmod（解只读 / 固化）只改模式、不删文件，在锁外无碍。
             pluginAssemblyMutex.withLock {
                 provisionMobileAdaptPlugin()
-                provisionMobilePilotPlugin()
-                provisionBrowserUsePlugin()
+                // 应急槽只暂存移动端适配包；pilot/browser-use 不进应急 home。
+                if (instanceRegistry.active.value == DshInstance.MAIN) {
+                    provisionMobilePilotPlugin()
+                    provisionBrowserUsePlugin()
+                }
             }
             provisionDshLinkShim()
             provisionDshCliShim()
@@ -510,12 +749,30 @@ class SandboxService : Service() {
      */
     private suspend fun ensureOwnPluginsAssembled() {
         pluginAssemblyMutex.withLock {
+            val instance = instanceRegistry.active.value
+            if (instance == DshInstance.EMERGENCY) {
+                // 应急槽固定装配清单：不读主实例全局开关，失败不写主实例错误位。
+                for (label in InstancePolicy.EMERGENCY_ASSEMBLY) {
+                    when (label) {
+                        "mobile-adapt" -> ensureOwnPlugin(
+                            label = label,
+                            bundleId = "@local/dsh-mobile-adapt",
+                            intentKey = null,
+                            errorKey = null,
+                            stageName = "mobile-adapt",
+                            instance = instance,
+                        )
+                    }
+                }
+                return@withLock
+            }
             ensureOwnPlugin(
                 label = "mobile-adapt",
                 bundleId = "@local/dsh-mobile-adapt",
                 intentKey = Constants.PREF_MOBILE_ADAPT_INSTALLED,
                 errorKey = Constants.PREF_MOBILE_ADAPT_LAST_ERROR,
                 stageName = "mobile-adapt",
+                instance = instance,
             )
             ensureOwnPlugin(
                 label = "mobile-pilot",
@@ -523,6 +780,7 @@ class SandboxService : Service() {
                 intentKey = Constants.PREF_MOBILE_PILOT_ENABLED,
                 errorKey = Constants.PREF_MOBILE_PILOT_LAST_ERROR,
                 stageName = "mobile-pilot",
+                instance = instance,
             )
             BrowserAdapterAssemblyGate.withLock {
                 if (!browserStageProvisioned) {
@@ -537,6 +795,7 @@ class SandboxService : Service() {
                     intentKey = Constants.PREF_BROWSER_PLUGIN_ENABLED,
                     errorKey = Constants.PREF_BROWSER_PLUGIN_LAST_ERROR,
                     stageName = "browser-use",
+                    instance = instance,
                 )
             }
         }
@@ -550,25 +809,27 @@ class SandboxService : Service() {
      * 失败就把开关落成「关」—— 会让一次瞬时故障变成永久关闭：此后对齐在开关处提前返回，
      * 用户再也等不到补装，而面板还看不出这是自动关的（mobile-pilot 没有错误展示位）。
      *
-     * @param intentKey 「用户要不要这个包」的偏好键
-     * @param errorKey 失败原因落盘的位置（面板读取展示）
+     * @param intentKey 「用户要不要这个包」的偏好键；null 表示固定装配（应急槽），不读开关
+     * @param errorKey 失败原因落盘的位置（面板读取展示）；null 表示不落盘（应急槽不写主实例错误位）
      * @param stageName 随包资产在 guest 暂存目录下的子目录名
+     * @param instance 目标实例 home；缺省主实例
      */
     private suspend fun ensureOwnPlugin(
         label: String,
         bundleId: String,
-        intentKey: String,
-        errorKey: String,
+        intentKey: String?,
+        errorKey: String?,
         stageName: String,
+        instance: DshInstance = DshInstance.MAIN,
     ) {
-        // 键没写过时按"默认开启"处理：面板首次运行会把默认值真正落盘（见 AdapterPluginController）。
-        if (!prefs.getBoolean(intentKey, true)) {
+        // 键没写过时按"默认开启"处理；intentKey 为 null 表示固定装配（应急槽），不读开关。
+        if (intentKey != null && !prefs.getBoolean(intentKey, true)) {
             Log.i(TAG, "bootstrap: $label disabled; leaving profile untouched")
             return
         }
-        val profile = Constants.DSH_WEB_PROFILE_GUEST_DIR
+        val profile = Constants.dshWebProfileGuestDir(instance)
         val pluginDir = "$profile/node_modules/$bundleId"
-        val stage = "${Constants.DSHBOX_PLUGINS_GUEST_DIR}/$stageName"
+        val stage = "${Constants.dshboxPluginsGuestDir(instance)}/$stageName"
 
         val probeScript = OwnPluginProbe.buildScript(
             profileDir = profile,
@@ -592,10 +853,10 @@ class SandboxService : Service() {
         // 安装都会把目录当孤儿清掉，随后启动解析失败。因此声明缺失时**不能 SKIP**，
         // 要补一次装配让 install.sh 写入 file: 依赖。
         if (OwnPluginProbe.actionFor(marker) == OwnPluginProbe.Action.SKIP &&
-            profileDeclaresBundleDependency(bundleId)
+            profileDeclaresBundleDependency(bundleId, instance)
         ) {
             Log.i(TAG, "bootstrap: $label not assembled (marker=${marker ?: "none"}); leaving profile untouched")
-            if (label == "browser-use" && marker == OwnPluginProbe.MARKER_UP_TO_DATE) {
+            if (label == "browser-use" && marker == OwnPluginProbe.MARKER_UP_TO_DATE && errorKey != null) {
                 prefs.edit().remove(errorKey).apply()
             }
             return
@@ -610,11 +871,13 @@ class SandboxService : Service() {
         when (res) {
             is AppResult.Success -> {
                 Log.i(TAG, "bootstrap: $label assembled from bundled version")
-                prefs.edit().remove(errorKey).apply()
+                if (errorKey != null) prefs.edit().remove(errorKey).apply()
             }
             is AppResult.Failure -> {
                 Log.w(TAG, "bootstrap: $label assembly failed: ${res.error.message}")
-                prefs.edit().putString(errorKey, res.error.message.ifBlank { res.error.code }).apply()
+                if (errorKey != null) {
+                    prefs.edit().putString(errorKey, res.error.message.ifBlank { res.error.code }).apply()
+                }
             }
         }
     }
@@ -630,9 +893,9 @@ class SandboxService : Service() {
      * 这里只做最轻的文本检查（不解析 JSON），仅用于决定是否需要补一次装配；真正
      * 写入依赖声明的是插件包自己的 `install.sh`。
      */
-    private fun profileDeclaresBundleDependency(bundleId: String): Boolean {
+    private fun profileDeclaresBundleDependency(bundleId: String, instance: DshInstance): Boolean {
         val config = (application as DshApp).container.sandboxConfig
-        val relative = Constants.DSH_WEB_PROFILE_GUEST_DIR
+        val relative = Constants.dshWebProfileGuestDir(instance)
             .removePrefix(Constants.SANDBOX_WORKSPACE)
             .trimStart('/')
         val manifest = File(config.userDataDir, "$relative/package.json")
@@ -747,7 +1010,10 @@ class SandboxService : Service() {
     private suspend fun provisionDshCliShim() = withContext(Dispatchers.IO) {
         val config = (application as DshApp).container.sandboxConfig
         try {
-            val binDir = File(File(config.userDataDir, Constants.DSHBOX_ASSETS_RELATIVE_DIR), "bin")
+            val binDir = File(
+                File(config.userDataDir, Constants.dshboxAssetsRelativeDir(instanceRegistry.active.value)),
+                "bin",
+            )
             binDir.mkdirs()
             val scripts = buildList {
                 add("dsh" to DSH_CLI_SHIM)
@@ -1129,9 +1395,12 @@ class SandboxService : Service() {
     private fun pluginsStageRoot(): File =
         File(dshboxAssetsDir(), Constants.DSHBOX_PLUGINS_LEAF)
 
-    /** 我方随包资产目录（`user-data/.dsh/dshbox`）。 */
-    private fun dshboxAssetsDir(): File =
-        File((application as DshApp).container.sandboxConfig.userDataDir, Constants.DSHBOX_ASSETS_RELATIVE_DIR)
+    /** 我方随包资产目录（`user-data/<实例 home>/dshbox`）；缺省活跃实例。 */
+    private fun dshboxAssetsDir(instance: DshInstance = instanceRegistry.active.value): File =
+        File(
+            (application as DshApp).container.sandboxConfig.userDataDir,
+            Constants.dshboxAssetsRelativeDir(instance),
+        )
 
     /**
      * 暂存包里参与一致性比对的文件（相对 `plugin/` 根，已排序）。
@@ -1177,13 +1446,20 @@ class SandboxService : Service() {
      *   若哪天真要做到不可改，只能把母本放到工作区之外并让 guest 只读地看 —— 代价是
      *   用户在文件页里根本看不到这个目录。
      */
-    private fun hardenDshboxAssets() = chmodDshboxAssets(writable = false)
+    private fun hardenDshboxAssets(instance: DshInstance = instanceRegistry.active.value) =
+        chmodDshboxAssets(writable = false, instance = instance)
 
     /** 临时解锁（重写资产前调用）；写完必须调 [hardenDshboxAssets] 固化回去。 */
-    private fun setDshboxAssetsWritable(writable: Boolean) = chmodDshboxAssets(writable = writable)
+    private fun setDshboxAssetsWritable(
+        writable: Boolean,
+        instance: DshInstance = instanceRegistry.active.value,
+    ) = chmodDshboxAssets(writable = writable, instance = instance)
 
-    private fun chmodDshboxAssets(writable: Boolean) {
-        val root = dshboxAssetsDir()
+    private fun chmodDshboxAssets(
+        writable: Boolean,
+        instance: DshInstance = instanceRegistry.active.value,
+    ) {
+        val root = dshboxAssetsDir(instance)
         if (!root.isDirectory) return
         if (writable) {
             // **解锁走整棵树**：既为重写开路，也负责把历史版本误固化过的地方修回可写
@@ -1237,17 +1513,17 @@ class SandboxService : Service() {
         }
     }
 
-    private suspend fun provisionBundledDsh() {
+    private suspend fun provisionBundledDsh(allowDowngrade: Boolean = false): AppResult<DshUpdateOutcome>? {
         // DshBundler: provision the APK-bundled DSH baseline (assets/dsh/
         // <version>.tar.gz [+ .sha256]) into runtime-current/dsh with version
         // arbitration (installed-newer wins). No-op when the APK carries no DSH
         // baseline (e.g. a dev build that ships DSH separately).
         val assetManager = applicationContext.assets
-        val entries = runCatching { assetManager.list("dsh") }.getOrNull() ?: return
+        val entries = runCatching { assetManager.list("dsh") }.getOrNull() ?: return null
         // zstd baseline (preferred) or a gzip fallback; DshLayer/extractTarGz sniffs
         // the actual compression from the stream magic, not the extension.
         val dshTarball = entries.firstOrNull { it.endsWith(".tar.zst") }
-            ?: entries.firstOrNull { it.endsWith(".tar.gz") } ?: return
+            ?: entries.firstOrNull { it.endsWith(".tar.gz") } ?: return null
         // strip the build-side "-patched" marker from the derived version.
         // The asset is named e.g. "0.1.1-rc.2-patched.tar.zst" but the RELEASE it packs is
         // With the suffix left in, the arbitration below treats a legitimately
@@ -1257,7 +1533,7 @@ class SandboxService : Service() {
         // installs that already recorded "...-patched" still compare as newer (kept, no churn).
         val version = dshTarball.removeSuffix(".tar.zst").removeSuffix(".tar.gz").removeSuffix("-patched")
         val out = File(cacheDir, "dsh-bundled-$version.tar")
-        try {
+        return try {
             assetManager.open("dsh/$dshTarball").use { input ->
                 out.outputStream().use { output -> input.copyTo(output) }
             }
@@ -1268,15 +1544,18 @@ class SandboxService : Service() {
             } else {
                 null
             }
-            when (val r = sandboxManager.updateDsh(out, sha, version)) {
+            val result = sandboxManager.updateDsh(out, sha, version, allowDowngrade)
+            when (result) {
                 is AppResult.Success ->
-                    if (r.value.changed) Log.i(TAG, "bootstrap: bundled DSH ${r.value.version} installed")
-                    else Log.i(TAG, "bootstrap: bundled DSH $version kept (already at ${r.value.version})")
+                    if (result.value.changed) Log.i(TAG, "bundled DSH ${result.value.version} installed")
+                    else Log.i(TAG, "bundled DSH kept (already at ${result.value.version})")
                 is AppResult.Failure ->
-                    Log.w(TAG, "bootstrap: bundled DSH provision failed: ${r.error.message}")
+                    Log.w(TAG, "bundled DSH provision failed: ${result.error.message}")
             }
+            result
         } catch (t: Throwable) {
-            Log.w(TAG, "bootstrap: bundled DSH read failed: ${t.message}")
+            Log.w(TAG, "bundled DSH read failed: ${t.message}")
+            AppResult.Failure(AppError("DSH_BUNDLED_READ_FAILED", "bundled DSH read failed: ${t.message}", t))
         } finally {
             out.delete()
         }
@@ -1431,7 +1710,12 @@ class SandboxService : Service() {
             DshState.ERROR -> ctx.getString(R.string.notify_dsh_error)
             else -> ctx.getString(R.string.notify_dsh_other)
         }
-        val contentTitle = "$sandboxText · $dshText"
+        val instanceSuffix = if (instanceRegistry.active.value == DshInstance.EMERGENCY) {
+            " · " + ctx.getString(R.string.home_instance_badge)
+        } else {
+            ""
+        }
+        val contentTitle = "$sandboxText · $dshText$instanceSuffix"
         // 运行期地址（端口自适应）：通知正文随确认地址更新，未确证时为默认常量。
         val contentText = com.dshbox.app.ui.theme.AppDshAddressState.baseUrl
 
@@ -1515,6 +1799,17 @@ class SandboxService : Service() {
         const val ACTION_RESTART_DSH = "com.dshbox.app.action.RESTART_DSH"
         const val ACTION_STOP_DSH = "com.dshbox.app.action.STOP_DSH"
         const val ACTION_STOP_ALL = "com.dshbox.app.action.STOP_ALL"
+        const val ACTION_SWITCH_INSTANCE = "com.dshbox.app.action.SWITCH_INSTANCE"
+        const val ACTION_CREATE_EMERGENCY = "com.dshbox.app.action.CREATE_EMERGENCY"
+        const val ACTION_DELETE_EMERGENCY = "com.dshbox.app.action.DELETE_EMERGENCY"
+        const val ACTION_REPAIR_ROLLBACK = "com.dshbox.app.action.REPAIR_ROLLBACK"
+        const val ACTION_REPAIR_BASELINE = "com.dshbox.app.action.REPAIR_BASELINE"
+        const val ACTION_RESET_MAIN = "com.dshbox.app.action.RESET_MAIN"
+        const val ACTION_RESTORE_BACKUP = "com.dshbox.app.action.RESTORE_BACKUP"
+        const val ACTION_DELETE_BACKUP = "com.dshbox.app.action.DELETE_BACKUP"
+        const val EXTRA_INSTANCE = "instance"
+        const val EXTRA_BACKUP = "backup"
+        const val EXTRA_BACKUP_NAME = "backup_name"
 
         /** 通知栏「启动」等待沙箱从启动中收敛到 RUNNING 的上限。 */
         private const val SANDBOX_START_WAIT_MILLIS = 30_000L
@@ -1678,6 +1973,70 @@ class SandboxService : Service() {
             context.startService(
                 Intent(context, SandboxService::class.java).setAction(ACTION_START_SANDBOX),
             )
+        }
+
+        fun switchInstance(context: Context, instance: DshInstance) {
+            context.startService(
+                Intent(context, SandboxService::class.java)
+                    .setAction(ACTION_SWITCH_INSTANCE)
+                    .putExtra(EXTRA_INSTANCE, instance.homeLeaf),
+            )
+        }
+
+        fun createEmergency(context: Context) {
+            context.startService(
+                Intent(context, SandboxService::class.java).setAction(ACTION_CREATE_EMERGENCY),
+            )
+        }
+
+        fun deleteEmergency(context: Context) {
+            context.startService(
+                Intent(context, SandboxService::class.java).setAction(ACTION_DELETE_EMERGENCY),
+            )
+        }
+
+        fun repairLayerRollback(context: Context) {
+            context.startService(
+                Intent(context, SandboxService::class.java).setAction(ACTION_REPAIR_ROLLBACK),
+            )
+        }
+
+        fun repairLayerRestoreBaseline(context: Context) {
+            context.startService(
+                Intent(context, SandboxService::class.java).setAction(ACTION_REPAIR_BASELINE),
+            )
+        }
+
+        fun resetMain(context: Context, backup: Boolean) {
+            context.startService(
+                Intent(context, SandboxService::class.java)
+                    .setAction(ACTION_RESET_MAIN)
+                    .putExtra(EXTRA_BACKUP, backup),
+            )
+        }
+
+        fun restoreBackup(context: Context, name: String) {
+            context.startService(
+                Intent(context, SandboxService::class.java)
+                    .setAction(ACTION_RESTORE_BACKUP)
+                    .putExtra(EXTRA_BACKUP_NAME, name),
+            )
+        }
+
+        fun deleteBackup(context: Context, name: String) {
+            context.startService(
+                Intent(context, SandboxService::class.java)
+                    .setAction(ACTION_DELETE_BACKUP)
+                    .putExtra(EXTRA_BACKUP_NAME, name),
+            )
+        }
+
+        /** APK 内嵌 DSH 基线版本（从 `assets/dsh/<version>.tar.zst` 文件名推导）；无内嵌基线返回 null。 */
+        fun bundledDshVersion(context: Context): String? {
+            val entries = runCatching { context.assets.list("dsh") }.getOrNull() ?: return null
+            val tarball = entries.firstOrNull { it.endsWith(".tar.zst") }
+                ?: entries.firstOrNull { it.endsWith(".tar.gz") } ?: return null
+            return tarball.removeSuffix(".tar.zst").removeSuffix(".tar.gz").removeSuffix("-patched")
         }
 
         fun stopSandbox(context: Context) {

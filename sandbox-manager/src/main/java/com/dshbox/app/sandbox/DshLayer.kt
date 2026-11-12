@@ -168,6 +168,60 @@ class DshLayer(
         }
     }
 
+    /**
+     * Rolls the live DSH layer back to the single previous copy
+     * (`runtime-current/previous/dsh`), atomically swapping the two so the
+     * displaced current layer becomes the new previous (single-copy invariant
+     * preserved). The previous tree's bin.js presence is checked BEFORE the live
+     * layer is touched; a missing/invalid previous copy is a no-op failure. Only
+     * [dshDir], [previousDshDir] and a transient aside dir are touched.
+     */
+    fun rollbackToPrevious(): AppResult<DshUpdateOutcome> {
+        val previous = previousDshDir()
+        val dsh = dshDir()
+        if (!File(previous, DSHPK_GUEST_PATH).isFile) {
+            return AppResult.Failure(
+                AppError("DSH_NO_PREVIOUS", "no valid previous DSH layer to roll back to"),
+            )
+        }
+        val aside = File(runtimeDir, "dsh-rollback-aside")
+        // 清理上次失败残留：现役层完好才清 aside；现役层缺失且 aside 完好则先恢复。
+        // 绝不无条件删除 aside——它可能持有当前层的唯一副本。
+        if (aside.exists()) {
+            if (!File(dsh, DSHPK_GUEST_PATH).isFile && File(aside, DSHPK_GUEST_PATH).isFile) {
+                aside.renameTo(dsh)
+            }
+            if (aside.exists() && File(dsh, DSHPK_GUEST_PATH).isFile) aside.deleteRecursively()
+        }
+        return try {
+            if (dsh.exists() && !dsh.renameTo(aside)) {
+                return AppResult.Failure(AppError("DSH_ROLLBACK_FAILED", "cannot move current DSH layer aside"))
+            }
+            if (!previous.renameTo(dsh)) {
+                // 提升失败：恢复现役层；恢复失败则保留 aside（唯一副本），绝不删除。
+                if (aside.exists() && !aside.renameTo(dsh)) {
+                    return AppResult.Failure(
+                        AppError("DSH_ROLLBACK_FAILED", "cannot promote previous; current layer preserved in aside"),
+                    )
+                }
+                return AppResult.Failure(AppError("DSH_ROLLBACK_FAILED", "cannot promote previous DSH layer"))
+            }
+            // 现役层已是旧 previous；被换下的当前层转为新 previous（单副本）。
+            // 转换失败时现役层完好，aside 保留为可恢复副本，不删除。
+            if (aside.exists() && !aside.renameTo(previous)) {
+                Log.w(TAG, "rolled back; old current kept in aside (cannot stash as previous)")
+            }
+            val version = runCatching { installedVersion() }.getOrNull()
+            Log.i(TAG, "dsh layer rolled back to $version")
+            AppResult.Success(DshUpdateOutcome(version = version, changed = true))
+        } catch (t: Throwable) {
+            Log.e(TAG, "dsh rollback failed: ${t.message}", t)
+            // 异常恢复：现役层缺失且 aside 在则恢复；不删 aside。
+            if (!File(dsh, DSHPK_GUEST_PATH).isFile && aside.exists()) runCatching { aside.renameTo(dsh) }
+            AppResult.Failure(AppError("DSH_ROLLBACK_FAILED", "dsh rollback failed: ${t.message}"))
+        }
+    }
+
     private fun versionFromPackage(dshDirRoot: File): String? {
         // prefer the REAL product version from
         // node_modules/@deepseek-ai/dsh/package.json; the layer-root package.json

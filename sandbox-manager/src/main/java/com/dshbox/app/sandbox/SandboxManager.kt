@@ -25,6 +25,9 @@ interface SandboxManager {
      */
     val dshUnresponsive: StateFlow<Boolean>
 
+    /** 健康环预算用尽或首启超时放弃时置位，供恢复弹窗精确触发；就绪/停机复位。 */
+    val dshRecoverySuggested: StateFlow<Boolean>
+
     /** Currently installed DSH layer version (runtime-current/dsh), or null. */
     val dshVersion: StateFlow<String?>
 
@@ -130,6 +133,20 @@ interface SandboxManager {
         newVersion: String?,
         allowDowngrade: Boolean = false,
     ): AppResult<DshUpdateOutcome>
+
+    /**
+     * Rolls the live DSH layer back to the single previous copy
+     * (runtime-current/previous/dsh), atomically swapping so the displaced
+     * current becomes the new previous. Stops DSH first; restarts it afterwards
+     * when the sandbox is running. Fails when no valid previous copy exists.
+     */
+    suspend fun rollbackDshLayer(): AppResult<DshUpdateOutcome>
+
+    /** Whether a valid previous DSH layer exists (rollback option availability). */
+    fun dshPreviousLayerAvailable(): Boolean
+
+    /** Currently installed DSH layer version, or null when absent. */
+    fun installedDshVersion(): String?
 
     /**
      * online DSH update step 2: build a fresh DSH layer from the

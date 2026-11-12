@@ -3,6 +3,7 @@ package com.dshbox.app.sandbox
 import android.content.Context
 import android.util.Log
 import com.dshbox.app.common.Constants
+import com.dshbox.app.common.DshInstance
 import java.io.File
 
 /**
@@ -31,12 +32,13 @@ object OfficialPluginOverlay {
     /** 空层正文：本层无内容时的合法写法（**空文件会让 dsh 启动失败**）。 */
     private const val EMPTY_LAYER = "[]\n"
 
-    /** 宿主侧落点（相对 `filesDir/user-data`）。 */
-    private fun overlayFile(context: Context): File =
-        File(File(context.filesDir, "user-data"), Constants.DSH_OFFICIAL_PLUGIN_OVERLAY_RELATIVE_PATH)
+    /** 宿主侧落点（相对 `filesDir/user-data`）；缺省主实例，面板写入恒锚主 home。 */
+    private fun overlayFile(context: Context, instance: DshInstance = DshInstance.MAIN): File =
+        File(File(context.filesDir, "user-data"), Constants.dshOfficialPluginOverlayRelativePath(instance))
 
     /** overlay 文件是否在位。 */
-    fun overlayFileExists(context: Context): Boolean = overlayFile(context).isFile
+    fun overlayFileExists(context: Context, instance: DshInstance = DshInstance.MAIN): Boolean =
+        overlayFile(context, instance).isFile
 
     /**
      * 按当前偏好重写覆盖层。应用启动时、以及用户在面板里拨动任一开关后各调一次。
@@ -45,8 +47,8 @@ object OfficialPluginOverlay {
      *
      * @return 写入成功与否
      */
-    fun refresh(context: Context): Boolean = runCatching {
-        val file = overlayFile(context)
+    fun refresh(context: Context, instance: DshInstance = DshInstance.MAIN): Boolean = runCatching {
+        val file = overlayFile(context, instance)
         file.parentFile?.mkdirs()
         file.writeText(render(DshOfficialPlugins.enabledIds(context)), Charsets.UTF_8)
         true

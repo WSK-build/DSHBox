@@ -3,7 +3,8 @@ package com.dshbox.app.ui.home
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,7 @@ import com.dshbox.app.ui.StarFeedbackDialog
  * 把用户带走。视觉与首页其它卡一致：`shapes.large` 圆角 + outlineVariant
  * 描边 + 20dp 内边距。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun UpdateHighlightsCard(onDismiss: () -> Unit) {
     var showStarDialog by remember { mutableStateOf(false) }
@@ -64,9 +66,10 @@ internal fun UpdateHighlightsCard(onDismiss: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 // Star / 问题反馈：先弹与设置页同款的引导窗，确认后再跳转
                 TextButton(onClick = { showStarDialog = true }) {

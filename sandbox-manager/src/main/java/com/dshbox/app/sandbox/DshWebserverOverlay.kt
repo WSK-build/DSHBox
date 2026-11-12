@@ -1,6 +1,7 @@
 package com.dshbox.app.sandbox
 
 import com.dshbox.app.common.Constants
+import com.dshbox.app.common.DshInstance
 import java.io.File
 
 /**
@@ -36,8 +37,8 @@ object DshWebserverOverlay {
      * 保证与 guest 侧 [Constants.DSH_WEBSERVER_OVERLAY_GUEST_PATH]
      * （绑定在 `/root/projects` 之下）是同一个文件。
      */
-    fun hostFile(userDataDir: File): File =
-        File(userDataDir, Constants.DSH_WEBSERVER_OVERLAY_RELATIVE_PATH)
+    fun hostFile(userDataDir: File, instance: DshInstance = DshInstance.MAIN): File =
+        File(userDataDir, Constants.dshWebserverOverlayRelativePath(instance))
 
     /**
      * 渲染本层正文：webserver 覆盖行在前，[carryOverLines]（既有文件里非
@@ -77,8 +78,13 @@ object DshWebserverOverlay {
      *
      * @return 写入成功与否
      */
-    fun refresh(userDataDir: File, host: String, port: Int): Boolean = runCatching {
-        val file = hostFile(userDataDir)
+    fun refresh(
+        userDataDir: File,
+        host: String,
+        port: Int,
+        instance: DshInstance = DshInstance.MAIN,
+    ): Boolean = runCatching {
+        val file = hostFile(userDataDir, instance)
         file.parentFile?.mkdirs()
         val carryOver = if (file.isFile) {
             file.readLines(Charsets.UTF_8).filter { line ->

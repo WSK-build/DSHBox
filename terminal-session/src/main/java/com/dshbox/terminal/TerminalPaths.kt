@@ -81,4 +81,8 @@ data class TerminalPaths(
      * 使 guest 内可直接按命令名调用其中的程序。
      */
     val extraPathEntries: List<String> = emptyList(),
+    /** 活跃实例的 guest `DSH_HOME`（终端 `dsh` 与网页端同一 home）；缺省主实例。 */
+    val dshHomeGuest: String = "/root/projects/.dsh",
+    /** 活跃实例的随包 CLI 目录（guest PATH 首位）；缺省主实例。 */
+    val dshboxBinGuest: String = "/root/projects/.dsh/dshbox/bin",
 )

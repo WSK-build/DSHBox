@@ -41,8 +41,8 @@ enum class CatalogSource(
     ;
 
     companion object {
-        /** 默认源：移动端精选目录。 */
-        val DEFAULT: CatalogSource = MOBILE
+        /** 默认源：官方精选目录。 */
+        val DEFAULT: CatalogSource = OFFICIAL
 
         /** 认不出的 id（文件缺失、被改坏、旧版本残留）一律回落默认源。 */
         fun byId(id: String?): CatalogSource =

@@ -24,7 +24,7 @@
 | System requirements | Android 10+ · ARM64 |
 | Permissions | No root and no Termux for daily use; the Root channel in developer mode is an optional capability |
 | Release builds | **System WebView build**: smaller APK, reuses the phone's system WebView. **Embedded Gecko build**: ships with GeckoView 158 and does not depend on the system WebView |
-| Local execution | Provisions a PRoot + Debian sandbox on the device with bundled Node.js and the DSH `0.2.2-rc.1` runtime layer to run DSH locally |
+| Local execution | Provisions a PRoot + Debian sandbox on the device with bundled Node.js and the DSH `0.2.2-rc.2` runtime layer to run DSH locally |
 | Remote connection | Scan a QR code or paste a pairing link to connect to DSH on the same LAN or the public internet; supports proxy / direct connection with multi-device management and switching |
 | **First-run setup** | Follow the beginner guide to install the two runtime layers, minimal Debian and Node.js, step by step, with multi-mirror detection, retry on failure or offline import |
 | **Which package to choose** | **System WebView build:** when the system WebView is recent and works correctly (or you are able to upgrade the system WebView version), prefer the smaller System WebView package.<br />**Embedded Gecko build:** when the system WebView is old and hard to upgrade due to vendor customization — which can cause blank DSH pages, loading failures, workspace loading errors and other issues — choose the Gecko package.<br />Both APKs share the same package name and signature, can overwrite each other, and keep your data. |
@@ -35,13 +35,13 @@
 
 ## What's new
 
-Current version: **v1.5.2** (2026-11-11) — **Remote connection · Local DSH LAN access · DSH 0.2.2-rc.1 · notification and interaction improvements.**
+Current version: **v1.5.3** (2026-11-12) — **DSH emergency repair instance · backup & reset · DSH 0.2.2-rc.2.**
 
-1. Added **remote connection**: scan a pairing code or paste a pairing link to connect to DSH plugins and web Agents on the same LAN or the public internet; supports proxy / direct connection, multi-device management and fast switching;
-2. Added **local DSH LAN access**: devices on the same network can open the local DSH page through a LAN gateway, with access keys, QR codes and online-device viewing;
-3. **Bundled DSH upgraded to `0.2.2-rc.1`**: the layer content stays pure upstream and is provisioned through version arbitration;
-4. **Mobile page adaptation and port fixes**: the mobile page adaptation plugin (renamed) no longer interferes with page layout; the local DSH port adapts automatically instead of being pinned to 3080;
-5. **Notification and interaction improvements**: system notification actions are simplified to Start / Restart / Stop; Settings adds top notification bar and Enter key options; the floating ball hides against the screen edge, and the Gecko build can open the configuration file.
+1. Added **emergency repair instance**: when DSH crashes, quickly start a fresh emergency instance (isolated empty data, sharing the current runtime layer), then switch back after fixing the main instance; a recovery dialog appears on crash, and the Home DSH card "More" menu has a permanent "Emergency repair & instance switching" entry;
+2. Added **DSH backup & reset**: reset the main instance to a fresh state in Settings (automatic backup before reset, or direct delete); the backup list supports per-item restore / delete, with reversible restore that keeps the original backup;
+3. **Bundled DSH upgraded to `0.2.2-rc.2`**: the layer content stays pure upstream and is provisioned through version arbitration;
+4. **Faster online runtime import**: install as soon as a usable mirror is selected, without waiting for all sources to finish probing (Settings and the beginner guide alike);
+5. **Local DSH run log**: the local access page adds a run-log panel that turns red on failure, with collapsible viewing and redacted copying.
 
 See **[CHANGES.md](CHANGES.md)** for the complete changes in each version.
 
@@ -69,7 +69,7 @@ The Home page gains a new “Remote” tab for connecting to DSH running on a co
 
 #### (1) DeepSeek Harness fully embedded local runtime
 
-- DSH `0.2.2-rc.1` ships inside the APK and the layer content stays pure upstream. On first launch it is provisioned into `runtime-current/dsh` through **version arbitration**; when the layer is replaced, the old layer is backed up once to `previous/dsh`, and user data is never touched.
+- DSH `0.2.2-rc.2` ships inside the APK and the layer content stays pure upstream. On first launch it is provisioned into `runtime-current/dsh` through **version arbitration**; when the layer is replaced, the old layer is backed up once to `previous/dsh`, and user data is never touched.
 - **Runtime hard-link compatibility shim**: Android app-data partitions (FBE/FUSE) reject hard links, while DSH uses `link()` as its primitive for publishing files without overwriting, which breaks session persistence, file tools and attachment publishing. At startup the app replaces `node:fs/promises.link` via `node --import`; when the platform refuses the hard link, it falls back to a content copy that preserves the no-overwrite semantics.
 - **Zero DSH source changes**: compatibility logic lives in the app, the renderer adapter, bundled extensions and runtime wiring; the bundled DSH layer keeps upstream files and business logic unchanged.
 - **Full-screen DSH workspace**: the DSH tab resolves launchToken automatically on the local address, uses a mobile user agent, handles keyboard and visual viewport, and supports pinch-to-zoom; a draggable floating ball still provides refresh plus quick switching to Home, Files, Terminal and Browser, and Home keeps the “Browser” and “More” entries.
@@ -155,6 +155,7 @@ Entered from the Home Cordis tab, plugin-related capabilities are managed in one
 | Safe mode | Starts without loading any third-party plugin, used to recover startup when a third-party plugin crashes DSH |
 | Plugin loading records | View plugin loading per startup segment for troubleshooting |
 | Crash-recovery assistance | The built-in terminal agent **opencode**, with one-tap install / update / uninstall; type `opencode` in the terminal to launch the TUI and complete fixes through natural-language interaction |
+| Emergency repair instance (new in v1.5.3) | When DSH crashes, quickly start a fresh emergency instance (isolated empty data, sharing the current runtime layer, only the mobile-adapt plugin assembled), then switch back after fixing the main instance; a crash-recovery dialog plus a permanent "Emergency repair & instance switching" entry in the Home card "More" menu, with an "Emergency" badge on the card and notification while active |
 | Plugin marketplace | Lives in the app layer, offering category browsing, search, compatibility checks, install guards and third-party plugin install / update / delete entry points |
 | Installed plugins | Shows the local manifest first, then asynchronously loads the remote catalog; distinguishes active, takes-effect-after-restart, pending-disable, host-denied, incompatible and broken states, avoiding a whole-page wait on weak networks |
 | Bundled-plugin protection | Mobile adaptation, Pilot and browser-use are written into profile dependencies; after third-party plugins are installed, updated or deleted, they are not pushed out when pnpm recomputes `node_modules` |
@@ -168,7 +169,7 @@ The marketplace ships with two live data sources: **awesome-dsh-plugin** and **[
 
 ### 6. DSH mobile and dual-renderer adaptation
 
-The bundled DSH is upgraded to **0.2.2-rc.1**. The System WebView and Gecko rendering paths share the same DSH page and host logic; adaptation is concentrated in the app, the Renderer Adapter, bundled page-compatibility assets and extensions, with **no modifications to DSH source code or business logic**:
+The bundled DSH is upgraded to **0.2.2-rc.2**. The System WebView and Gecko rendering paths share the same DSH page and host logic; adaptation is concentrated in the app, the Renderer Adapter, bundled page-compatibility assets and extensions, with **no modifications to DSH source code or business logic**:
 
 | Component | Mobile difference or break point | Handling |
 |---|---|---|
@@ -233,13 +234,14 @@ The device Back key, autofocus, floating quick switching and the attachment sour
 
 ### 9. Settings page
 
-#### (1) DSH version selection and runtime management (DSH versions are freely selectable, never locked)
+#### (1) DSH version selection, reset and runtime management (DSH versions are freely selectable, never locked)
 
 | Feature | Description |
 |---|---|
-| Update DSH (online) | Probes versions and latency across the npm official / Alibaba / Tencent Cloud / Huawei Cloud mirrors in parallel → pick a mirror and version (downgrades need a second confirmation) → npm in the sandbox pulls the full dependency tree → the layer is swapped and restarted automatically; runs in the background, live logs, cancellable (SIGKILL to the process tree) |
+| DSH version selection (online) | Probes versions and latency across the npm official / Alibaba / Tencent Cloud / Huawei Cloud mirrors in parallel → pick a mirror and version (downgrades need a second confirmation) → npm in the sandbox pulls the full dependency tree → the layer is swapped and restarted automatically; runs in the background, live logs, cancellable (SIGKILL to the process tree) |
+| Reset & backup management (new in v1.5.3) | Reset the main instance to a fresh state with one tap (automatic backup before reset, or direct delete, with strong confirmation; only instance data is reset, project files are kept); the backup list is sorted by time with readable date names, supporting per-item restore / delete (no "delete all"), with reversible restore that keeps the original backup |
 | Update DSH (offline import) | Single-file layer packages `.tar.zst / .tar.gz / .tar / .tgz` (or a zip containing a layer package), staged extraction → shape validation → atomic layer swap, leaving no half-finished artifacts on failure |
-| Install the runtime online | Probes mirrors separately for the **Node layer / minimal Debian layer** (reachability and latency), downloads, verifies GPG signatures, trims and assembles into layers; step-by-step progress, cancellable, with failures categorized by cause (mirror missing packages / verification failure / insufficient space, etc.); any layer can be reset at any time |
+| Install the runtime online | Probes mirrors separately for the **Node layer / minimal Debian layer** (reachability and latency), downloads, verifies GPG signatures, trims and assembles into layers; install as soon as a usable mirror is selected without waiting for all probes (v1.5.3); step-by-step progress, cancellable, with failures categorized by cause (mirror missing packages / verification failure / insufficient space, etc.); any layer can be reset at any time |
 | Import a runtime package offline | Replaces base / node / android-side as a whole package, with per-layer SHA-256 verification and one `previous/` copy for rollback (see below); since v1.4.0 it is not distributed inside the APK but is still provided separately on the Release page, equivalent to the online path. |
 
 #### (2) Diagnostics and logs
@@ -268,7 +270,7 @@ Four layers are provisioned independently; the PRoot userspace sandbox is isolat
 |---|---|---|
 | base | Minimal Debian 13 (trixie) rootfs | `/` (rootfs) |
 | node | Node.js 24 (npm / npx / corepack) | `/usr/local` |
-| dsh | DeepSeek Harness `0.2.2-rc.1` (npm package, pure upstream) | `/opt/dshapp/runtime` |
+| dsh | DeepSeek Harness `0.2.2-rc.2` (npm package, pure upstream) | `/opt/dshapp/runtime` |
 | android-side | PRoot / loader / shmem (host side) | — |
 
 - The sandbox keepalive and DSH are two independent PRoot processes; on shutdown the whole process tree is enumerated via `/proc` and children get SIGKILL first, leaving no orphans and no occupied ports
@@ -349,7 +351,7 @@ Note: the Release page also ships a packaged full runtime bundle with each versi
 | Path in the distribution | Contents |
 |---|---|
 | `runtime/android-assets/runtime/android-side.tar.zst` | Host-side PRoot / loader / shmem with a `.sha256` sidecar (**bundled in the APK**) |
-| `runtime/android-assets/dsh/0.2.2-rc.1.tar.zst` | DSH layer + `.sha256` (pure upstream, unpatched; **bundled in the APK**) |
+| `runtime/android-assets/dsh/0.2.2-rc.2.tar.zst` | DSH layer + `.sha256` (pure upstream, unpatched; **bundled in the APK**) |
 | `runtime/offline-baseline/{base,node}.tar.zst` | Debian and Node layers, each with a `.sha256` sidecar and `runtime-profile.json`; **not in the APK**, delivered as part of the offline bundle |
 | `runtime/dshapp-runtime-debian-arm64-0.1.0.zip` | The externally delivered full runtime package (for offline import) |
 
@@ -364,7 +366,7 @@ Note: the Release page also ships a packaged full runtime bundle with each versi
 - Layout and formats: an outer zip / tar; layer archives in `.tar.zst / .tar.gz / .tar / .tgz / .bz2 / .xz` (identified by magic bytes), with support for one directory prefix and outer tar containers holding layer archives
 - Verification: per-layer SHA-256 (sidecars cross-checked against `runtime-profile.json`) + Zip-Slip protection; damaged / truncated / encrypted packages return readable errors
 - Replacement: the old layers move into `previous/` (one copy for rollback); the DSH layer and `user-data/.dsh` are never touched
-- Offline DSH updates use the single-file layer package of “Update DSH (offline import)” (e.g. `0.2.2-rc.1.tar.zst`), alongside online updates.
+- Offline DSH updates use the single-file layer package of “Update DSH (offline import)” (e.g. `0.2.2-rc.2.tar.zst`), alongside online updates.
 
 ## User communication and feedback
 

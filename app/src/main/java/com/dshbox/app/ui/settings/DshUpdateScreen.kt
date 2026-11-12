@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,9 +54,11 @@ import com.dshbox.app.common.AppResult
 import com.dshbox.app.common.DshNpmSource
 import com.dshbox.app.common.DshSources
 import com.dshbox.app.common.Versions
+import com.dshbox.app.instance.InstanceOpState
 import com.dshbox.app.runtime.DshOnlineInstallState
 import com.dshbox.app.runtime.DshSourceProbe
 import com.dshbox.app.sandbox.SandboxState
+import com.dshbox.app.service.SandboxService
 import com.dshbox.app.ui.asString
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -90,12 +94,17 @@ fun DshUpdateScreen(
     val dshVersion by sandboxManager.dshVersion.collectAsState()
     val sandboxState by sandboxManager.sandboxState.collectAsState()
     val installState by runtimeUpdateManager.installState.collectAsState()
+    val instanceOp by InstanceOpState.state.collectAsState()
+    val resetBusy = installState.running || instanceOp.running
 
     val probes = remember { mutableStateMapOf<String, DshSourceProbe>() }
     var probing by remember { mutableStateOf(false) }
     var versionDialogSource by remember { mutableStateOf<DshNpmSource?>(null) }
     var versionDialogSelection by remember { mutableStateOf<String?>(null) }
     var downgradeConfirm by remember { mutableStateOf<Pair<DshNpmSource, String>?>(null) }
+    var resetConfirmBackup by remember { mutableStateOf(false) }
+    var resetConfirmDelete by remember { mutableStateOf(false) }
+    var showBackupManager by remember { mutableStateOf(false) }
 
     fun startProbe() {
         if (probing || installState.running) return
@@ -228,6 +237,121 @@ fun DshUpdateScreen(
                 }
             }
         }
+
+        // 重置危险区：仅删主实例数据（user-data/.dsh），不碰项目文件与运行层版本。
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.dsh_reset_section_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Text(
+            text = stringResource(R.string.dsh_reset_section_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = stringResource(R.string.dsh_reset_switch_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            onClick = { resetConfirmBackup = true },
+            enabled = !resetBusy,
+            shape = MaterialTheme.shapes.medium,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.widthIn(max = 400.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.dsh_reset_backup_button),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        OutlinedButton(
+            onClick = { resetConfirmDelete = true },
+            enabled = !resetBusy,
+            shape = MaterialTheme.shapes.medium,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.widthIn(max = 400.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.dsh_reset_delete_button),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        OutlinedButton(
+            onClick = { showBackupManager = true },
+            enabled = !resetBusy,
+            shape = MaterialTheme.shapes.medium,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.widthIn(max = 400.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.backup_open_action),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        if (instanceOp.running && instanceOp.kind == InstanceOpState.Kind.RESET_MAIN) {
+            Text(
+                text = stringResource(R.string.instance_op_running),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (instanceOp.kind == InstanceOpState.Kind.RESET_MAIN && instanceOp.error != null) {
+            Text(
+                text = stringResource(R.string.instance_op_failed) + ": " + instanceOp.error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else if (instanceOp.kind == InstanceOpState.Kind.RESET_MAIN && instanceOp.lastSuccess == true) {
+            Text(
+                text = stringResource(R.string.instance_op_success),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+
+    // 重置确认弹窗（备份后重置 / 直接删除）。
+    if (resetConfirmBackup) {
+        AlertDialog(
+            onDismissRequest = { resetConfirmBackup = false },
+            title = { Text(stringResource(R.string.dsh_reset_confirm_title)) },
+            text = { Text(stringResource(R.string.dsh_reset_backup_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    resetConfirmBackup = false
+                    SandboxService.resetMain(context, backup = true)
+                }) { Text(stringResource(R.string.instance_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { resetConfirmBackup = false }) {
+                    Text(stringResource(R.string.instance_cancel))
+                }
+            },
+        )
+    }
+    if (resetConfirmDelete) {
+        AlertDialog(
+            onDismissRequest = { resetConfirmDelete = false },
+            title = { Text(stringResource(R.string.dsh_reset_confirm_title)) },
+            text = { Text(stringResource(R.string.dsh_reset_delete_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    resetConfirmDelete = false
+                    SandboxService.resetMain(context, backup = false)
+                }) { Text(stringResource(R.string.instance_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { resetConfirmDelete = false }) {
+                    Text(stringResource(R.string.instance_cancel))
+                }
+            },
+        )
+    }
+
+    if (showBackupManager) {
+        BackupManagerDialog(onDismiss = { showBackupManager = false })
     }
 
     // 版本选择弹窗。

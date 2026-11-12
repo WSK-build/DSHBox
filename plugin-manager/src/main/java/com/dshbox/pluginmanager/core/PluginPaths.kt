@@ -2,6 +2,7 @@ package com.dshbox.pluginmanager.core
 
 import android.content.Context
 import com.dshbox.app.common.Constants
+import com.dshbox.app.common.DshInstance
 import com.dshbox.pluginmanager.contract.HostContract
 import java.io.File
 
@@ -16,6 +17,8 @@ import java.io.File
 class PluginPaths(
     context: Context,
     val profile: String = DEFAULT_PROFILE,
+    /** 实例 home；插件面板/市场恒锚主实例，缺省即主 home。 */
+    val instance: DshInstance = DshInstance.MAIN,
 ) {
     companion object {
         const val DEFAULT_PROFILE = "web"
@@ -44,8 +47,8 @@ class PluginPaths(
     val pnpmRegistryFile: File =
         File(File(filesDir, Constants.GUEST_CACHE_DIR_LEAF), Constants.PNPM_REGISTRY_FILE_LEAF)
 
-    /** `user-data/.dsh` —— DSH 的 home。 */
-    val dshHomeDir: File = File(userDataDir, ".dsh")
+    /** DSH 的 home（按实例槽位解析）。 */
+    val dshHomeDir: File = File(userDataDir, instance.homeLeaf)
 
     val profilesDir: File = File(dshHomeDir, "profiles")
     val profileDir: File = File(profilesDir, profile)
@@ -116,7 +119,7 @@ class PluginPaths(
      * 改的都是这一个集合。共用一份是刻意的（拆开会让两边互相看不见），勿拆。
      */
     val pluginMarketOverlayFile: File =
-        File(userDataDir, Constants.DSH_PLUGIN_MARKET_OVERLAY_RELATIVE_PATH)
+        File(userDataDir, Constants.dshPluginMarketOverlayRelativePath(instance))
 
     /**
      * 绝对安全模式独占的层（宿主侧）。
@@ -125,7 +128,7 @@ class PluginPaths(
      * [pluginMarketOverlayFile] 里的停用行。
      */
     val absoluteSafeModeOverlayFile: File =
-        File(userDataDir, Constants.DSH_SAFE_MODE_ABSOLUTE_OVERLAY_RELATIVE_PATH)
+        File(userDataDir, Constants.dshSafeModeAbsoluteOverlayRelativePath(instance))
 
     val logsDir: File = File(filesDir, "logs")
 

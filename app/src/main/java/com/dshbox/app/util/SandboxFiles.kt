@@ -175,6 +175,9 @@ data class LayerRoots(
 
 private const val DSH_DATA_SEGMENT = ".dsh"
 
+/** 全部实例 home 段名（主 `.dsh` 与应急 `.dsh-emergency`）：文件页同等保护。 */
+private val DSH_HOME_SEGMENTS = com.dshbox.app.common.DshInstance.entries.map { it.homeLeaf }.toSet()
+
 /** 我方随包资产目录名（`.dsh/dshbox`，见 Constants.DSHBOX_ASSETS_RELATIVE_DIR）。 */
 private const val DSHBOX_SEGMENT = "dshbox"
 
@@ -190,10 +193,12 @@ fun isAppManagedAsset(physicalPath: String, workspaceRoot: File): Boolean {
     // 用分隔符拼前缀会让同一份判定在两个平台得出不同结果。
     val root = workspaceRoot.absolutePath.replace('\\', '/').trimEnd('/')
     val target = physicalPath.replace('\\', '/').trimEnd('/')
-    val prefix = "$root/$DSH_DATA_SEGMENT/$DSHBOX_SEGMENT"
-    // 只认「工作区根下第一层的 .dsh/dshbox」：任意深度匹配会把用户自建的
-    // `myproj/.dsh/dshbox` 也锁成只读（审查 P2-5）。
-    return target == prefix || target.startsWith("$prefix/")
+    // 只认「工作区根下第一层的 <实例 home>/dshbox」：任意深度匹配会把用户自建的
+    // `myproj/.dsh/dshbox` 也锁成只读（审查 P2-5）。主/应急 home 同等保护。
+    return DSH_HOME_SEGMENTS.any { home ->
+        val prefix = "$root/$home/$DSHBOX_SEGMENT"
+        target == prefix || target.startsWith("$prefix/")
+    }
 }
 
 /** 路径按段拆分（兼容 / 与 \，Windows 测试环境友好）。 */
@@ -233,7 +238,7 @@ private fun isUnder(path: String, root: String?): Boolean {
  */
 fun layerOf(physicalPath: String, roots: LayerRoots): Layer {
     val segments = pathSegments(physicalPath)
-    if (DSH_DATA_SEGMENT in segments) return Layer.DSH_DATA
+    if (segments.any { it in DSH_HOME_SEGMENTS }) return Layer.DSH_DATA
     val p = physicalPath.replace('/', File.separatorChar)
     val sb = roots.sandboxRoot.absolutePath.trimEnd(File.separatorChar)
     val sandboxPrefix = "$sb${File.separatorChar}"
@@ -276,7 +281,7 @@ internal val SYSTEM_DIR_NAMES = listOf("proc", "sys", "dev", "system", "apex", "
 
 /** 判断单个条目的风险级别：rootfs 顶层系统目录 / DSH 内部数据目录。 */
 fun riskOf(name: String, isTopLevelRootfs: Boolean): RiskLevel = when {
-    name == ".dsh" -> RiskLevel.DSH_DATA
+    name in DSH_HOME_SEGMENTS -> RiskLevel.DSH_DATA
     isTopLevelRootfs && name in SYSTEM_DIR_NAMES -> RiskLevel.SYSTEM_DIR
     else -> RiskLevel.NORMAL
 }
