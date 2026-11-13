@@ -386,9 +386,9 @@
     <string name="home_metrics_memory">Mémoire</string>
     <string name="home_metrics_storage">Stockage</string>
     <string name="home_update_highlights_title">Points clés de la mise à jour (v%1$s)</string>
-    <string name="home_update_highlights_added">Ajout :\n1. Sauvegarde et réinitialisation DSH : réinitialise l\'instance principale à un état neuf avec sauvegarde automatique préalable, et restaure depuis la liste des sauvegardes ;\n2. Instance de réparation de secours : démarre rapidement une instance de secours neuve en cas de plantage de DSH, puis revient à la principale après réparation ;\n3. La couche DSH intégrée passe à la v0.2.2-rc.2</string>
-    <string name="home_update_highlights_fixed">Correction :\n1. L\'import en ligne de l\'environnement n\'attend plus la fin du sondage de toutes les sources ; l\'installation se lance dès qu\'une source utilisable est sélectionnée, sans longue attente sur réseau lent</string>
-    <string name="home_update_highlights_improved">Amélioration :\n1. La page d\'accès local DSH ajoute un journal d\'exécution DSH pour faciliter le diagnostic des plantages</string>
+    <string name="home_update_highlights_added">Ajout :\n1. Publication atomique des verrous d\'écriture : DSH écrit le PID complet avant de publier le verrou de façon exclusive, éliminant les verrous vides causés par les arrêts forcés ;\n2. Modèle de consigne de réparation d\'urgence : copie en un geste depuis le gestionnaire d\'instances et la boîte de dialogue d\'échec, guidant DSH dans l\'instance de secours pour diagnostiquer et réparer l\'instance principale</string>
+    <string name="home_update_highlights_fixed">Correction :\n1. Les démarrages lents ne sont plus tués à 30 s : un processus vivant mais pas encore prêt dispose désormais de la fenêtre complète de 120 s, évitant les redémarrages répétés sur les appareils lents ou chargés en plugins ;\n2. Récupération automatique des verrous vides orphelins : avant le démarrage, un bail noyau confirme qu\'aucun écrivain vivant ne détient le verrou avant de supprimer les verrous vides historiques, qui ne bloquent plus le démarrage définitivement</string>
+    <string name="home_update_highlights_improved">Amélioration :\n1. Avertissement d\'instance de secours renforcé : indique clairement les répertoires de données principal (.dsh) et de secours (.dsh-emergency), l\'usage temporaire et les limites d\'opération</string>
     <string name="home_update_highlights_support">Ce projet est maintenu sur temps libre. S\'il vous est utile, pensez à lui donner une étoile.</string>
     <string name="home_update_highlights_star">Étoile sur GitHub</string>
     <string name="home_update_highlights_feedback">Envoyer un commentaire</string>
@@ -460,7 +460,7 @@
     <string name="instance_baseline_downgrade_message">Ceci rétrograde vers la base intégrée %1$s (actuelle %2$s). Les données écrites par une version plus récente peuvent être incompatibles.</string>
     <string name="instance_baseline_reinstall_message">Ceci réinstalle hors ligne la version actuelle %1$s (identique à la base intégrée).</string>
     <string name="instance_baseline_upgrade_message">Ceci met à niveau vers la base intégrée %1$s (actuelle %2$s).</string>
-    <string name="instance_warning">L\'instance de secours est réservée à un usage temporaire. Réparez l\'instance principale dès que possible et n\'effectuez pas d\'opérations destructives dans l\'instance de secours.</string>
+    <string name="instance_warning">À sa création, l\'instance de secours (.dsh-emergency) possède des données neuves et vides. Elle sert temporairement lorsque l\'instance principale (.dsh) ne démarre plus, par exemple après un plantage de plugin. Demandez à DSH dans l\'instance de secours (.dsh-emergency) de diagnostiquer et réparer l\'instance principale (.dsh), puis revenez à celle-ci (.dsh). N\'installez aucun plugin tiers et n\'effectuez aucune autre opération destructive dans l\'instance de secours (.dsh-emergency).</string>
     <string name="instance_switch_action">Basculer</string>
     <string name="instance_switch_to_main_help">Revenez à votre instance principale avec toutes ses données.</string>
     <string name="instance_switch_to_emergency_help">Lancez l\'instance de secours propre.</string>

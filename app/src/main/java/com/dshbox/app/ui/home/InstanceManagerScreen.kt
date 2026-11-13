@@ -201,6 +201,8 @@ internal fun InstanceManagerScreen(
                             },
                         )
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    EmergencyRepairPrompt()
                     if (emergencyExists) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         InstanceRow(
@@ -383,7 +385,7 @@ private fun InstanceSection(
 
 /** 设置行：图标 + 标题/描述 + 紧凑尾部按钮。 */
 @Composable
-private fun InstanceRow(
+internal fun InstanceRow(
     iconRes: Int,
     title: String,
     description: String,
@@ -422,7 +424,7 @@ private fun InstanceRow(
 
 /** 紧凑描边按钮（28dp 高），与全局 CompactActionButton 同规格，避免大色块拉伸。 */
 @Composable
-private fun CompactButton(
+internal fun CompactButton(
     text: String,
     enabled: Boolean = true,
     onClick: () -> Unit,

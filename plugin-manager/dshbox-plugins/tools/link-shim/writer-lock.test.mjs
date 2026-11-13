@@ -1,0 +1,110 @@
+import assert from 'node:assert/strict';
+import { spawn, execFile } from 'node:child_process';
+import fsp from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { once } from 'node:events';
+
+const run = promisify(execFile);
+const moduleDir = process.argv[2];
+const { writeWithPublishedLock: write } = await import(new URL('writer-lock.mjs', `file://${moduleDir}/`));
+const helper = join(moduleDir, 'lock-helper');
+const root = await fsp.mkdtemp('/tmp/dshbox-lock-test-');
+const lock = join(root, '.credentials.yaml.lock');
+const own = `${process.pid}\n`;
+const recover = (file) => run(helper, ['recover-empty', file]).then(() => true, () => false);
+let count = 0;
+const passed = (name) => { console.log(`PASS ${++count} ${name}`); };
+try {
+  await write(lock, own, { flag: 'wx', mode: 0o600 });
+  assert.equal(await fsp.readFile(lock, 'utf8'), own);
+  passed('complete-PID-publication');
+  await assert.rejects(write(lock, own, { flag: 'wx' }), e => e.code === 'EEXIST');
+  assert.equal(await fsp.readFile(lock, 'utf8'), own);
+  passed('existing-owner-not-overwritten');
+  assert.equal(await recover(lock), false);
+  passed('nonempty-never-recovered');
+  await fsp.unlink(lock);
+  await fsp.writeFile(lock, '');
+  await write(lock, own, { flag: 'wx' });
+  assert.equal(await fsp.readFile(lock, 'utf8'), own);
+  passed('legacy-empty-recovered-on-contention');
+  await fsp.unlink(lock);
+  const fd = await fsp.open(lock, 'wx');
+  await new Promise(r => setTimeout(r, 1500));
+  assert.equal(await recover(lock), false);
+  await assert.rejects(write(lock, own, { flag: 'wx' }), e => e.code === 'EEXIST');
+  assert.equal((await fsp.stat(lock)).size, 0);
+  passed('paused-live-writer-retained-after-1s');
+  await fd.close();
+  assert.equal(await recover(lock), true);
+  passed('closed-orphan-recovered');
+  const results = await Promise.allSettled(Array.from({ length: 24 }, () => write(lock, own, { flag: 'wx' })));
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.ok(results.filter(r => r.status === 'rejected').every(r => r.reason.code === 'EEXIST'));
+  passed('24-concurrent-acquirers-one-winner');
+  await fsp.unlink(lock);
+  const long = join(root, 'a'.repeat(230) + '.lock');
+  await write(long, own, { flag: 'wx' });
+  assert.equal(await fsp.readFile(long, 'utf8'), own);
+  passed('long-target-name-supported');
+  const marker = join(root, 'other.lock');
+  await fsp.writeFile(marker, '');
+  await assert.rejects(write(marker, own, { flag: 'wx' }), e => e.code === 'EEXIST');
+  assert.equal((await fsp.stat(marker)).size, 0);
+  passed('unknown-empty-marker-preserved');
+  await fsp.symlink(long, lock);
+  assert.equal(await recover(lock), false);
+  await assert.rejects(write(lock, own, { flag: 'wx' }), e => e.code === 'EEXIST');
+  assert.ok((await fsp.lstat(lock)).isSymbolicLink());
+  passed('symlink-preserved');
+  await fsp.unlink(lock);
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `import fs from 'node:fs';const fd=fs.openSync(${JSON.stringify(lock)},'wx');fs.writeSync(1,'ready\\n');setInterval(()=>{},1000);`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  await once(child.stdout, 'data');
+  assert.equal(await recover(lock), false);
+  const exited = once(child, 'exit');
+  child.kill('SIGKILL');
+  await exited;
+  assert.equal(await recover(lock), true);
+  passed('real-SIGKILL-orphan-recovery');
+  const aborted = new AbortController(); aborted.abort();
+  await assert.rejects(write(lock, own, { flag: 'wx', signal: aborted.signal }));
+  assert.equal(await fsp.lstat(lock).then(() => true, () => false), false);
+  passed('abort-before-publication-leaves-no-lock');
+  const ordinary = join(root, 'plain.txt');
+  await write(ordinary, 'data', {});
+  assert.equal(await fsp.readFile(ordinary, 'utf8'), 'data');
+  assert.equal((await fsp.readdir(root)).filter(n => n.startsWith('.dshbox-lock-')).length, 0);
+  passed('ordinary-write-and-temp-cleanup');
+  await fsp.unlink(long);
+  const realOpen = fsp.open;
+  fsp.open = async (...args) => {
+    const handle = await realOpen(...args);
+    const close = handle.close.bind(handle);
+    handle.close = async () => { await close(); throw new Error('injected close failure'); };
+    return handle;
+  };
+  try {
+    await write(lock, own, { flag: 'wx' });
+    assert.equal(await fsp.readFile(lock, 'utf8'), own);
+    passed('cleanup-error-does-not-hide-successful-acquisition');
+  } finally {
+    fsp.open = realOpen;
+    await fsp.unlink(lock);
+  }
+  if (process.argv[3]) {
+    const fixture = join(root, 'ambiguous-helper');
+    await fsp.mkdir(fixture);
+    await fsp.copyFile(join(moduleDir, 'writer-lock.mjs'), join(fixture, 'writer-lock.mjs'));
+    await fsp.copyFile(process.argv[3], join(fixture, 'lock-helper'));
+    await fsp.chmod(join(fixture, 'lock-helper'), 0o700);
+    const { writeWithPublishedLock: ambiguousWrite } = await import(fileURLToPath(new URL(`file://${fixture}/writer-lock.mjs`)));
+    await ambiguousWrite(lock, own, { flag: 'wx' });
+    assert.equal(await fsp.readFile(lock, 'utf8'), own);
+    passed('helper-SIGKILL-after-publish-reconciles-open-inode');
+  }
+  console.log(`ALL_PASS ${count}`);
+} finally {
+  await fsp.rm(root, { recursive: true, force: true });
+}

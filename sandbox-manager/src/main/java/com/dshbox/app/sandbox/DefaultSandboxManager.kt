@@ -144,15 +144,14 @@ class DefaultSandboxManager(
      * 1」（纯计算收口在 [DshPortProbe.cursorFirstPort]），不回绕、顶到上界
      * 3099 后不再回走。
      *
-     * 旧实现（重启 attempt 从 0、又从 3080 重探，且先杀旧进程使原端口可绑）
-     * 合在一起变成「30s 超时重启仍钉死同一端口」：确证超时的重启拿回同一个
-     * 请求端口，起新进程、占上旧端口、再次确证失败——换端口重试形同虚设。
+     * 若重启从 3080 重探且先杀旧进程使原端口可绑，自动重启会反复拿回同一个
+     * 请求端口，换端口重试形同虚设。
      *
      * 语义：
      *  - 用户**手动**重启 DSH（stopDsh → startDsh）视为全新意图：手动
      *    startDsh 恒从 3080 重探（= 规范「直到下次用户手动重启 DSH 才回到
      *    3080」），不读游标；
-     *  - 自动路径（就地重启、健康循环重启）：确证超时 / 不就绪时**推进**
+     *  - 自动路径（就地重启、健康循环重启）：进程退出或持续不应答触发重启时**推进**
      *    （起点 = 上轮请求端口 + 1 + attempt），探测窗口沿剩余区间裁剪；
      *  - 成功确证后游标随 [nextDshLaunchPass] 保留，不被任何清理路径回走，
      *    下一次自动重启仍从它的下一个起探。
@@ -420,8 +419,10 @@ class DefaultSandboxManager(
         }
 
         // Wait for DSH to settle into a terminal state, bounded by timeout.
+        // 上限比健康循环的首次启动超时多留一个余量：循环按 2 秒节拍探测、在超时后的
+        // 下一拍才给出 READY 或 ERROR，等待若与超时同时结束会抢在循环的结论之前返回。
         val startedAt = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startedAt < config.dshReadyTimeoutMs) {
+        while (System.currentTimeMillis() - startedAt < config.dshReadyTimeoutMs + READY_WAIT_MARGIN_MS) {
             when (_dshState.value) {
                 DshState.READY -> {
                     return AppResult.Success(
@@ -1712,32 +1713,30 @@ class DefaultSandboxManager(
         }
     }
 
-    /**
-     * Kills the current DSH process tree and launches a fresh one. Used ONLY
-     * from the health loop so the loop itself is never cancelled. Returns true
-     * on success (a new process is running); false when the relaunch failed
-     * (state already set to ERROR).
-     */
-    /**
-     * 清理 `.dsh` 下持有者已不存在的 `*.lock`。
-     *
-     * 判定与纪律见 [DshWriterLockSweeper]；这里只提供真实环境的两件事：
-     * `/proc/<pid>` 存活判定，以及该判定本身是否可用（用本进程 PID 自检）。
-     */
+    /** 空锁恢复由宿主原生助手持有内核写租约执行，不依据写者暂停时间。 */
     private fun sweepDeadWriterLocks() {
         val sweeper = DshWriterLockSweeper(
             workspaceDir = config.userDataDir,
             homeRelativeDir = activeDshInstance().homeLeaf,
             isProcessAlive = { pid -> File("/proc/$pid").exists() },
             selfCheck = { File("/proc/${android.os.Process.myPid()}").exists() },
+            recoverEmpty = { lock ->
+                val helper = config.nativeLibraryDir?.let { File(it, "libdshbox-lock.so") }
+                if (helper?.isFile != true) false else runCatching {
+                    val process = ProcessBuilder(helper.absolutePath, "recover-empty", lock.absolutePath).start()
+                    if (process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) process.exitValue() == 0
+                    else { process.destroyForcibly(); false }
+                }.getOrDefault(false)
+            },
         )
         val result = runCatching { sweeper.sweep() }.getOrNull() ?: return
+        val removed = result.removed
         when {
             result.skipped -> Log.i(TAG, "dsh writer-lock sweep skipped: /proc liveness check unavailable")
-            result.removed.isNotEmpty() -> Log.i(
+            removed.isNotEmpty() -> Log.i(
                 TAG,
-                "dsh writer-lock sweep: removed ${result.removed.size}/${result.scanned} stale lock(s) " +
-                    result.removed.joinToString(","),
+                "dsh writer-lock sweep: removed ${removed.size}/${result.scanned} stale lock(s) " +
+                    removed.joinToString(","),
             )
         }
     }
@@ -1777,6 +1776,12 @@ class DefaultSandboxManager(
         Log.i(TAG, "dsh await after kill: budget exhausted (~${waited}ms), proceeding to probe")
     }
 
+    /**
+     * Kills the current DSH process tree and launches a fresh one. Used ONLY
+     * from the health loop so the loop itself is never cancelled. Returns true
+     * on success (a new process is running); false when the relaunch failed
+     * (state already set to ERROR).
+     */
     private suspend fun restartDshProcessInPlace(): Boolean = lifecycleMutex.withLock {
         dshProcess?.let { processRunner.stop(it) }
         // 健康循环重启同样需要 cmdline 兜底，否则旧树不清时
@@ -1797,7 +1802,7 @@ class DefaultSandboxManager(
         _dshBaseUrl.value = null
         _dshLaunchToken.value = null
         // 就地重启也重新确定端口：跨重启游标在此处推进——上一轮请求
-        // 的端口已被证明"确证超时 / 不就绪"，下一轮探测必须从它的下一个端口
+        // 的端口已被证明不可用（进程退出或持续不应答），下一轮探测必须从它的下一个端口
         // 起探。顺序同样"先杀后探"（上面先 stop + killAll 再到下面的 probe）：
         // 探测看不见自己上一轮的监听；探测 reuse 开（与 Node 同口径），
         // TIME_WAIT 残留不再误判占用，被怀疑的端口也不会被钉死。窗口沿剩余
@@ -1874,7 +1879,8 @@ class DefaultSandboxManager(
                 val alive = isDshProcessAlive()
                 // 就绪必须以"实际地址确证"为前提：从启动输出解析到 `dsh web:`
                 // 行（同时拿到端口与 token）之前不进入 READY——端口上有 HTTP
-                // 响应还可能是别的服务。解析超时由判定策略直接换端口重试。
+                // 响应还可能是别的服务。未确证期间按首次启动超时等待输出行，
+                // 进程退出则由判定策略立即重启（启用端口自适应时换端口）。
                 val addressConfirmed = _dshBaseUrl.value != null
                 val decision = decideDshHealth(
                     state = window,
@@ -1988,6 +1994,13 @@ class DefaultSandboxManager(
 
     companion object {
         private const val TAG = "SandboxManager"
+
+        /**
+         * startDsh 等待就绪的额外余量：用于健康循环首次启动超时之后的一个探测节拍
+         * （节拍间隔加一轮端口检查、连接与读取超时）及状态发布，使等待通常在循环
+         * 给出结论之后才结束。
+         */
+        private const val READY_WAIT_MARGIN_MS = 15_000L
 
         /**
          * guest bash 在 base 层内的相对路径（== guest 内绝对路径去前导斜杠）。

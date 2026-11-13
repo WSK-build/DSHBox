@@ -375,9 +375,9 @@
     <string name="home_metrics_memory">Memory</string>
     <string name="home_metrics_storage">Storage</string>
     <string name="home_update_highlights_title">Update highlights (v%1$s)</string>
-    <string name="home_update_highlights_added">Added:\n1. DSH backup &amp; reset: reset the main instance to a fresh state with an automatic backup first, and restore from the backup list;\n2. Emergency repair instance: quickly start a fresh emergency instance when DSH crashes, then switch back after fixing the main one;\n3. Bundled DSH layer upgraded to v0.2.2-rc.2</string>
-    <string name="home_update_highlights_fixed">Fixed:\n1. Online runtime import no longer waits for all sources to finish probing; install as soon as a usable source is selected, so slow networks no longer stall</string>
-    <string name="home_update_highlights_improved">Improved:\n1. The local DSH access page adds a DSH run log for easier crash diagnosis</string>
+    <string name="home_update_highlights_added">Added:\n1. Atomic writer-lock publication: DSH writes the full PID before exclusively publishing the lock, eliminating empty locks caused by forced kills;\n2. Emergency repair prompt template: one-tap copy from the instance manager and the startup-failure dialog, guiding DSH in the emergency instance to diagnose and repair the main instance</string>
+    <string name="home_update_highlights_fixed">Fixed:\n1. Slow startups no longer killed at 30 s: a live process that is not yet ready now gets the full 120 s startup window, so plugin-heavy or low-end devices no longer restart repeatedly;\n2. Orphaned empty locks auto-recover: before startup, a kernel lease confirms no live writer holds the lock before clearing historical empty locks, so they no longer block startup permanently</string>
+    <string name="home_update_highlights_improved">Improved:\n1. Emergency instance warning enhanced: clearly labels the main (.dsh) and emergency (.dsh-emergency) data directories, temporary purpose, and operation boundaries</string>
     <string name="home_update_highlights_support">This project is maintained in spare time. If it helps you, consider giving it a Star.</string>
     <string name="home_update_highlights_star">Star on GitHub</string>
     <string name="home_update_highlights_feedback">Send feedback</string>
@@ -449,7 +449,7 @@
     <string name="instance_baseline_downgrade_message">This downgrades to the bundled baseline %1$s (currently %2$s). Data written by a newer version may not be compatible.</string>
     <string name="instance_baseline_reinstall_message">This reinstalls the current version %1$s offline (same as the bundled baseline).</string>
     <string name="instance_baseline_upgrade_message">This upgrades to the bundled baseline %1$s (currently %2$s).</string>
-    <string name="instance_warning">The emergency instance is for temporary use only. Repair the main instance as soon as possible, and do not perform destructive operations in the emergency instance.</string>
+    <string name="instance_warning">The emergency instance (.dsh-emergency) starts with fresh, empty data and is for temporary use when the main instance (.dsh) cannot run, for example after a plugin crash. Ask DSH in the emergency instance (.dsh-emergency) to diagnose and repair the main instance (.dsh), then switch back to the main instance (.dsh). Do not install third-party plugins or perform other destructive operations in the emergency instance (.dsh-emergency).</string>
     <string name="instance_switch_action">Switch</string>
     <string name="instance_switch_to_main_help">Return to your main instance with all its data.</string>
     <string name="instance_switch_to_emergency_help">Run the clean emergency instance.</string>

@@ -276,13 +276,17 @@ fun HomeScreen(
             onDismissRequest = { recoveryDismissed = true },
             title = { Text(stringResource(R.string.recovery_dialog_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     Text(
                         text = stringResource(R.string.instance_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
                     Text(stringResource(R.string.recovery_dialog_message))
+                    EmergencyRepairPrompt(compact = true)
                 }
             },
             confirmButton = {

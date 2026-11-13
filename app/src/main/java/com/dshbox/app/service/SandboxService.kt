@@ -947,8 +947,8 @@ class SandboxService : Service() {
      * via `node --import` when DSH starts (see SandboxProcessRunner).
      *
      * This replaces the old approach of REWRITING DSH's JS files at install time:
-     * the shim only swaps `node:fs/promises`'s `link` at RUNTIME, so no DSH source
-     * byte is ever modified and there is nothing to re-anchor when upstream
+     * the shim swaps Promise hard-link fallback and PID-lock publication at runtime;
+     * no DSH source byte is modified and there is nothing to re-anchor when upstream
      * refactors its internals.
      *
      * Overwritten on every boot so an updated APK always ships the current shim.
@@ -957,8 +957,17 @@ class SandboxService : Service() {
         val config = (application as DshApp).container.sandboxConfig
         try {
             config.dshShimDir.mkdirs()
-            applicationContext.assets.open("dshbox/link-shim.mjs").use { input ->
-                config.dshShimFile.outputStream().use { output -> input.copyTo(output) }
+            for (name in listOf("lock-helper", "writer-lock.mjs", "link-shim.mjs")) {
+                val staged = File.createTempFile("shim-", ".tmp", config.dshShimDir)
+                try {
+                    applicationContext.assets.open("dshbox/$name").use { input ->
+                        staged.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    if (name == "lock-helper") check(staged.setExecutable(true, true))
+                    check(staged.renameTo(File(config.dshShimDir, name)))
+                } finally {
+                    staged.delete()
+                }
             }
             // apt/dpkg 用的硬链接垫片（aarch64 .so）。宿主机侧本目录会被 bind 到 guest 的
             // /opt/dshbox，层替换也不会丢；是否需要注入由包装脚本决定

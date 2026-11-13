@@ -419,9 +419,9 @@
     <string name="home_metrics_memory">الذاكرة</string>
     <string name="home_metrics_storage">التخزين</string>
     <string name="home_update_highlights_title">أبرز ملامح التحديث (v%1$s)</string>
-    <string name="home_update_highlights_added">جديد:\n1. نسخ DSH الاحتياطي وإعادة التعيين: إعادة تعيين النسخة الرئيسية إلى حالة جديدة مع نسخ احتياطي تلقائي مسبق، والاستعادة من قائمة النسخ؛\n2. نسخة الإصلاح الطارئة: بدء نسخة طارئة جديدة بسرعة عند تعطل DSH، ثم العودة إلى الرئيسية بعد إصلاحها؛\n3. ترقية طبقة DSH المضمّنة إلى v0.2.2-rc.2</string>
-    <string name="home_update_highlights_fixed">إصلاح:\n1. لم يعد الاستيراد عبر الإنترنت للبيئة ينتظر انتهاء فحص جميع المصادر؛ يبدأ التثبيت بمجرد اختيار مصدر صالح، دون انتظار طويل على الشبكات البطيئة</string>
-    <string name="home_update_highlights_improved">تحسين:\n1. أضافت صفحة الوصول المحلي لـ DSH سجل تشغيل DSH لتسهيل تشخيص الأعطال</string>
+    <string name="home_update_highlights_added">جديد:\n1. نشر ذري لأقفال الكتابة: يكتب DSH معرّف العملية الكامل قبل نشر القفل حصريًا، مما يمنع الأقفال الفارغة الناتجة عن الإنهاء القسري؛\n2. قالب طلب الإصلاح الطارئ: نسخ بلمسة واحدة من مدير النسخ ومربع حوار فشل البدء، لتوجيه DSH في نسخة الطوارئ لتشخيص النسخة الرئيسية وإصلاحها</string>
+    <string name="home_update_highlights_fixed">إصلاح:\n1. لم يعد البدء البطيء يُقتل عند 30 ثانية: العملية الحية غير الجاهزة تحصل على نافذة البدء الكاملة 120 ثانية، مما يمنع إعادة التشغيل المتكررة على الأجهزة البطيئة أو كثيرة الإضافات؛\n2. استعادة تلقائية للأقفال الفارغة المتروكة: قبل البدء، يؤكد عقد النواة عدم وجود كاتب حي قبل حذف الأقفال الفارغة التاريخية، فلم تعد تعيق البدء نهائيًا</string>
+    <string name="home_update_highlights_improved">تحسين:\n1. تعزيز تحذير نسخة الطوارئ: يوضح أدلة بيانات النسخة الرئيسية (.dsh) والطارئة (.dsh-emergency) والغرض المؤقت وحدود العمليات</string>
     <string name="home_update_highlights_support">يُعنى بهذا المشروع مطوّر في وقت فراغه. إذا كان مفيداً لك، ففكر في منحه نجمة.</string>
     <string name="home_update_highlights_star">نجمة على GitHub</string>
     <string name="home_update_highlights_feedback">إرسال ملاحظات</string>
@@ -493,7 +493,7 @@
     <string name="instance_baseline_downgrade_message">سيخفض هذا إلى النسخة المضمّنة %1$s (الحالية %2$s). قد لا تكون البيانات التي كتبتها نسخة أحدث متوافقة.</string>
     <string name="instance_baseline_reinstall_message">سيعيد هذا تثبيت النسخة الحالية %1$s دون اتصال (مطابقة للنسخة المضمّنة).</string>
     <string name="instance_baseline_upgrade_message">سيرقي هذا إلى النسخة المضمّنة %1$s (الحالية %2$s).</string>
-    <string name="instance_warning">نسخة الطوارئ مخصصة للاستخدام المؤقت فقط. أصلح النسخة الرئيسية في أقرب وقت ممكن، ولا تنفذ عمليات مدمرة في نسخة الطوارئ.</string>
+    <string name="instance_warning">تبدأ نسخة الطوارئ (.dsh-emergency) ببيانات جديدة فارغة عند إنشائها، وتستخدم مؤقتًا عندما تتعطل النسخة الرئيسية (.dsh)، مثلًا بسبب إضافة. اطلب من DSH في نسخة الطوارئ (.dsh-emergency) تشخيص النسخة الرئيسية (.dsh) وإصلاحها، ثم عد إلى النسخة الرئيسية (.dsh). لا تثبت إضافات خارجية ولا تنفذ عمليات مدمرة أخرى في نسخة الطوارئ (.dsh-emergency).</string>
     <string name="instance_switch_action">تبديل</string>
     <string name="instance_switch_to_main_help">عد إلى نسختك الرئيسية بكل بياناتها.</string>
     <string name="instance_switch_to_emergency_help">شغّل نسخة الطوارئ النظيفة.</string>

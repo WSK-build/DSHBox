@@ -1,24 +1,9 @@
 package com.dshbox.app.sandbox
 
 import java.io.File
+import java.nio.file.Files
 
-/**
- * 清理 `.dsh` 下**已死的写者锁**。
- *
- * 背景（机制）：`dsh-atomic-write` 用 `wx` 独占创建 `<file>.lock`（内容为持有者 PID），
- * 在 `finally` 里删除；等待上限 2 秒，且**竞争者不会清理已存在的锁**。因此持有者若被强杀，
- * 这把锁会永久留下，之后每次启动都在该锁上超时失败（`.credentials.yaml.lock` 就是这样
- * 让 DSH 完全起不来的）。启动前清掉"持有者已不存在"的锁是唯一的自动免疫手段。
- *
- * 判定纪律（宁可不删，不可错删）：
- * 1. 只处理文件名以 `.lock` 结尾的文件；只读文件头部少量字节。
- * 2. 锁内容必须是纯十进制 PID；解析不出来 → **不动**（不是我们所知的形态）。
- * 3. `/proc/<pid>` 存在 → 有活着的持有者 → **不动**（PID 被复用时会保守地保留死锁，
- *    这是可接受的一侧：错误方向更贵）。
- * 4. `/proc` 自身不可用（自检失败）→ **一把都不删**，只记一条日志。
- *
- * 不涉及 `.dsh` 下任何非锁文件；不写入、不移动任何内容。
- */
+/** 清理已退出写者的 PID 锁；历史空锁只交给持有内核排他租约的恢复器。 */
 internal class DshWriterLockSweeper(
     private val workspaceDir: File,
     /** 实例 home 相对目录名（主实例 `.dsh`；应急实例 `.dsh-emergency`）。 */
@@ -27,6 +12,8 @@ internal class DshWriterLockSweeper(
     private val isProcessAlive: (Long) -> Boolean,
     /** 自检：判定链路是否可用（例如本进程自己的 PID 必须被判为存活）。 */
     private val selfCheck: () -> Boolean,
+    /** 恢复器须持有内核写租约；不支持租约或仍有打开的句柄时保留。 */
+    private val recoverEmpty: (File) -> Boolean = { false },
 ) {
 
     data class Result(
@@ -36,9 +23,10 @@ internal class DshWriterLockSweeper(
         val skipped: Boolean = false,
     )
 
+    /** 空锁年龄不参与判断；只由内核确认没有打开的文件描述符。 */
     fun sweep(): Result {
         val root = File(workspaceDir, homeRelativeDir)
-        if (!root.isDirectory) return Result(scanned = 0, removed = emptyList())
+        if (!root.isDirectory || Files.isSymbolicLink(root.toPath())) return Result(scanned = 0, removed = emptyList())
         if (!selfCheck()) {
             return Result(scanned = 0, removed = emptyList(), skipped = true)
         }
@@ -46,21 +34,29 @@ internal class DshWriterLockSweeper(
         collectLocks(root, depth = 0, into = locks)
         val removed = mutableListOf<String>()
         locks.forEach { lock ->
+            if (lock.length() == 0L) {
+                if (lock.parentFile == root && lock.name == ".credentials.yaml.lock" && recoverEmpty(lock)) {
+                    removed += relativePath(lock)
+                }
+                return@forEach
+            }
             val pid = readPid(lock) ?: return@forEach
             if (isProcessAlive(pid)) return@forEach
-            if (lock.delete()) {
-                removed += lock.relativeTo(workspaceDir).path
-            }
+            if (readPid(lock) == pid && lock.delete()) removed += relativePath(lock)
         }
         return Result(scanned = locks.size, removed = removed)
     }
+
+    private fun relativePath(lock: File): String = lock.relativeTo(workspaceDir).path
 
     private fun collectLocks(dir: File, depth: Int, into: MutableList<File>) {
         if (depth > MAX_DEPTH) return
         val children = dir.listFiles() ?: return
         children.forEach { child ->
+            val symbolic = runCatching { Files.isSymbolicLink(child.toPath()) }.getOrDefault(true)
+            if (symbolic) return@forEach
             when {
-                child.isDirectory -> collectLocks(child, depth + 1, into)
+                child.isDirectory -> if (child.name !in SKIPPED_DIRS) collectLocks(child, depth + 1, into)
                 child.isFile && child.name.endsWith(LOCK_SUFFIX) -> into += child
             }
         }
@@ -75,6 +71,7 @@ internal class DshWriterLockSweeper(
                 if (read <= 0) "" else String(buffer, 0, read, Charsets.US_ASCII)
             }
         }.getOrNull() ?: return null
+        if (!text.endsWith("\n")) return null
         val trimmed = text.trim()
         if (trimmed.isEmpty() || trimmed.length > PID_MAX_DIGITS) return null
         if (!trimmed.all { it in '0'..'9' }) return null
@@ -86,6 +83,9 @@ internal class DshWriterLockSweeper(
         const val DSH_RELATIVE_DIR = ".dsh"
 
         const val LOCK_SUFFIX = ".lock"
+
+        /** 不进入的目录：插件依赖包与 git 仓库元数据，其中的 `.lock` 不是写者锁。 */
+        val SKIPPED_DIRS = setOf("node_modules", ".git")
 
         /** 会话目录层级有限，6 层足够覆盖 `sessions/<ws>/<session>/`。 */
         const val MAX_DEPTH = 6

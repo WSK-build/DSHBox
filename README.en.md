@@ -35,13 +35,12 @@
 
 ## What's new
 
-Current version: **v1.5.3** (2026-11-12) — **DSH emergency repair instance · backup & reset · DSH 0.2.2-rc.2.**
+Current version: **v1.5.4** (2026-11-14) — **Startup reliability · Writer-lock safety.**
 
-1. Added **emergency repair instance**: when DSH crashes, quickly start a fresh emergency instance (isolated empty data, sharing the current runtime layer), then switch back after fixing the main instance; a recovery dialog appears on crash, and the Home DSH card "More" menu has a permanent "Emergency repair & instance switching" entry;
-2. Added **DSH backup & reset**: reset the main instance to a fresh state in Settings (automatic backup before reset, or direct delete); the backup list supports per-item restore / delete, with reversible restore that keeps the original backup;
-3. **Bundled DSH upgraded to `0.2.2-rc.2`**: the layer content stays pure upstream and is provisioned through version arbitration;
-4. **Faster online runtime import**: install as soon as a usable mirror is selected, without waiting for all sources to finish probing (Settings and the beginner guide alike);
-5. **Local DSH run log**: the local access page adds a run-log panel that turns red on failure, with collapsible viewing and redacted copying.
+1. Added **atomic writer locks**: DSH writes the full PID before exclusively creating the lock, eliminating empty locks from forced kills; historical empty locks are safely recovered via kernel write leases;
+2. **Slow startups no longer killed at 30 s**: a live process that is not yet ready gets the full 120 s startup window, so plugin-heavy or low-end devices no longer restart repeatedly;
+3. **Orphaned empty locks auto-recover**: a kernel lease confirms no live writer before clearing historical empty locks at startup, so they no longer block startup permanently;
+4. **Emergency instance warning & repair guidance enhanced**: clearly labels main (.dsh) and emergency (.dsh-emergency) data directories, temporary purpose, and operation boundaries; adds a foldable, copyable repair prompt template (6 languages).
 
 See **[CHANGES.md](CHANGES.md)** for the complete changes in each version.
 
@@ -71,6 +70,7 @@ The Home page gains a new “Remote” tab for connecting to DSH running on a co
 
 - DSH `0.2.2-rc.2` ships inside the APK and the layer content stays pure upstream. On first launch it is provisioned into `runtime-current/dsh` through **version arbitration**; when the layer is replaced, the old layer is backed up once to `previous/dsh`, and user data is never touched.
 - **Runtime hard-link compatibility shim**: Android app-data partitions (FBE/FUSE) reject hard links, while DSH uses `link()` as its primitive for publishing files without overwriting, which breaks session persistence, file tools and attachment publishing. At startup the app replaces `node:fs/promises.link` via `node --import`; when the platform refuses the hard link, it falls back to a content copy that preserves the no-overwrite semantics.
+- **Atomic writer locks**: the same shim intercepts Promise `writeFile` for `wx` lock creation, writes the full PID to a temporary file first, then exclusively creates the `.lock` via `renameat2(RENAME_NOREPLACE)`, eliminating empty locks from forced kills; historical empty locks are recovered only after a kernel write lease (`F_SETLEASE`) confirms no live writer holds the file. Zero DSH source changes.
 - **Zero DSH source changes**: compatibility logic lives in the app, the renderer adapter, bundled extensions and runtime wiring; the bundled DSH layer keeps upstream files and business logic unchanged.
 - **Full-screen DSH workspace**: the DSH tab resolves launchToken automatically on the local address, uses a mobile user agent, handles keyboard and visual viewport, and supports pinch-to-zoom; a draggable floating ball still provides refresh plus quick switching to Home, Files, Terminal and Browser, and Home keeps the “Browser” and “More” entries.
 
