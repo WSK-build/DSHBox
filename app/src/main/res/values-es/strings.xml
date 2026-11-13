@@ -386,9 +386,9 @@
     <string name="home_metrics_memory">Memoria</string>
     <string name="home_metrics_storage">Almacenamiento</string>
     <string name="home_update_highlights_title">Novedades de la versión (v%1$s)</string>
-    <string name="home_update_highlights_added">Novedad:\n1. Copia y restablecimiento de DSH: restablece la instancia principal a un estado nuevo con copia automática previa, y restaura desde la lista de copias;\n2. Instancia de reparación de emergencia: inicia rápidamente una instancia de emergencia nueva cuando DSH falla, y vuelve a la principal tras repararla;\n3. La capa DSH incluida se actualiza a v0.2.2-rc.2</string>
-    <string name="home_update_highlights_fixed">Corrección:\n1. La importación en línea del entorno ya no espera a que todas las fuentes terminen de sondearse; instala en cuanto se selecciona una fuente utilizable, sin esperas largas con redes lentas</string>
-    <string name="home_update_highlights_improved">Mejora:\n1. La página de acceso local de DSH añade un registro de ejecución de DSH para diagnosticar fallos más fácilmente</string>
+    <string name="home_update_highlights_added">Novedad:\n1. Publicación atómica de bloqueos de escritura: DSH escribe el PID completo antes de publicar el bloqueo de forma exclusiva, eliminando los bloqueos vacíos causados por terminaciones forzadas;\n2. Plantilla de instrucción de reparación de emergencia: copia con un toque desde el gestor de instancias y el diálogo de fallo de inicio, guiando a DSH en la instancia de emergencia para diagnosticar y reparar la instancia principal</string>
+    <string name="home_update_highlights_fixed">Corrección:\n1. Los inicios lentos ya no se eliminan a los 30 s: un proceso vivo que aún no está listo dispone de la ventana completa de 120 s, evitando reinicios repetidos en dispositivos lentos o con muchos plugins;\n2. Recuperación automática de bloqueos vacíos huérfanos: antes del inicio, un arrendamiento del kernel confirma que ningún escritor vivo retiene el bloqueo antes de eliminar los bloqueos vacíos históricos, que ya no bloquean el inicio permanentemente</string>
+    <string name="home_update_highlights_improved">Mejora:\n1. Aviso de instancia de emergencia mejorado: indica claramente los directorios de datos principal (.dsh) y de emergencia (.dsh-emergency), el uso temporal y los límites de operación</string>
     <string name="home_update_highlights_support">Este proyecto se mantiene en tiempo libre. Si te resulta útil, considera darle una estrella.</string>
     <string name="home_update_highlights_star">Estrella en GitHub</string>
     <string name="home_update_highlights_feedback">Enviar comentarios</string>
@@ -460,7 +460,7 @@
     <string name="instance_baseline_downgrade_message">Esto degrada a la base incluida %1$s (actual %2$s). Los datos escritos por una versión más reciente pueden no ser compatibles.</string>
     <string name="instance_baseline_reinstall_message">Esto reinstala sin conexión la versión actual %1$s (igual que la base incluida).</string>
     <string name="instance_baseline_upgrade_message">Esto actualiza a la base incluida %1$s (actual %2$s).</string>
-    <string name="instance_warning">La instancia de emergencia es solo para uso temporal. Repare la instancia principal lo antes posible y no realice operaciones destructivas en la instancia de emergencia.</string>
+    <string name="instance_warning">Al crearse, la instancia de emergencia (.dsh-emergency) tiene datos nuevos y vacíos. Es de uso temporal cuando la instancia principal (.dsh) no funciona, por ejemplo por un fallo de plugins. Pida a DSH en la instancia de emergencia (.dsh-emergency) que diagnostique y repare la instancia principal (.dsh), y después vuelva a ella (.dsh). No instale plugins de terceros ni realice otras operaciones destructivas en la instancia de emergencia (.dsh-emergency).</string>
     <string name="instance_switch_action">Cambiar</string>
     <string name="instance_switch_to_main_help">Vuelva a su instancia principal con todos sus datos.</string>
     <string name="instance_switch_to_emergency_help">Ejecute la instancia de emergencia limpia.</string>

@@ -48,8 +48,8 @@ extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
         minSdk = 29
         targetSdk = 36
         // 多语言版本：联合国六语 + 语言选择器 + 硬编码清零 + 布局恒 LTR + i18n 门禁。
-        versionCode = 12
-        versionName = "1.5.3"
+        versionCode = 13
+        versionName = "1.5.4"
         buildConfigField("String", "DSH_GECKOVIEW_VERSION", "\"${libs.versions.geckoview.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

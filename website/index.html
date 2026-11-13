@@ -32,7 +32,7 @@
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.3">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.4">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -54,7 +54,7 @@
         "applicationCategory": "MobileApplication",
         "applicationSubCategory": "Local and remote AI / LLM assistant",
         "operatingSystem": "Android (ARM64, Android 10+)",
-        "softwareVersion": "1.5.3",
+        "softwareVersion": "1.5.4",
         "inLanguage": ["en", "zh-CN"],
         "description": "Run DeepSeek Harness locally on Android and connect to DSH remotely over LAN or the web, with an AI browser assistant, phone tools, shared folders and a terminal. Guided Debian and Node.js setup, no root or Termux required. 中文：在安卓手机与平板上本地运行 DSH，也可通过扫码或配对链接远程连接 DSH；集成 AI 浏览器助手、手机助手、系统文件共享区与终端，无需 Root 或单独安装 Termux。",
         "featureList": [
@@ -188,16 +188,16 @@
               <h2 class="whats-new-title" id="whats-new-hero-title">
                 <span class="lang-en">What's new</span><span class="lang-zh">最新版本变化</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.3</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.4</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>Emergency repair instance</strong> — when DSH crashes, start a fresh emergency instance and switch back after fixing the main one.</span>
-                <span class="lang-zh"><strong>应急修复实例</strong> — DSH 崩溃时快速启动全新应急实例应急，修好主实例后一键切回。</span>
+                <span class="lang-en"><strong>Atomic writer locks</strong> — full PID written before exclusive lock creation; kernel-lease recovery of orphaned empty locks.</span>
+                <span class="lang-zh"><strong>写者锁原子</strong> — 先写完整 PID 再排他创建锁；内核租约安全回收历史空锁。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Backup &amp; reset</strong> — reset the main instance with automatic backup, and restore or delete backups per item.</span>
-                <span class="lang-zh"><strong>备份与重置</strong> — 一键重置主实例并自动备份，备份列表逐项还原 / 删除，还原可逆。</span>
+                <span class="lang-en"><strong>Startup reliability</strong> — slow startups get the full 120 s window instead of being killed at 30 s.</span>
+                <span class="lang-zh"><strong>启动可靠性</strong> — 慢启动给满 120 秒窗口，不再 30 秒误杀。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -232,12 +232,12 @@
     <section class="stats" aria-label="Current release facts">
       <div class="container">
         <dl class="stats-strip reveal">
-          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.3</dd></div>
+          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.4</dd></div>
           <div class="stat" style="--i:1">
             <dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt>
             <dd class="stat-apk-sizes">
-              <span><span class="stat-label lang-en">System</span><span class="stat-label lang-zh">系统</span><b data-fact="apkSizeSystem">154.4 MB</b></span>
-              <span><span class="stat-label">Gecko</span><b data-fact="apkSizeGecko">243.2 MB</b></span>
+              <span><span class="stat-label lang-en">System</span><span class="stat-label lang-zh">系统</span><b data-fact="apkSizeSystem">154.6 MB</b></span>
+              <span><span class="stat-label">Gecko</span><b data-fact="apkSizeGecko">243.4 MB</b></span>
             </dd>
           </div>
           <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime setup</span><span class="lang-zh">环境准备</span></dt><dd><span class="lang-en">Guided setup</span><span class="lang-zh">分步安装</span></dd></div>
@@ -503,7 +503,7 @@
           <div class="req-card reveal" style="--i:1">
             <h3><span class="lang-en">Storage &amp; Network</span><span class="lang-zh">存储与网络</span></h3>
             <ul>
-              <li><span class="lang-en"><span data-fact="apkSizeSystem">118.7 MB</span> for the System WebView version, <span data-fact="apkSizeGecko">207.5 MB</span> for the Embedded Gecko version</span><span class="lang-zh">系统 WebView 版约 <span data-fact="apkSizeSystem">118.7 MB</span>，内置 Gecko 版约 <span data-fact="apkSizeGecko">207.5 MB</span></span></li>
+              <li><span class="lang-en"><span data-fact="apkSizeSystem">154.6 MB</span> for the System WebView version, <span data-fact="apkSizeGecko">243.4 MB</span> for the Embedded Gecko version</span><span class="lang-zh">系统 WebView 版约 <span data-fact="apkSizeSystem">154.6 MB</span>，内置 Gecko 版约 <span data-fact="apkSizeGecko">243.4 MB</span></span></li>
               <li><span class="lang-en">Allow extra storage for Debian, Node.js and your workspace</span><span class="lang-zh">为 Debian、Node.js 与工作区预留充足存储</span></li>
               <li><span class="lang-en">Online mirror setup or offline runtime import</span><span class="lang-zh">支持在线多镜像源安装或离线导入运行环境</span></li>
             </ul>
@@ -571,7 +571,7 @@
                 <span class="lang-zh">内置完整 GeckoView 渲染内核，不依赖系统 WebView。体积较大。</span>
               </p>
               <ul class="download-option-meta">
-                <li><span data-fact="apkSizeGecko">207.5 MB</span> · ARM64</li>
+                <li><span data-fact="apkSizeGecko">243.4 MB</span> · ARM64</li>
               </ul>
               <div class="download-actions">
                 <a id="download-apk-gecko" class="button button-primary button-large" href="https://github.com/WSK-build/DSHBox/releases/latest">
@@ -601,29 +601,25 @@
                 <span class="lang-en">What's new in this version</span>
                 <span class="lang-zh">本次版本更新内容</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.3</span>
-              <span class="whats-new-date" data-release-date>2026-11-12</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.4</span>
+              <span class="whats-new-date" data-release-date>2026-11-14</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>Emergency repair instance</strong> — a fresh emergency instance on crash, sharing the current runtime, with a recovery dialog and a permanent switching entry.</span>
-                <span class="lang-zh"><strong>应急修复实例</strong> — 崩溃时启动全新应急实例，共享当前运行层，配恢复弹窗与常驻切换入口。</span>
+                <span class="lang-en"><strong>Atomic writer locks</strong> — full PID written before exclusive lock creation via renameat2; kernel write lease confirms no live writer before recovering orphaned empty locks.</span>
+                <span class="lang-zh"><strong>写者锁原子</strong> — 先写完整 PID 再经 renameat2 排他创建锁；内核写租约确认无活写者后回收历史空锁。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Backup &amp; reset</strong> — reset the main instance with automatic backup; per-item restore / delete with reversible restore.</span>
-                <span class="lang-zh"><strong>备份与重置</strong> — 重置主实例自动备份；备份逐项还原 / 删除，还原可逆、原备份保留。</span>
+                <span class="lang-en"><strong>Slow startups no longer killed at 30 s</strong> — a live process that is not yet ready gets the full 120 s startup window.</span>
+                <span class="lang-zh"><strong>慢启动不再被 30 秒误杀</strong> — 进程存活但尚未就绪时等待完整 120 秒启动窗口。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>DSH 0.2.2-rc.2</strong> — bundled runtime upgraded, pure upstream, provisioned by version arbitration.</span>
-                <span class="lang-zh"><strong>DSH 0.2.2-rc.2</strong> — 随包运行层升级，保持上游纯净，按版本仲裁装配。</span>
+                <span class="lang-en"><strong>Orphaned empty locks auto-recover</strong> — historical empty locks no longer block startup permanently.</span>
+                <span class="lang-zh"><strong>强杀遗留空锁可自动恢复</strong> — 历史空锁不再永久阻塞启动。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Faster online runtime import</strong> — install as soon as a usable mirror is selected, no waiting for all probes.</span>
-                <span class="lang-zh"><strong>在线获取运行环境提速</strong> — 选中可用镜像源即可安装，不必等全部探测完成。</span>
-              </li>
-              <li>
-                <span class="lang-en"><strong>Local DSH run log</strong> — a run-log panel on the local access page, red on failure, collapsible viewing and redacted copying.</span>
-                <span class="lang-zh"><strong>本地 DSH 运行日志</strong> — 本地访问页新增运行日志面板，失败变红、折叠查看、脱敏复制。</span>
+                <span class="lang-en"><strong>Emergency guidance enhanced</strong> — warnings label .dsh / .dsh-emergency directories; foldable, copyable repair prompt template in 6 languages.</span>
+                <span class="lang-zh"><strong>应急引导增强</strong> — 警示标注 .dsh / .dsh-emergency 目录；新增可折叠、可复制修复提示词模板（六语）。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -841,6 +837,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.5.3" defer></script>
+  <script src="./assets/js/main.js?v=1.5.4" defer></script>
 </body>
 </html>

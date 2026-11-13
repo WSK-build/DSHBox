@@ -150,21 +150,104 @@ class DshHealthPolicyTest {
     }
 
     /**
-     * 就绪必须以启动输出行确证为前提：解析超时前端口上即便有别的服务应答
-     * 也只是继续观察；到达确认窗口即进入换端口重试，不判 READY。
+     * 就绪必须以启动输出行确证为前提：端口上即便有应答（可能是别的服务）也不判 READY；
+     * 进程存活时按首次启动超时等待输出行，不在中途重启仍在初始化的实例。
      */
     @Test
-    fun `unconfirmed address never becomes ready and retries on parse timeout`() {
+    fun `unconfirmed but alive instance waits for ready timeout instead of restarting`() {
         val start = DshWindowState.fresh(0)
-        // 窗口内（哪怕端口已经返回 200/401）只观察；
-        val inside = decide(start, nowMs = DshHealthPolicy.DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS - 1, ready = true, confirmed = false)
+        for (ready in listOf(true, false)) {
+            var s = start
+            var t = 2_000L
+            while (t <= readyTimeoutMs) {
+                val d = decide(s, nowMs = t, ready = ready, confirmed = false)
+                assertTrue("t=$t ready=$ready", d is DshHealthDecision.Observe)
+                s = d.next
+                t += 2_000L
+            }
+            val timeout = decide(s, nowMs = readyTimeoutMs + 1, ready = ready, confirmed = false)
+            assertTrue(timeout is DshHealthDecision.InitialTimeout)
+            assertEquals(0, timeout.next.restartAttempts)
+        }
+    }
+
+    /** 未确证且进程句柄已消失：属确定性宕机，立即换端口重启，不等超时。 */
+    @Test
+    fun `unconfirmed and dead instance restarts immediately`() {
+        val start = DshWindowState.fresh(0)
+        for (ready in listOf(true, false)) {
+            val d = decide(start, nowMs = 2_000, ready = ready, alive = false, confirmed = false)
+            assertTrue("ready=$ready", d is DshHealthDecision.Restart)
+            assertEquals(1, d.next.restartAttempts)
+        }
+    }
+
+    /** 重启后的新实例同样适用：未确证但存活则观察，直至首次启动超时。 */
+    @Test
+    fun `unconfirmed instance after a restart observes until ready timeout`() {
+        val restarted = decide(DshWindowState.fresh(0), nowMs = 10_000, ready = false, alive = false, confirmed = false)
+        assertTrue(restarted is DshHealthDecision.Restart)
+        val afterRestart = restarted.next
+        val inside = decide(afterRestart, nowMs = 10_000 + readyTimeoutMs, ready = true, confirmed = false)
         assertTrue(inside is DshHealthDecision.Observe)
-        // 超过确认窗口：进入重启（预算内）。
-        val outside = decide(start, nowMs = DshHealthPolicy.DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS + 1, ready = true, confirmed = false)
-        assertTrue(outside is DshHealthDecision.Restart)
-        // 端口无响应 + 未确证同样按确认超时走重启（不必吃满 120s readyTimeout）。
-        val quiet = decide(start, nowMs = DshHealthPolicy.DEFAULT_ADDRESS_CONFIRM_TIMEOUT_MS + 1, ready = false, confirmed = false)
-        assertTrue(quiet is DshHealthDecision.Restart)
+        val outside = decide(afterRestart, nowMs = 10_001 + readyTimeoutMs, ready = true, confirmed = false)
+        assertTrue(outside is DshHealthDecision.InitialTimeout)
+    }
+
+    /** 未确证且进程句柄消失时同样受重试预算约束，预算用尽交由调用方复查。 */
+    @Test
+    fun `unconfirmed and dead instance reports exhausted at budget boundary`() {
+        val s = DshWindowState.fresh(0).copy(restartAttempts = maxAttempts - 1)
+        val d = decide(s, nowMs = 2_000, ready = true, alive = false, confirmed = false)
+        assertTrue(d is DshHealthDecision.Exhausted)
+        assertEquals(maxAttempts, d.next.restartAttempts)
+    }
+
+    /** 不变式：任意输入组合下，未确证的地址都不会判为 READY。 */
+    @Test
+    fun `unconfirmed address never yields ready under any input`() {
+        val bools = listOf(true, false)
+        for (wasReady in bools) for (ready in bools) for (alive in bools) for (interactive in bools)
+            for (gap in listOf(0L, 2_000L, DshHealthPolicy.PROBE_GAP_REARM_MS + 1))
+                for (attempts in 0 until maxAttempts)
+                    for (now in listOf(1_000L, 60_000L, readyTimeoutMs + 1, 600_000L)) {
+                        val s = DshWindowState(
+                            wasReady = wasReady,
+                            restartAttempts = attempts,
+                            unresponsiveSinceMs = if (wasReady) 0L else null,
+                            startedAtMs = 0L,
+                            healthyStreak = DshHealthPolicy.HEALTHY_STREAK_TO_CLOSE - 1,
+                        )
+                        val d = decide(
+                            s,
+                            nowMs = now,
+                            ready = ready,
+                            alive = alive,
+                            interactive = interactive,
+                            gapMs = gap,
+                            confirmed = false,
+                        )
+                        assertFalse(
+                            "wasReady=$wasReady ready=$ready alive=$alive interactive=$interactive " +
+                                "gap=$gap attempts=$attempts now=$now",
+                            d is DshHealthDecision.Ready,
+                        )
+                        assertEquals(0, d.next.healthyStreak)
+                    }
+    }
+
+    /** 未确证期间的端口应答不累计连续成功次数，确证后从零起算。 */
+    @Test
+    fun `unconfirmed answers do not count toward the healthy streak`() {
+        var s = DshWindowState.fresh(0)
+        repeat(5) { i ->
+            s = decide(s, nowMs = 2_000L * (i + 1), ready = true, confirmed = false).next
+        }
+        assertEquals(0, s.healthyStreak)
+        assertFalse(s.wasReady)
+        val d = decide(s, nowMs = 12_000, ready = true, confirmed = true)
+        assertTrue(d is DshHealthDecision.Ready)
+        assertEquals(1, d.next.healthyStreak)
     }
 
     /** 已确证的地址不受该门影响：原有就绪路径照常生效。 */

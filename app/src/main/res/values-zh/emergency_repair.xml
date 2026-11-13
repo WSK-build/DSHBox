@@ -1,0 +1,9 @@
+<resources>
+    <string name="emergency_repair_prompt_title">修复提示词示范</string>
+    <string name="emergency_repair_prompt_desc">复制给应急实例中的 DSH，用于排查并修复主实例。</string>
+    <string name="emergency_repair_prompt_compact_title">修复 DSH 提示词模板</string>
+    <string name="emergency_repair_prompt_expand">展开</string>
+    <string name="emergency_repair_prompt_collapse">收起</string>
+    <string name="emergency_repair_prompt_copy_failed">复制失败，请重试。</string>
+    <string name="emergency_repair_prompt_body" formatted="false">你是 DSHBox 应急实例中的 DSH。请先确认当前数据目录为 /root/projects/.dsh-emergency；需要修复的主实例数据目录为 /root/projects/.dsh。\n\n主实例可能因 DSH 升级后与第三方插件不兼容而无法运行，但请先根据实际版本、日志和配置验证原因，不要直接认定。\n\n1. 先读取主实例的启动诊断、web profile、插件清单及停用覆盖层，区分主实例与应急实例。修改前备份相关文件，记录每项变动。\n\n2. 优先可逆地停用可疑第三方插件；必要时可先停用能够确认来源且支持停用的第三方插件，保留安装文件和配置。不要误停 DSH 核心或 DSHBox 必需适配插件，不要仅凭包名猜测配置项。未经用户批准，不得删除插件、会话、凭证或其他数据；不要在应急实例中安装第三方插件。\n\n3. DSHBox 只管理一个活跃 DSH Web 实例，主实例与应急实例共享运行层。不要自行再启动主实例 Web 服务与应急服务并行运行。完成修改后报告结果，提醒用户通过“首页 DSH 卡片 → 更多 → 应急修复与实例切换”切回主实例，由 APP 停止应急服务并启动主实例验证。若此前额外启动过测试用主实例进程，先停止这些测试进程并确认监听端口释放；不要自行终止当前由 APP 托管的应急服务。切换验证会中断当前应急会话，请先保存修复进度。\n\n4. 主实例可启动后，逐项排查第三方插件兼容问题。更新、重装或有风险的修复前解释影响并取得用户批准，再逐项验证，不要一次恢复全部可疑插件。\n\n5. 必要时提醒用户进入“设置 → DSH 版本与重置”，选择可用的已知兼容旧版本并确认降级，或执行“重置 DSH → 备份后重置（推荐）”。版本降级影响共享运行层，新版本数据未必兼容旧版本；先备份并保存进度。备份后重置会重建并切回主实例，也会中断应急会话。\n\n6. 旧主实例备份会保留，但 APP 没有单独迁移对话的按钮。如用户需要，可先核对备份会话存储格式及当前版本兼容性，取得同意后选择性复制并验证。保留源备份，不直接覆盖回损坏的插件、配置或遗留锁。不要承诺跨版本迁移必然无损；无法确认时停止并说明原因。\n\n最后列出：诊断原因、备份位置、修改内容、待验证问题，以及用户下一步需在 APP 中执行的操作。</string>
+</resources>

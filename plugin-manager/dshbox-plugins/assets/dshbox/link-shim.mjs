@@ -5,13 +5,14 @@
  * 回退到 COPYFILE_EXCL，保留源文件及目标已存在时的 EEXIST 语义。
  * 拷贝后尝试同步权限；权限同步失败不影响已完成的内容复制。
  *
- * 只处理异步 Promise 接口，不替换 fs.link 回调接口或 fs.linkSync。
- * syncBuiltinESMExports 用于同步内建模块的具名导出。
+ * Promise 写者锁先写完整 PID 再排他发布，避免强杀留下空锁。
+ * 只处理 Promise 接口；syncBuiltinESMExports 同步内建模块的具名导出。
  */
 
 import fsp from "node:fs/promises";
 import { constants } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
+import { writeWithPublishedLock } from "./writer-lock.mjs";
 
 /** 平台拒绝硬链接时可能给出的错误码（各家 ROM/内核不一，全部纳入）。 */
 const LINK_DENIED = new Set(["EACCES", "EPERM", "ENOTSUP", "ENOSYS"]);
@@ -49,6 +50,7 @@ async function linkWithFallback(existing, newPath) {
 }
 
 fsp.link = linkWithFallback;
+fsp.writeFile = writeWithPublishedLock;
 // 让已经 `import { link } from "node:fs/promises"` 的模块看到替换后的实现
 // （ESM 内建具名导入是活绑定，必须显式重同步）。
 syncBuiltinESMExports();

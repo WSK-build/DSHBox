@@ -364,9 +364,9 @@
     <string name="home_metrics_memory">内存</string>
     <string name="home_metrics_storage">存储</string>
     <string name="home_update_highlights_title">版本更新要点（v%1$s）</string>
-    <string name="home_update_highlights_added">新增：\n1. DSH 备份与重置：一键重置主实例恢复全新状态，重置前自动备份，可从备份列表选择还原；\n2. 应急修复实例：DSH 崩溃时快速启动全新应急实例应急，修好主实例后切回；\n3. 随包 DSH 层升级至 v0.2.2-rc.2</string>
-    <string name="home_update_highlights_fixed">修复：\n1. 在线获取运行环境无需等全部源探测完成，选中可用源即可安装，慢网不再久等</string>
-    <string name="home_update_highlights_improved">优化：\n1. 本地 DSH 访问页新增「DSH 运行日志」，崩溃排查更直观</string>
+    <string name="home_update_highlights_added">新增：\n1. 写者锁原子发布：DSH 写锁时先写完整 PID 再排他发布，从源头杜绝强杀产生空锁；\n2. 应急修复提示词模板：实例管理页与启动失败弹窗均可一键复制，指导应急实例中的 DSH 排查并修复主实例</string>
+    <string name="home_update_highlights_fixed">修复：\n1. 慢启动不再被 30 秒误杀：进程存活但尚未就绪时等待完整 120 秒启动窗口，插件较多或低性能设备不再反复重启；\n2. 强杀遗留空锁可自动恢复：启动前通过内核租约确认无活写者后清理历史空锁，不再永久阻塞启动</string>
+    <string name="home_update_highlights_improved">优化：\n1. 应急实例警示增强：明确标注主实例（.dsh）与应急实例（.dsh-emergency）的数据目录、临时用途与操作边界</string>
     <string name="home_update_highlights_support">开发者业余维护，如果觉得有帮助可以点个 Star 支持。</string>
     <string name="home_update_highlights_star">去 GitHub 点 Star</string>
     <string name="home_update_highlights_feedback">问题反馈/建议</string>
@@ -438,7 +438,7 @@
     <string name="instance_baseline_downgrade_message">将降级到随包基线 %1$s（当前 %2$s）。新版本写入的数据可能不兼容。</string>
     <string name="instance_baseline_reinstall_message">将离线重装当前版本 %1$s（与随包基线一致）。</string>
     <string name="instance_baseline_upgrade_message">将升级到随包基线 %1$s（当前 %2$s）。</string>
-    <string name="instance_warning">应急实例仅供临时使用。请尽快修复主实例，不要在应急实例中再次执行破坏性操作。</string>
+    <string name="instance_warning">应急实例（.dsh-emergency）首次创建时为数据空白的全新实例，仅供主实例（.dsh）因插件崩溃等原因无法运行时临时使用。请尽快让应急实例（.dsh-emergency）中的 DSH 排查并修复主实例（.dsh），修复完成后切换回主实例（.dsh）即可。不要在应急实例（.dsh-emergency）中安装第三方插件或执行其他破坏性操作。</string>
     <string name="instance_switch_action">切换</string>
     <string name="instance_switch_to_main_help">返回包含全部数据的主实例。</string>
     <string name="instance_switch_to_emergency_help">运行全新的应急实例。</string>
