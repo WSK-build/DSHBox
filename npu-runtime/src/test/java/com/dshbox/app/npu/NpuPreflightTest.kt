@@ -2,6 +2,7 @@ package com.dshbox.app.npu
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,8 +26,19 @@ class NpuPreflightTest {
 
     @Test
     fun `版本解析对非法输入返回 null`() {
-        assertEquals(null, NpuPreflight.parseVersion("abc"))
-        assertEquals(null, NpuPreflight.parseVersion("2"))
+        assertNull(NpuPreflight.parseVersion("abc"))
+        assertNull(NpuPreflight.parseVersion("2"))
+    }
+
+    @Test
+    fun `版本比较逐段进行而非字典序`() {
+        // 字典序会把 "2.9" 判成大于 "2.10"，这里必须是数值比较。
+        assertTrue(NpuPreflight.isNewer(Triple(2, 10, 0), Triple(2, 9, 0)))
+        assertFalse(NpuPreflight.isNewer(Triple(2, 9, 0), Triple(2, 10, 0)))
+        // major 优先于 minor/patch。
+        assertTrue(NpuPreflight.isNewer(Triple(3, 0, 0), Triple(2, 99, 99)))
+        assertFalse(NpuPreflight.isNewer(Triple(2, 40, 0), Triple(2, 40, 0)))
+        assertTrue(NpuPreflight.isNewer(Triple(2, 40, 1), Triple(2, 40, 0)))
     }
 
     @Test

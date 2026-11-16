@@ -8,6 +8,15 @@
     native <methods>;
 }
 
+# NPU: same situation, bound by name to libnpu-genie.so. npu-runtime 的
+# consumer-rules.pro 里已写一遍，但（同下方 BouncyCastle 的教训）模块 consumer
+# 规则不保证进入合并后的 R8 配置，故在 app 侧再落一遍。
+# 失败后果是**静默的**：ensureLoaded() 会把 UnsatisfiedLinkError 降级成
+# 「NPU 不可用」，release 包悄悄退回 CPU 路径，debug 包无法发现。
+-keepclasseswithmembernames,includedescriptorclasses class com.dshbox.app.npu.NpuNative {
+    native <methods>;
+}
+
 # zstd-jni: native methods + the private long srcPos/dstPos bookkeeping fields of
 # ZstdInputStream(NoFinalizer) are read by name from libzstd-jni-*.so via JNI
 # Get/SetLongField. R8 renaming or removing these fields under release minify

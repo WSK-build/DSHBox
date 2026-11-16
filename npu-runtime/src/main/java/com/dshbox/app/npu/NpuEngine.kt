@@ -78,7 +78,7 @@ class NpuEngine(
         val cfg = modelStore.writeConfigs(maxTokens)
         if (!cfg.ok) return cfg
 
-        return NpuPreflight.ok(
+        return NpuPreflight.Result.ok(
             "前置检查通过（内存 ${mem / 1024 / 1024} MB，${modelStore.loadManifest()?.ctxBinFiles?.size ?: 0} 段 ctx-bin）",
             mem,
         )

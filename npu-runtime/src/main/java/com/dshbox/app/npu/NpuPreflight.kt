@@ -89,13 +89,21 @@ object NpuPreflight {
         if (ctx == null || rt == null) {
             return Result.warn("版本号无法解析（ctx=$ctxBinQairtVersion rt=$runtimeApiVersion），跳过版本预检", 0)
         }
-        if (ctx > rt) {
+        // Triple 没有实现 Comparable，必须逐段比较。
+        if (isNewer(ctx, rt)) {
             return Result.fail(
                 "ctx-bin 编译版本 $ctxBinQairtVersion 高于运行时 $runtimeApiVersion：" +
                     "ctx-bin 前向不兼容，GenieDialog_create 会返回 -1",
             )
         }
         return Result.ok("版本兼容：ctx-bin $ctxBinQairtVersion ≤ 运行时 $runtimeApiVersion")
+    }
+
+    /** 逐段（major → minor → patch）比较 [a] 是否高于 [b]。 */
+    internal fun isNewer(a: Triple<Int, Int, Int>, b: Triple<Int, Int, Int>): Boolean {
+        if (a.first != b.first) return a.first > b.first
+        if (a.second != b.second) return a.second > b.second
+        return a.third > b.third
     }
 
     /** 检查可用内存是否够跑。 */
