@@ -48,6 +48,29 @@ class ArgSpecCrossAlignmentTest {
     }
 
     /**
+     * 反向断言：预校验允许的每个键都必须在该后端的 allowed 里。
+     * 后端一律拒未知键（`argsError` 回 E_TRANSPORT_MALFORMED）；预校验表多出一个后端
+     * 不认识的键时，调用会过闸门却在后端被拒，助手读到的是后端一句「unknown arg」，
+     * 而预校验的措辞/文档还宣称支持它 —— 两层契约各说一套。
+     */
+    @Test
+    fun backendAcceptsEveryKeyPrevalidationAllows() {
+        CapabilityRegistry.allDescriptors.forEach { descriptor ->
+            descriptor.backends.forEach { backendId ->
+                val allowed = backendAllowed.getValue(backendId)[descriptor.id]
+                    ?: return@forEach  // 正向断言已点名缺表的后端，这里不重复。
+                CapabilityArgsSpec.allowedKeysOf(descriptor.id).forEach { key ->
+                    assertTrue(
+                        "${descriptor.id.wire}：预校验放行了后端（${backendId.name}）不认识的键 " +
+                            "$key —— 后端会以 unknown arg 拒掉预校验已放行的调用",
+                        key in allowed,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
      * nodeId 在后端（NodeSelector）按整数值收下，`1.5` 这类小数与 NaN/Infinity 必须在
      * 预校验就被打回；字符串仍走类型档的那句「must be a number」，与后端措辞同源。
      */

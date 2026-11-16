@@ -34,7 +34,7 @@ DSH 工具运行时 → 模型工具列表
 
 | 工具 | 参数 | 对应能力 | 说明 |
 |---|---|---|---|
-| `phone_status` | `probe?` | 读清单 | 挂载点、能力条数与可用条数、Shizuku 后端；`probe` 时实发一次 `pkg.query` |
+| `phone_status` | `probe?`, `list?`, `filter?` | 读清单 | 挂载点、能力条数与可用条数、Shizuku 后端；`list` 逐条列清单（审批口径字段，见「能力清单读什么」）；`probe` 时实发一次 `pkg.query` |
 | `phone_call` | `capability*`, `args?`, `timeoutMs?`, `out?` | 任意 | 通用入口；未覆盖的能力与危险通路都在这里显式点名 |
 | `phone_observe` | — | `ui.snapshot` | 控件树压缩输出，完整 JSON 落盘并给出路径 |
 | `phone_click` | `nodeId? \| selector?`, `long?` | `ui.click` / `ui.longClick` | 点击 / 长按 |
@@ -46,13 +46,53 @@ DSH 工具运行时 → 模型工具列表
 | `phone_launch` | `package*` | `app.launch` | 以 `verified` / `landedOn` 判定落地 |
 | `phone_capture` | `out?` | `screen.capture` | 截图并返回本地路径（配合 `read_image`） |
 | `phone_intent` | `template*`, `hour?`, `minute?`, `length?`, `message?`, `page?`, `package?`, `number?`, `url?` | `sys.intent` | 表内八条：设闹钟 / 计时器、开闹钟页 / 计时器页、开系统设置页、应用详情、拨号盘、网页；无删除类入口 |
-| `phone_surface` | `action*`, `width?`, `height?`, `dpi?` | `surface.virtual` | 后台虚拟屏 create / query / release |
+| `phone_surface` | `action*`, `width?`, `height?`, `dpi?` | `surface.virtual` | 后台虚拟屏 create / query / release；create/query 回包带 `previewAvailable` / `previewSurface` / `doNotMoveToMain` / `agentHint`；释放语义见「右侧栏虚拟屏」 |
 | `phone_ask` | `question*`, `options*`, `timeoutMs?` | `ask` 子命令 | 当面提问（2..3 选项）；答复三支皆为成功：option / reject_all / reask |
 
-**没有专用工具的部分**：`sys.shell`（用户逐条开关的危险能力）与坐标注入 `ui.tap` / `ui.swipe` /
-`ui.text` 只能经 `phone_call` 显式点名。给它们配一键工具，等于把闸门从宿主侧挪到本包侧，
-而本包没有任何判定依据。工具数量固定为 14 个；其中 `phone_ask` 不对应能力清单里的条目 ——
-它走入口的 `ask` 子命令（见「提问通路」一节），凡是被列进能力清单的能力仍只能经 `phone_call`。
+**没有专用工具的部分**：`sys.shell`（用户逐条开关的危险能力）、`sys.shell.full`（特权模式页里那个
+独立的"完全 Shizuku 能力"开关，默认禁止，表外命令只有这一条通路）、媒体读取 `media.read`（一条能力
+覆盖图片/视频/音频，`kind` 选类型，权限按所选类型各自校验，没有旧的分条）、设备状态 `device.status`
+（一次返回一组只读读数，不接受参数）、`notify.post`（发送后宿主核实本应用通知是否真的可见，没核实到
+按失败或结果未知回）与坐标注入 `ui.tap` / `ui.swipe` / `ui.text` 都只能经 `phone_call` 显式点名。
+给它们配一键工具，等于把闸门从宿主侧挪到本包侧，而本包没有任何判定依据。工具数量固定为 14 个；
+其中 `phone_ask` 不对应能力清单里的条目 —— 它走入口的 `ask` 子命令（见「提问通路」一节），
+凡是被列进能力清单的能力仍只能经 `phone_call`。
+
+## 能力清单读什么（phone_status list）
+
+档位说了算之后清单里**没有有效"上限"**：就算旧字段残留，也不是限制，不要按它改判调与不调。
+审批口径看这些字段：`assistantTier`（用户选的档位）、`approvalPolicy`（该档对应的审批策略）、
+`requiresApproval`（此刻普通调用要不要弹审批，禁止档为 false——那条是不可调用，不是要审批）、
+`sessionGranted`（本会话授权此刻在效）、`sessionGrantable`（当前档位下能否用本会话授权，仅询问审批档为真）。
+能不能调看 `usable`（此刻真能调）与 `implemented`（有实现），降级与不可用原因看 `degradeReason`
+（清单逐条表的最后一列"降级原因"直接列它；含 trusted 建屏被 ROM 拒绝的
+`E_SURFACE_TRUSTED_DENIED`——注意 `degradeReason` **拒绝优先于"需要该模式"**：用户被拒后切了
+前台偏好，这条的 reason 仍是拒绝而不是 `E_SURFACE_MODE_REQUIRED`，此时"改用前台模式执行业务"
+依旧成立，不要按"切回后台/建屏"的字面把人送回后台再撞一次拒绝）。
+另一个"改前台、不重试"的失败也出在 create 上：物理屏两边都超出 2560 时宿主按安全尺寸
+判据**不建屏**（`sizePolicy:"none_safe"` + physicalShortSide/physicalLongSide 两枚结构化字段
+在 data 里——**按短/长边命名**，竖用横用都不会互换；reason 的 no safe trusted-display size
+是同义补充），回 `E_SURFACE_UNAVAILABLE`。
+它的含义只有一条：**不建屏、业务回退前台**；清单里的 `denied` 不置位、该能力**不做 unusable
+标记、不按 ROM 拒绝处置**——那是 `E_SURFACE_TRUSTED_DENIED` 的专用语义；不要反复重试 create。
+
+`sys.shell.full` 的回包是 raw 口径：非零退出回 `E_COMMAND_FAILED`（命令自身的失败，
+不是宿主内部错误，data 带 output / stderr / exit，effectState=unknown——命令跑过、
+效果未知或部分发生，先读输出再动）；stderr 带 Permission Denial / SecurityException 时
+回 `E_COMMAND_NOT_PERMITTED`（当前 Shizuku 身份被服务侧拒绝，原样重发仍会被拒，
+`cmd -l` 列出服务不等于该身份可调用）；成功（exit 0）也带 stderr，且回包**没有**
+verified / readBack 之类的语义字段——`settings put` 退出码 0 不等于写入成功，
+要核实用 `settings get` 自查，或改走带 readBack / verified 的 `sys.settings.write`。
+`E_TRANSPORT_UNKNOWN` 仍是"已递交未回执"的结果未知，与命令失败是两回事。
+release 的回包带 `inputStateRestored`，只读两种类型：失败档是**布尔 false**（屏还在，
+可确认未恢复，可重试 release 本身）；成功档与本地放弃等待档（GaveUp，`E_TRANSPORT_TIMEOUT`
+失败回包、放弃原因保留）都是字符串 `"unknown"`（手势是否恢复无法证实，不要宣称已恢复；
+手势仍异常时重启设备一次）。GaveUp 那种不要只按 "unknown" 读——事务未被取消，屏可能
+还在、也可能稍后才被收掉，先 `surface.virtual query` 复核再定下一步。没有 true 这一档。
+Shizuku 那一侧看 `backend.shizuku`：`running` / `authorized` / `bound` / `shellUid` /
+`trustedDisplay.alive` / `trustedDisplay.denied` / `trustedDisplay.displayId` / `trustedDisplay.nodeTree`。
+`running` 与 `authorized` 是两件事：服务在跑但没授权时 shell 族能力一条都调不动，
+清单会如实报缺授权——此时显示的缺口是"补授权"，不是"没装/没跑"。
 
 ## 屏幕的叫法
 
@@ -92,14 +132,18 @@ DSH 工具运行时 → 模型工具列表
 | `screen.capture` / `screen.observe` | 90000ms | 90000ms |
 | `app.launch/install/stop`、`clip.*` | 60000ms | 60000ms |
 | `sys.*`、其他 | 30000ms | 30000ms |
-| `screen.record` | 180000ms | **120000ms（夹紧）** |
+| `audio.capture` | 130000ms | 130000ms |
+| `screen.record` | 180000ms | **130000ms（夹紧）** |
 
-入口脚本只接受 `--timeout` 在 **1000..120000ms** 之间，超出部分会被它静默夹紧。本层先夹紧，
+入口脚本只接受 `--timeout` 在 **1000..130000ms** 之间，超出部分会被它静默夹紧。本层先夹紧，
 并把夹紧与"谁掐断了这次调用"写进摘要：`E_TRANSPORT_TIMEOUT` 是入口在自己的预算内没等到回包，
 `E_WRAPPER_TIMEOUT` 才是包装层先失去了耐心。`ui.waitFor` 的宿主上限（15000ms）比 `ui.*` 档位短，
 无需本层干预；宿主还会把等待压进本次调用在通道里剩下的预算，并用 `requestedMs` / `cappedToBudget` 报出来。
-`screen.record` 的 180s 档位与宿主不冲突也到不了：它把 `seconds` 夹在 1..30，30 秒的内容加编码在 120s 内交得完，
+`screen.record` 的 180s 档位到不了：它把 `seconds` 夹在 1..30，30 秒的内容加编码在 130s 内交得完，
 夹紧只是把"入口会自己夹"这件事挪到本层来说清楚。
+`audio.capture` 的宿主内容上限是 120 秒（`seconds` 夹在 1..120），本层档位放在 130 秒：
+多出的 10 秒是编码落盘与回执回写的收尾余量（宿主有效期同表）。等待预算只给 120 秒会让
+满时长录音没等产物落地就被外层掐断，调长录音时请把 `timeoutMs` 一并留足。
 
 ## v2 请求通路（status / cancel / UNKNOWN）
 
@@ -184,13 +228,13 @@ bash install.sh /path/.dsh/profiles/web --pilot-home /opt/pilot
    起步时还先自愈上次异常退出留下的残留：活跃包缺失而备份位还在就先复位备份，
    事务目录被上次残留占用时换名重试一次，仍占用就报错停下；
 2. 把 `plugin/` 复制进阶段目录 `<profile>/node_modules/@local/.mobile-pilot-stage.$$`，JS 语法检查与
-   文件清单核对（7 个必需文件齐全且非空）都在阶段目录上做 —— 验不过就不动活跃包；
+   文件清单核对（9 个必需文件齐全且非空）都在阶段目录上做 —— 验不过就不动活跃包；
 3. 旧包整体挪进备份位，阶段目录才改名上位，发布结果再复检一遍清单；
 4. 随后写入 `mount.json`（记录挂载点与当时的入口/清单存在性）、把 `@local/mobile-pilot` 追加进
    profile 的 `dsh.profile.bundles`、建立 `<profile>/node_modules/.bin/mobile-pilot` 命令入口
    （一次 `ln` 尝试：能建就是符号链接，个别环境会落成一份复制，`ln` 失败时安装整体退出、
    不做复制降级），最后写所有权清单
-   `.mobile-pilot-install.json`（包名、命令入口相对路径、7 个文件清单、安装时刻）；
+   `.mobile-pilot-install.json`（包名、命令入口相对路径、9 个文件清单、安装时刻）；
 5. 第 3 步之后任何一步失败：半包撤掉，脚本报错退出。升级场景把备份放回原位 —— **旧版保持可用**，
    bundle 条目与命令链接照旧指向它；首装（没有旧版）场景则把 bundle 条目与命令链接一并摘除，
    profile 回到安装前的状态，不给 loader 留指向不存在包的条目。
@@ -201,6 +245,10 @@ bash install.sh /path/.dsh/profiles/web --pilot-home /opt/pilot
 
 **替换不是原子操作**：旧包让位到新包上位之间有一个包不完整的窗口，重装或升级前先停 dsh，
 装完再启动。
+
+**`lib/client.js` 在必需清单里，缺了会阻断整个安装**（包括宿主半边的工具与 CLI）：完整性
+校验按整包把关，浏览器半边缺一文件就判「插件内容不完整」退出。这是完整性校验的代价 ——
+换来的是 profile 里不会出现半包；代价是旧版手工放置/裁剪过的包升级时必须带齐 9 个文件。
 
 装配的三个时点，互不等同：
 
@@ -230,13 +278,28 @@ dsh 再次启动才生效 —— 那一次会话里 `phone_*` 不存在不是故
 所以这张表的 1、2 与 6 是由包内代码与离线装卸验过的，3～5 描述的是参照包
 `@local/dsh-mobile-adapt` 已跑通的那条装配路径 —— 上真机 profile 之前，别把这张表当已证事实。
 
-### 三种入口，用途不同、互不替代
+### 入口，用途不同、互不替代
 
 | 入口 | 使用者 | 声明位置 |
 |---|---|---|
 | 原生工具 `phone_*` | 模型 / agent | `lib/index.js` 里的 `ctx.tools.register` |
 | CLI `mobile-pilot` | 沙盒 shell / 脚本 | `package.json` 的 `bin`（`install.sh` 链到 `node_modules/.bin`） |
-| 浏览器客户端半边 | Web UI | `package.json` 的 `dsh.client` —— **本包不声明**，因此不注入任何界面代码 |
+| 浏览器客户端半边 | Web UI（右侧栏） | `package.json` 的 `dsh.client` + `./client` 导出（`lib/client.js`） |
+| 实时流桥（Node 半） | DSH runtime 进程 | `./stream` 导出（`lib/stream.js`：读取 rendezvous、挂接 `/mobile-pilot/stream*`） |
+
+## 右侧栏虚拟屏
+
+浏览器半边（`lib/client.js`）在 DSH 右侧栏注册「虚拟屏」tab（kind
+`mobile-pilot-virtual-display`），提供实时预览和面板内操作。
+
+- **预览与交互**：`<video>` + MSE 播放；预览层支持点按、滑动、返回、主页。面板提供刷新预览、旋转、移到主屏、移回虚拟屏、释放虚拟屏。
+- **取数通路**：面板只发同源相对请求 `/mobile-pilot/stream/status|start|stop` 与
+  `/mobile-pilot/stream?tab=…`；Node 半（`lib/stream.js`）读取通道 rendezvous 的控制端点并挂接路由。流 token 不出 Node，浏览器只拿 tab token。
+- **释放语义**：释放只关闭虚拟屏上的应用并销毁虚拟屏，不把任务搬回主屏，不做 force-stop；主屏保持 DSHBox。要保留某个应用，先点「移到主屏」。
+- **旋转与刷新**：旋转先停流再 resize，屏上任务保留，成功后自动重连；刷新只重启预览流，不动屏和任务。
+- **降级**：runtime 没有 webserver 路由 API、MSE 不支持或 rendezvous 缺失时，面板显示明确原因，不静默黑屏。
+- **生命周期**：面板隐藏即卸载，停流并通知宿主；不创建第二块 VirtualDisplay。
+- **版本适配**：右侧栏 API 需要 DSH 0.2.2-rc.1 及以后；旧 runtime 上侧栏入口不出现，工具与 CLI 不受影响。
 
 ### 一次调用的路径
 
@@ -301,6 +364,8 @@ CLI 那一层不依赖它，装完立刻可用。那一行会带上**卡在哪�
 
 ```bash
 node --test test/mobile-pilot.test.mjs test/pilot-tools.test.mjs test/device-readings.test.mjs
+node --test test/client-panel.test.mjs
+node --test test/stream-routes.test.mjs
 node --test test/install-contract.test.mjs
 ```
 
@@ -317,6 +382,9 @@ node --test test/install-contract.test.mjs
 一次全是跳过的运行不能被读成「端到端验过了」。`mobile-pilot.test.mjs` 末尾同样有现场自检，
 报出「无挂载点」那批本机是整批实跑还是整批跳过。
 
+- `test/client-panel.test.mjs`：浏览器半边（`lib/client.js`）的契约：tab 注册与降级、
+  预览控制器与 MSE、输入层、刷新/旋转/移屏/释放、错误与生命周期。
+- `test/stream-routes.test.mjs`：Node 流路由的鉴权、会话、输入与任务动作转发。
 - `test/install-contract.test.mjs`：用 bash 子进程对临时 fixture profile 跑真实的装卸脚本：
   全新安装的包结构与所有权清单、升级替换、损坏安装源被挡下且旧包完好、发布后注册失败的
   回滚、首装发布后失败的连带摘除（bundle 条目与命令链接一并撤、package.json 可解析）、
@@ -331,6 +399,8 @@ node --test test/install-contract.test.mjs
 | `plugin/lib/pilot.js` | 通道客户端：argv 投递、串行、超时分档与夹紧、回包归一、处置建议 |
 | `plugin/lib/tools.js` | 14 个工具的定义：参数 schema、输出 schema、回包渲染、落盘与保留份数 |
 | `plugin/lib/index.js` | Loader 入口：`name` / `inject:['tools']` / `apply`；并暴露 `uiCapabilities()`、`PilotChannel` |
+| `plugin/lib/client.js` | 浏览器半边：右侧栏「虚拟屏」预览与交互面板 |
+| `plugin/lib/stream.js` | Node 半边：实时流路由与 rendezvous 控制端点桥接 |
 | `plugin/bin/mobile-pilot` | CLI：`doctor`（`--probe` 附 v2 心跳）/ `ui` 本地实现，其余原样转发 |
 | `plugin/cordis.patch.yml` | 把本包注册为 cordis bundle 条目 |
 | `install.sh` / `uninstall.sh` | 装配（阶段目录→校验→备份→替换→失败回滚 + 所有权清单）/ 卸载（按所有权清单删除） |

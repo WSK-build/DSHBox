@@ -19,6 +19,7 @@ const { pathToFileURL } = require('node:url')
 const { resolvePack, readManifest, ENTRY_REL, MANIFEST_REL, GUIDE_REL } = require('./mount')
 const { PilotChannel, describe, hintFor } = require('./pilot')
 const { buildTools } = require('./tools')
+const stream = require('./stream')
 
 /** Stable cordis plugin name - must equal the package name. */
 exports.name = '@local/mobile-pilot'
@@ -187,11 +188,57 @@ function registerVia (defineTool, ctx, config) {
  * 返回 Promise 或 undefined；任何失败都以日志报告并以 undefined 结束，
  * 让 loader 把本包当"没提供工具的普通包"继续跑。
  */
+/**
+ * 实时流路由：读 rendezvous（宿主 App 写在通道 run/ 下的控制端点地址与
+ * token），探测 runtime 的 webserver 路由服务并挂接 /mobile-pilot/stream* 四条路由。
+ * 任一步不成（没有 rendezvous / 没有可识别的路由 API）都只报告 —— 预览为增强项，
+ * 面板会显示对应的无流状态，工具与 CLI 不受影响。token 不进任何报告文本。
+ */
+/**
+ * 服务取得走 `ctx.inject(['webServer','connection'], cb)`：这两个服务可能在本包
+ * apply **之后**才 provide，裸读 ctx.webServer 会撞上 undefined 并把预览永久降级。
+ * 旧 runtime 没有 ctx.inject 时如实报告（工具与 CLI 不受影响）。
+ */
+function attachStreamRoutes (ctx) {
+  if (typeof (ctx && ctx.inject) !== 'function') {
+    report('实时流：runtime 未提供 ctx.inject，无法安全取得 webServer/connection；面板将显示无流状态，工具与 CLI 不受影响')
+    return
+  }
+  try {
+    // cordis 的 inject 回调形参是 **(childCtx, config)**：子上下文上才存在注入的
+    // webServer/connection —— 不是把服务逐个当参数递进来。
+    ctx.inject(['webServer', 'connection'], (childCtx) => {
+      const pack = resolvePack({})
+      if (!pack.root) {
+        report('实时流：找不到助手通道挂载点（/opt/pilot）；面板将显示无流状态')
+        return
+      }
+      const attached = stream.attach({
+        webServer: childCtx.webServer,
+        connection: childCtx.connection,
+        effect: (typeof childCtx.effect === 'function') ? childCtx.effect
+          : ((typeof ctx.effect === 'function') ? ctx.effect : null),
+        fetchImpl: (typeof globalThis.fetch === 'function') ? globalThis.fetch.bind(globalThis) : null,
+        controlProvider: () => stream.readRendezvous(pack.root),
+      })
+      if (!attached.ok) {
+        report(`实时流路由未挂接：${attached.reason}`)
+        return
+      }
+      // attach 内部已把每条注册包进 effect（disposer 随插件同生共死）。
+      void attached.disposer
+    })
+  } catch (error) {
+    report(`实时流路由装配失败（不影响工具）：${(error && error.message) || error}`)
+  }
+}
+
 exports.apply = function apply (ctx, config) {
   if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
     report('宿主未提供 tools 服务，工具未注册；mobile-pilot CLI 不受影响')
     return undefined
   }
+  attachStreamRoutes(ctx)
   const acquired = acquireDefineTool()
   if (acquired.defineTool) {
     registerVia(acquired.defineTool, ctx, config)
@@ -237,4 +284,5 @@ module.exports.GUIDE_REL = GUIDE_REL
 // 注册与动态 import 的兜底逻辑单独露出：部分注册失败的表现、file URL 的重试顺序，
 // 都要在不依赖真实 dsh-tools 的环境下可验证。
 module.exports.registerTools = registerTools
+module.exports.attachStreamRoutes = attachStreamRoutes
 module.exports.importDefineTool = importDefineTool

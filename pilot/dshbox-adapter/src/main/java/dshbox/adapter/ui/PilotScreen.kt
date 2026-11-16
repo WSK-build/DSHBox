@@ -5,6 +5,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
@@ -31,16 +35,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedTextField
 // 子页顶栏改用紧凑自绘版式后不再使用：TopAppBar / TopAppBarDefaults /
 // ExperimentalMaterial3Api 三个导入。回退到 TopAppBar 时同步取消注释。
 // import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,7 +69,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import interlock.relay.core.runtime.monotonicNow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,6 +84,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.key
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,9 +107,10 @@ import interlock.relay.core.protocol.defaultMessageRes
 import interlock.relay.core.protocol.SettingsTarget
 import interlock.relay.core.protocol.SurfaceKind
 import interlock.relay.core.protocol.SystemGrantState
-import interlock.relay.core.protocol.TierCeiling
 import interlock.relay.core.interlock.AccessibilityGap
+import interlock.relay.core.interlock.GlobalConfigState
 import interlock.relay.core.interlock.InterlockChoice
+import interlock.relay.core.interlock.TierPresets
 import dshbox.adapter.surfaces.ApprovalCardView
 import interlock.relay.core.interlock.ApprovalPrompt
 import interlock.relay.core.interlock.RiskLevel
@@ -108,7 +122,14 @@ import interlock.relay.core.surface.SurfacePreference
 sealed class PilotDestination {
     data object Overview : PilotDestination()
     data object Capabilities : PilotDestination()
+
+    /** 自定义配置编辑页：从全局选择器的「配置」进入，编辑草稿、右上角保存。 */
+    data object CustomConfig : PilotDestination()
+    data object CapabilityHelp : PilotDestination()
     data object Surface : PilotDestination()
+
+    /** 受保护应用：权限闸门栏里「能力」「执行面」之后的独立子页，不是弹窗。 */
+    data object ProtectedApps : PilotDestination()
     data object Accessibility : PilotDestination()
     data object Privileged : PilotDestination()
     data object DeveloperMode : PilotDestination()
@@ -148,6 +169,10 @@ fun PilotScreen(
     // insets 语义随 embedded 参数由宿主同步切换。栈变更一律走 navigateTo——上报与入栈
     // 在同一个事件帧落地，宿主不会先画一帧「壳内版式」的子页再跳到整屏（那一下跳动
     // 很扎眼）。SideEffect 只兜底首次组合与重建恢复；按边沿触发，值没变不写宿主状态。
+    // 自定义配置页的草稿镜像与保存结果：正本在页内（SideEffect 逐次镜像上来），
+    // 顶栏右上角的「保存」读镜像；离开页面即清，未保存返回丢弃的就是这份草稿。
+    var customDraft by remember { mutableStateOf<Map<CapabilityId, AccessTier>?>(null) }
+    var customSaveFailed by remember { mutableStateOf(false) }
     var reportedSubPage by remember { mutableStateOf<Boolean?>(null) }
     fun reportSubPage(visible: Boolean) {
         if (reportedSubPage != visible) {
@@ -199,6 +224,51 @@ fun PilotScreen(
                             // 用户不必先进设置就能读到它是什么、有哪些注意事项。
                             if (stack.last() == PilotDestination.DeveloperMode) {
                                 developer.access.ui.DeveloperAccessHelpButton()
+                            }
+                            // 能力页右上角：全局档位选择器在前，说明图标在最右。
+                            // 两者都只作用于呈现与批量设置，不在此处做任何权限判定；
+                            // rows 已是内核普通能力成员集（ordinaryCapabilityRows），
+                            // 选择器与列表、首页计数消费的是同一个成员集，不再各滤一遍。
+                            if (stack.last() == PilotDestination.Capabilities) {
+                                GlobalTierSelector(
+                                    config = state.globalConfig,
+                                    hasSavedCustom = state.hasSavedCustomPreset,
+                                    onSetAll = viewModel::setAllTiers,
+                                    onApplyDefault = viewModel::applyDefaultPreset,
+                                    onOpenCustomEditor = {
+                                        // 草稿在进页时建：已保存自定义优先，否则默认配置当模板。
+                                        customDraft = viewModel.customPresetDraft()
+                                        customSaveFailed = false
+                                        navigateTo(stack + PilotDestination.CustomConfig)
+                                    },
+                                    onApplyCustom = viewModel::applyCustomPreset,
+                                )
+                                IconButton(
+                                    onClick = { navigateTo(stack + PilotDestination.CapabilityHelp) },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Info,
+                                        contentDescription = stringResource(R.string.pilot_page_capability_help),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            // 自定义配置页右上角的「保存」：只入库不套用。保存失败（只可能
+                            // 是范围不符）时留在本页、给出可读提示，草稿不丢，不假装成功。
+                            if (stack.last() == PilotDestination.CustomConfig) {
+                                val draft = customDraft
+                                TextButton(
+                                    enabled = draft != null && draft.keys == TierPresets.GLOBAL_SCOPE,
+                                    onClick = {
+                                        if (draft != null && viewModel.saveCustomPreset(draft)) {
+                                            navigateTo(stack.dropLast(1))
+                                        } else {
+                                            customSaveFailed = true
+                                        }
+                                    },
+                                ) {
+                                    Text(text = stringResource(R.string.pilot_config_save))
+                                }
                             }
                         },
                     )
@@ -267,6 +337,20 @@ fun PilotScreen(
                         onSetTier = viewModel::setTier,
                     )
 
+                    PilotDestination.CustomConfig -> CustomConfigPage(
+                        rows = state.rows,
+                        initial = viewModel.customPresetDraft(),
+                        saveFailed = customSaveFailed,
+                        onDraftChanged = { customDraft = it },
+                        onDismissed = {
+                            // 未保存退出（返回/换页）即丢弃草稿与失败提示。
+                            customDraft = null
+                            customSaveFailed = false
+                        },
+                    )
+
+                    PilotDestination.CapabilityHelp -> CapabilityHelpPage()
+
                     is PilotDestination.Detail -> DetailPage(
                         row = state.rows.firstOrNull { it.descriptor.id == page.id },
                         onSetTier = { viewModel.setTier(page.id, it) },
@@ -279,13 +363,22 @@ fun PilotScreen(
                         open = open,
                     )
 
+                    PilotDestination.ProtectedApps -> ProtectedAppsPage(
+                        protectedPackages = state.protectedPackages,
+                        onToggle = viewModel::setPackageProtected,
+                    )
+
                     PilotDestination.Accessibility -> AccessibilityPage(
                         on = state.accessibilityOn,
                         gap = state.accessibilityGap,
                         batteryIgnored = state.batteryIgnored,
                     )
 
-                    PilotDestination.Privileged -> PrivilegedGuidePage(container = container, state = state)
+                    PilotDestination.Privileged -> PrivilegedGuidePage(
+                        container = container,
+                        state = state,
+                        onSetFullShell = viewModel::setFullShellEnabled,
+                    )
                     PilotDestination.DeveloperMode -> DeveloperModePage()
                     PilotDestination.Overlay -> OverlayGuidePage(
                         container = container,
@@ -314,7 +407,16 @@ fun PilotScreen(
             }
         }
 
-        state.prompt?.let { prompt ->
+        // 页内卡只在裁决把这一问摊到页内（via=PAGE）且编号与裁决里那张一致时才画：
+        // 悬浮卡在屏或通知存在的时候，同一件事在屏上只能有一处可点 —— 这里多画一张，
+        // 用户就分不清自己点的是哪一处。打开本页的瞬间裁决可能还没从通知改判到页内
+        // （onResume 的 reroute 与重组同帧竞速），那一两帧宁可先不画，等 combine 把
+        // via=PAGE 带上来再出现，也不会出现双入口。
+        // 已知限制：分屏/多窗口下两个前台所有者同时可见时，每个可见窗口都会画一张
+        // （见 ForegroundTracker 的 KDoc）；答案只收一次，不算双入口裁决被绕过。
+        state.prompt?.takeIf {
+            PilotViewModel.approvalCardVisible(it, state.approvalVia, state.approvalRequestId, state.promptId)
+        }?.let { prompt ->
             // 编号与这张卡取自同一个状态快照：回填认的就是画出来的那一张
             val requestId = state.promptId
             ApprovalDialog(prompt = prompt, requestId = requestId) { viewModel.resolveApproval(it, requestId) }
@@ -388,7 +490,10 @@ private fun PilotTopBar(
 private fun destinationTitleRes(destination: PilotDestination): Int = when (destination) {
     PilotDestination.Overview -> R.string.pilot_page_overview
     PilotDestination.Capabilities -> R.string.pilot_page_capabilities
+    PilotDestination.CustomConfig -> R.string.pilot_config_page_title
+    PilotDestination.CapabilityHelp -> R.string.pilot_page_capability_help
     PilotDestination.Surface -> R.string.pilot_page_surface
+    PilotDestination.ProtectedApps -> R.string.pilot_page_protected_apps
     PilotDestination.Accessibility -> R.string.pilot_page_accessibility
     PilotDestination.Privileged -> R.string.pilot_page_privileged
     PilotDestination.DeveloperMode -> R.string.pilot_page_developer_mode
@@ -409,7 +514,9 @@ private fun OverviewPage(
     open: (PilotDestination) -> Unit,
 ) {
     val context = LocalContext.current
-    val usableCount = state.rows.count { it.enabled }
+    // 首页数字随 rows 同一次快照给出（内核判据 readyUsableCount 的读数）：组合期不重跑
+    // 能力行（重算就是把整套路线裁决+系统探测再过一遍），也不在这里另算第三种口径。
+    val usableCount = state.usableCount
     // 停滞判据：运行中 + 收件箱确有积压 + 循环长时间没有推进。空转的空闲与合法长执行
     // （processing 区被一条 30 秒录屏占着）都不算停滞——只认「有件在等却没人取」这一形状，
     // 那正是执行器卡死的唯一现场。
@@ -480,6 +587,14 @@ private fun OverviewPage(
         PilotActionRow(
             title = stringResource(R.string.pilot_page_surface),
             onClick = { open(PilotDestination.Surface) },
+        )
+        PilotDivider()
+        // 受保护应用：入口状态读装配根的 protectedAppCount（0 = 未设置），
+        // 点进独立子页勾选，名单与档位预设互不影响。
+        PilotActionRow(
+            title = stringResource(R.string.pilot_page_protected_apps),
+            onClick = { open(PilotDestination.ProtectedApps) },
+            value = protectedEntryStatusText(state.protectedAppCount),
         )
         PilotDivider()
         PilotActionRow(
@@ -566,6 +681,8 @@ private fun backgroundBlockReasonRes(block: RelayContainer.BackgroundSurfaceBloc
     RelayContainer.BackgroundSurfaceBlock.SHIZUKU_NOT_INSTALLED -> R.string.pilot_surface_bg_reason_shizuku_missing
     RelayContainer.BackgroundSurfaceBlock.SHIZUKU_NOT_RUNNING -> R.string.pilot_surface_bg_reason_shizuku_offline
     RelayContainer.BackgroundSurfaceBlock.SHIZUKU_NOT_GRANTED -> R.string.pilot_surface_bg_reason_not_granted
+    RelayContainer.BackgroundSurfaceBlock.DISPLAY_REFUSED -> R.string.pilot_surface_bg_reason_display_refused
+    RelayContainer.BackgroundSurfaceBlock.DISPLAY_UNSAFE -> R.string.pilot_surface_bg_reason_display_unsafe
     RelayContainer.BackgroundSurfaceBlock.DISPLAY_NOT_CREATED -> R.string.pilot_surface_bg_reason_display_missing
 }
 
@@ -582,6 +699,11 @@ private fun backgroundBlockRoute(block: RelayContainer.BackgroundSurfaceBlock): 
     RelayContainer.BackgroundSurfaceBlock.SHIZUKU_NOT_GRANTED,
     -> PilotDestination.Privileged
 
+    // 被拒、自检不安全与"还没建"同样不给跳转：被拒的那台机器做不了这件事、自检判不安全的
+    // 那台不该再做这件事（两条的出路都是切前台执行偏好），未建的那台只差助手一次建屏；
+    // 三档都由上面那句话指路。
+    RelayContainer.BackgroundSurfaceBlock.DISPLAY_REFUSED,
+    RelayContainer.BackgroundSurfaceBlock.DISPLAY_UNSAFE,
     RelayContainer.BackgroundSurfaceBlock.DISPLAY_NOT_CREATED,
     RelayContainer.BackgroundSurfaceBlock.ANDROID_VERSION,
     -> null
@@ -635,11 +757,14 @@ private fun CapabilityRowItem(
             // 跟在标题后面排会因宽度不够被截成「·无障碍模式未…」，正好把要说的事说没了。
             row.gaps.firstOrNull()?.let { gap ->
                 Text(
-                    text = stringResource(
-                        if (gap is GrantGap.RuntimePermission) R.string.pilot_cap_missing_perm
-                        else R.string.pilot_cap_missing_service,
-                        stringResource(gapLabelRes(gap)),
-                    ),
+                    text = when (gap) {
+                        // Shizuku 三环是整句（按缺的那环各说各话），不进"·名字未开启"那一类。
+                        is GrantGap.ShizukuGap -> stringResource(gapLabelRes(gap))
+                        is GrantGap.RuntimePermission ->
+                            stringResource(R.string.pilot_cap_missing_perm, stringResource(gapLabelRes(gap)))
+                        else ->
+                            stringResource(R.string.pilot_cap_missing_service, stringResource(gapLabelRes(gap)))
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 2.dp),
@@ -651,11 +776,19 @@ private fun CapabilityRowItem(
     }
 }
 
-/** 缺口该显示成什么名字：运行时权限用权限页那套标签，其余用它们各自页面的名字，不另造词汇。 */
+/**
+ * 缺口该显示成什么名字：运行时权限与 Shizuku 三环各有自己的整句（`pilot_cap_missing_*`
+ * 带占位，标签喂进 `·%1$s is off` 那一类时才有一致句式），其余用它们各自页面的名字，不另造词汇。
+ */
 private fun gapLabelRes(gap: GrantGap): Int = when (gap) {
     GrantGap.Accessibility -> R.string.pilot_page_accessibility
     GrantGap.NotificationListener -> R.string.pilot_perm_notification_listener
-    GrantGap.Shizuku -> R.string.pilot_row_shizuku_service
+    // Shizuku 的三环各说各的整句：没跑 → 服务名（去特权模式页启动）；没授权 → "未授权本应用"
+    // （去 Shizuku 管理器放行）；没绑 → "未连接"（点重连）。合成一句"服务没开"会把没授权的
+    // 场景说成缺启动。
+    GrantGap.Shizuku -> R.string.pilot_cap_missing_service_shizuku
+    GrantGap.ShizukuNotGranted -> R.string.pilot_cap_missing_grant
+    GrantGap.ShizukuNotBound -> R.string.pilot_cap_missing_bound
     is GrantGap.RuntimePermission -> permissionLabelRes(gap.permission)
 }
 
@@ -771,14 +904,15 @@ private fun DetailPage(
     }
 
     PilotSection(title = stringResource(R.string.pilot_section_assistant_access)) {
-        // 上限说明与档位框同一行：这条说明只有半句长，单独占一行时它上面那一截全是空白，
-        // 而读的人要的是"这一档能到哪儿"跟选择框一起看到。
+        // 三档说明与档位框同一行：这条说明只有半句长，单独占一行时它上面那一截全是空白，
+        // 而读的人要的是"三档怎么生效"跟选择框一起看到。所有能力共用同一句，
+        // 不再按能力配「本会话有效」「不会跳过」一类差异说法。
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PilotNote(
-                text = stringResource(ceilingExplanationRes(descriptor.ceiling)),
+                text = stringResource(R.string.pilot_tier_note),
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
             )
             TierPickerBox(tier = row.state.tier, onSet = onSetTier)
@@ -876,7 +1010,7 @@ private fun TierPickerBox(
                 )
             }
         }
-        // 三档一律呈现、一律可选：上限由裁决层强制，界面不替用户预先藏掉一档。
+        // 三档一律呈现、一律可选：行为由裁决层按档位判定，界面不替用户预先藏掉一档。
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             TierSelection.entries.forEach { selection ->
                 DropdownMenuItem(
@@ -888,6 +1022,199 @@ private fun TierPickerBox(
                 )
             }
         }
+    }
+}
+
+/**
+ * 能力页右上角的五条目全局配置选择器。
+ *
+ * 前四个条目（默认配置、全部禁止、全部询问审批、全部完全访问）是直接动作：点选即
+ * 把 40 条普通能力一次性写到位，不弹确认框，也不替用户授予任何系统权限——缺权限的
+ * 条目仍照常显示缺权限。「常用自定义预设」条目先给条目名，再在右侧给「配置」「使用」
+ * 两个动作：配置进编辑页（草稿，保存才入库、不套用——它只是编辑/保存这组固定配置
+ * 的入口，不是另一个层级），使用把已保存的自定义一次性套上（标签锁定为常用自定义
+ * 预设，即使内容与默认配置全等），没保存过则不可用并提示先配置。
+ *
+ * 当前条目由内核单独持久化的预设身份（RelayContainer.globalConfigState）给出，这里只
+ * 取词呈现；成员资格口径见内核 CapabilityRegistry.ordinaryMembers，选择器与能力列表、
+ * 首页计数消费同一成员集。
+ */
+@Composable
+private fun GlobalTierSelector(
+    config: GlobalConfigState,
+    hasSavedCustom: Boolean,
+    onSetAll: (TierSelection) -> Unit,
+    onApplyDefault: () -> Unit,
+    onOpenCustomEditor: () -> Unit,
+    onApplyCustom: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Surface(
+            onClick = { expanded = true },
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, if (expanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+            ) {
+                Text(
+                    text = stringResource(globalConfigLabelRes(config)),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (expanded) "▴" else "▾",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            // 五个条目只有一处出处（GlobalConfigAction）：前四个直接动作按档位转发批量
+            // 拨档，默认配置转发默认预设；最后一个自定义条目左侧带「配置」「使用」。
+            GlobalConfigAction.entries.forEach { action ->
+                if (action != GlobalConfigAction.CUSTOM) {
+                    DropdownMenuItem(
+                        text = { Text(text = stringResource(globalConfigActionLabel(action))) },
+                        onClick = {
+                            expanded = false
+                            val tier = action.tier
+                            if (tier == null) onApplyDefault() else onSetAll(TierSelection.entries.first { it.tier == tier })
+                        },
+                    )
+                } else {
+                    HorizontalDivider()
+                    // 自定义条目：先条目名，再「配置」「使用」两个动作（用户要求的口径）。
+                    // 使用在没有已保存自定义时置灰——提示先行配置，而不是点了之后什么都不发生。
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 8.dp, end = 12.dp),
+                    ) {
+                        Text(
+                            text = stringResource(globalConfigActionLabel(action)),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(onClick = {
+                            expanded = false
+                            onOpenCustomEditor()
+                        }) {
+                            Text(text = stringResource(R.string.pilot_config_action_edit))
+                        }
+                        TextButton(
+                            enabled = hasSavedCustom,
+                            onClick = {
+                                expanded = false
+                                onApplyCustom()
+                            },
+                        ) {
+                            Text(text = stringResource(R.string.pilot_config_action_apply))
+                        }
+                    }
+                    if (!hasSavedCustom) {
+                        Text(
+                            text = stringResource(R.string.pilot_config_missing_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 常用自定义预设编辑页：逐项编辑 40 条普通能力的三档。
+ *
+ * 进页即成草稿：初始表取「已保存自定义，没有则内置默认配置」（装配根判据），之后所有
+ * 编辑只落在草稿里，已应用的档位纹丝不动——未保存退出即丢弃（[onDismissed] 清掉根上
+ * 的草稿镜像），不伪装成任何已生效的内容。「保存」在本页 TopAppBar 的右上角：把草稿
+ * 整体入库为常用自定义预设（范围不符时装配根拒绝写入，页面就地给出可读提示、草稿保留），
+ * 保存本身不套用；套用走全局选择器里的「使用」。
+ *
+ * 内置默认配置本身不可编辑：进页拿到的是它的副本，改的是草稿，不是预设。
+ */
+@Composable
+private fun CustomConfigPage(
+    rows: List<RelayContainer.CapabilityRow>,
+    initial: Map<CapabilityId, AccessTier>,
+    saveFailed: Boolean,
+    onDraftChanged: (Map<CapabilityId, AccessTier>) -> Unit,
+    onDismissed: () -> Unit,
+) {
+    var draft by remember { mutableStateOf(initial) }
+    // 草稿正本在页内，逐次镜像给根（顶栏右上角的「保存」按钮读它）；离开本页即清。
+    SideEffect { onDraftChanged(draft) }
+    DisposableEffect(Unit) { onDispose(onDismissed) }
+    Column {
+        if (saveFailed) {
+            // 保存被装配根拒绝（只可能是范围不符）时草稿原样保留：页面不说「已保存」，
+            // 用户可以修好再存，也可以原样带出去重试。
+            Text(
+                text = stringResource(R.string.pilot_config_save_failed),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        PilotNote(text = stringResource(R.string.pilot_config_note))
+        PilotNote(text = stringResource(R.string.pilot_config_scope_note))
+        CapabilityCategory.entries.forEach { category ->
+            val categoryRows = rows.filter { it.descriptor.id.category == category }
+            if (categoryRows.isEmpty()) return@forEach
+            PilotGroupLabel(text = stringResource(categoryLabelRes(category)))
+            categoryRows.forEach { row ->
+                PilotCard {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(row.descriptor.titleRes),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                text = row.descriptor.id.wire,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = LocalPilotExtraColors.current.tertiaryText,
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        TierPickerBox(
+                            tier = draft.getValue(row.descriptor.id),
+                            onSet = { selection -> draft = draft + (row.descriptor.id to selection.tier) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 档位说明页：从能力页右上角的说明图标进入，是一页而不是弹窗。
+ *
+ * 内容只讲一件事的分两面：三档对助手审批意味着什么；哪些系统环节不随之改变。
+ * 全部取自词条，本页不做任何判定。
+ */
+@Composable
+private fun CapabilityHelpPage() {
+    PilotSection(title = stringResource(R.string.pilot_page_capability_help)) {
+        PilotNote(text = stringResource(R.string.pilot_help_tier_only))
+        PilotDivider()
+        PilotNote(text = stringResource(R.string.pilot_help_capture))
+        PilotDivider()
+        PilotNote(text = stringResource(R.string.pilot_help_install))
+        PilotDivider()
+        PilotNote(text = stringResource(R.string.pilot_help_runtime))
+        PilotDivider()
+        PilotNote(text = stringResource(R.string.pilot_help_shell))
     }
 }
 
@@ -920,6 +1247,257 @@ private fun SurfacePage(
         // 这里只按档取词，不再自己比一遍状态。
         block?.let { BackgroundSurfaceFallback(block = it, open = open) }
     }
+}
+
+/**
+ * 入口行右侧的状态文字。词条由 [protectedEntryStatusRes] 一个出处给出：
+ * 0 → 「未设置」，>0 → 「已保护 N 个」（占位在组合期填，本地化由资源表负责）。
+ */
+@Composable
+private fun protectedEntryStatusText(count: Int): String =
+    if (count == 0) {
+        stringResource(protectedEntryStatusRes(count))
+    } else {
+        stringResource(protectedEntryStatusRes(count), count)
+    }
+
+/**
+ * 受保护应用子页：标题下只放一句说明（完全 Shizuku/ADB/root 不受名单限制的边界
+ * 只在这里说一次，不在列表、空状态与其他页面重复），下面是搜索框、「按包名添加」入口
+ * 与应用列表。
+ *
+ * 名单是用户自己勾的：不预置任何应用，也没有「推荐名单」「支付类建议」一类的自动分类。
+ * 桌面入口枚举结构性看不到的包（SystemUI、无启动入口、已卸载）由「按包名添加」补进——
+ * 不排除任何应用；已保护而不在枚举清单里的包始终列在最前面（应用名回退包名并标注小字），
+ * 计数有据可查、取消有处可点。列表多选勾选，勾选/取消即写入内核名单——没有保存按钮。
+ * 勾选走乐观态：点击立即翻转再提交，保存失败才回滚并就地给可读提示，快速连点是
+ * 「勾上再取消」而不是「加两次」。
+ *
+ * 名单为空时页面照常可用（空状态只写「尚未保护任何应用」一行，列表照常给勾选）；
+ * 名单与档位预设互不影响，本页也不读任何档位状态。
+ */
+@Composable
+private fun ProtectedAppsPage(
+    protectedPackages: Set<String>,
+    onToggle: (String, Boolean) -> Boolean,
+) {
+    val context = LocalContext.current
+    // 应用清单只进页时读一次：安装/卸载不是这一页要跟着变的事件，返回根页再进来会重读。
+    // 图标与名称的解码在 IO 上做，不占组合期。
+    var apps by remember { mutableStateOf<List<ProtectedAppUiModel>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        apps = withContext(Dispatchers.IO) { loadInstalledApps(context) }
+    }
+    var query by remember { mutableStateOf("") }
+    var saveFailed by remember { mutableStateOf(false) }
+    // 合并与过滤都是纯函数（单测覆盖）：已保护但不在清单里的包排最前；按显示名或包名
+    // 包含匹配、忽略大小写；清空即恢复全部。
+    val mergedApps = remember(apps, protectedPackages) { mergeProtectedApps(apps, protectedPackages) }
+    val visibleApps = filterProtectedApps(mergedApps, query)
+    // 勾选的乐观态：包名 → 点击要写入的值。正本追上来（状态与乐观值一致）后清掉，
+    // 否则旧的乐观值会压住之随后自其他路径的真实变化。
+    var optimistic by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    LaunchedEffect(protectedPackages) {
+        optimistic = optimistic.filterNot { (pkg, protect) -> (pkg in protectedPackages) == protect }
+    }
+
+    fun toggle(packageName: String, protect: Boolean) {
+        optimistic = optimistic + (packageName to protect)
+        if (onToggle(packageName, protect)) {
+            // 成功即清掉上一次的失败横幅，避免“随后实际成功，红字仍显示”。
+            saveFailed = false
+            return
+        }
+        optimistic = optimistic - packageName
+        saveFailed = true
+    }
+
+    PilotNote(text = stringResource(R.string.pilot_protected_apps_note))
+
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        singleLine = true,
+        placeholder = { Text(text = stringResource(R.string.pilot_protected_apps_search_hint)) },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    AddByPackageRow(
+        protectedPackages = protectedPackages,
+        onToggle = onToggle,
+        onSaveFailed = { saveFailed = true },
+    )
+
+    if (protectedPackages.isEmpty()) {
+        PilotNote(text = stringResource(R.string.pilot_protected_apps_empty))
+    }
+    if (saveFailed) {
+        // 保存被内核拒绝时名单一字未动：提示与回滚都要说清，不给「看似已保护」的假象。
+        Text(
+            text = stringResource(R.string.pilot_protected_apps_save_failed),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+
+    PilotCard {
+        visibleApps.forEachIndexed { index, app ->
+            if (index > 0) PilotDivider()
+            val checked = optimistic[app.packageName] ?: (app.packageName in protectedPackages)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { toggle(app.packageName, !checked) }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ProtectedAppIcon(icon = app.icon)
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = app.label, style = MaterialTheme.typography.bodyLarge)
+                    // 未列出行（手动添加/已卸载/无桌面入口）的 label 就是包名，再写一遍
+                    // 只会得到两行一模一样的字；这类行把“它从哪来”留给下面那句小字。
+                    if (!app.unlisted) {
+                        Text(
+                            text = app.packageName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LocalPilotExtraColors.current.tertiaryText,
+                        )
+                    }
+                    // 手动添加/无桌面入口的包没有应用名，也不在枚举清单里：小字说明它从哪来。
+                    if (app.unlisted) {
+                        Text(
+                            text = stringResource(R.string.pilot_protected_apps_unlisted),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LocalPilotExtraColors.current.tertiaryText,
+                        )
+                    }
+                }
+                Checkbox(
+                    checked = checked,
+                    onCheckedChange = { protect -> toggle(app.packageName, protect) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 「按包名添加」入口：一个短输入框（占位 com.example.app）+「添加」按钮。
+ * 校验在本地先行（形状镜像内核，单测覆盖）：非法给可读错误、不动名单；已在名单里的
+ * 包点了等于没点（无操作）；合法且新包才提交，提交失败复用统一的「保存失败」提示。
+ */
+@Composable
+private fun AddByPackageRow(
+    protectedPackages: Set<String>,
+    onToggle: (String, Boolean) -> Boolean,
+    onSaveFailed: () -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+    var invalid by remember { mutableStateOf(false) }
+
+    fun add() {
+        val packageName = input.trim()
+        invalid = false
+        if (!isValidPackageName(packageName)) {
+            invalid = true
+            return
+        }
+        if (packageName in protectedPackages) return // 已保护则无操作
+        if (onToggle(packageName, true)) {
+            input = ""
+        } else {
+            onSaveFailed()
+        }
+    }
+
+    Text(
+        text = stringResource(R.string.pilot_protected_apps_add_by_package),
+        style = MaterialTheme.typography.bodySmall,
+        color = LocalPilotExtraColors.current.tertiaryText,
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = input,
+            onValueChange = {
+                input = it
+                invalid = false
+            },
+            singleLine = true,
+            isError = invalid,
+            placeholder = { Text(text = stringResource(R.string.pilot_protected_apps_package_placeholder)) },
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Button(onClick = { add() }) {
+            Text(text = stringResource(R.string.pilot_protected_apps_add))
+        }
+    }
+    if (invalid) {
+        Text(
+            text = stringResource(R.string.pilot_protected_apps_invalid_package),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+/** 一行应用的图标：取不到（图标解码失败）时画一个描边占位框，不留空白。 */
+@Composable
+private fun ProtectedAppIcon(icon: ImageBitmap?) {
+    if (icon != null) {
+        Image(
+            bitmap = icon,
+            contentDescription = null,
+            modifier = Modifier.size(40.dp),
+        )
+    } else {
+        Surface(
+            modifier = Modifier.size(40.dp),
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {}
+    }
+}
+
+/**
+ * 设备上已安装的应用清单：按桌面入口（MAIN/LAUNCHER）枚举，与内核执行侧可见的应用
+ * 同一来源（模块的 `<queries>` 声明的就是这一类）；不在代码里排除任何包——桌面、
+ * Shizuku、本应用自己都在列表里。每个包取一行（同一应用的多个入口组件去重），
+ * 名称取不到时回退包名，按名称排序方便查找。
+ *
+ * 图标按屏幕密度解码（行高 40dp 换算成像素，不小于 48px 兜底低密度屏）：
+ * 固定 48px 在高密度屏上会被放大到发虚。
+ */
+private fun loadInstalledApps(context: Context): List<ProtectedAppUiModel> {
+    val packageManager = context.packageManager
+    val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val iconSizePx = (40f * context.resources.displayMetrics.density).toInt().coerceAtLeast(48)
+    val rows = LinkedHashMap<String, ProtectedAppUiModel>()
+    val resolved = runCatching {
+        packageManager.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
+    }.getOrDefault(emptyList())
+    for (info in resolved) {
+        val pkg = info.activityInfo?.packageName ?: continue
+        if (rows.containsKey(pkg)) continue
+        val label = runCatching { info.loadLabel(packageManager).toString() }
+            .getOrNull()?.takeIf { it.isNotBlank() } ?: pkg
+        val icon = runCatching { (info.loadIcon(packageManager) as? Drawable)?.toIconBitmap(iconSizePx) }
+            .getOrNull()
+        rows[pkg] = ProtectedAppUiModel(label = label, packageName = pkg, icon = icon)
+    }
+    return rows.values.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
 }
 
 /**
@@ -1123,7 +1701,11 @@ private fun SettingsGuidePage(
 }
 
 @Composable
-private fun PrivilegedGuidePage(container: RelayContainer, state: PilotUiState) {
+private fun PrivilegedGuidePage(
+    container: RelayContainer,
+    state: PilotUiState,
+    onSetFullShell: (Boolean) -> Unit,
+) {
     val context = LocalContext.current
     // 服务在跑与已授权是两条独立的事实：只读合成后的一个布尔，会让「在跑但没授权」
     // 显示成「未检测到」，而那一档恰恰是界面上唯一能给出下一步动作的场合。
@@ -1191,6 +1773,98 @@ private fun PrivilegedGuidePage(container: RelayContainer, state: PilotUiState) 
     if (!running) {
         PilotNote(text = stringResource(R.string.pilot_guide_shizuku_offline))
     }
+    // 特权开关固定排在本页最下面：它管的那条能力不在普通能力列表里，这一栏目就是
+    // 它唯一的界面落点。可不可拨由装配根的三环快照说（缺环时只呈现原因，不给开关）。
+    FullShellSection(
+        container = container,
+        tier = state.fullShellTier,
+        running = running,
+        granted = granted,
+        bound = bound,
+        onSet = onSetFullShell,
+    )
+}
+
+/**
+ * 「完全 Shizuku 能力」栏目：一个开关、一行执行身份、一段固定风险说明。
+ *
+ * 开=完全访问、关=禁止，两态直写，不弹二次确认；风险说明是页面上的固定文字，
+ * 不是对话框。缺环（未运行 / 未授权 / 用户服务未连接）时**开不了**，并写明缺的是
+ * 哪一环——已经开着的不受缺环限制，关掉随时可以：关是降权，不该被缺环绑架。
+ * 档位如何生效由内核判定，这里只呈现事实与转发选择。
+ */
+@Composable
+private fun FullShellSection(
+    container: RelayContainer,
+    tier: AccessTier,
+    running: Boolean,
+    granted: Boolean,
+    bound: Boolean,
+    onSet: (Boolean) -> Unit,
+) {
+    val gap = fullShellGap(running, granted, bound)
+    PilotSection(title = stringResource(R.string.pilot_fullshell_section)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.pilot_fullshell_switch),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = stringResource(tierSelectionLabel(TierSelection.entries.first { it.tier == tier })),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            androidx.compose.material3.Switch(
+                checked = tier == AccessTier.ALWAYS,
+                enabled = gap == FullShellGap.NONE || tier == AccessTier.ALWAYS,
+                onCheckedChange = onSet,
+            )
+        }
+        PilotDivider()
+        PilotRow(
+            title = stringResource(R.string.pilot_fullshell_identity),
+            value = fullShellIdentityLabel(container.shizukuUid()),
+        )
+        // 缺环说明只在缺环时出现，且按缺的那一环各说一句：把人送去启动一个已在跑的
+        // 服务、或在 Shizuku 里找一条已给过的授权，都比不说更糟。
+        when (gap) {
+            FullShellGap.NONE -> {}
+            FullShellGap.NOT_RUNNING -> {
+                PilotDivider()
+                PilotNote(text = stringResource(R.string.pilot_fullshell_need_running))
+            }
+            FullShellGap.NOT_GRANTED -> {
+                PilotDivider()
+                PilotNote(text = stringResource(R.string.pilot_fullshell_need_granted))
+            }
+            FullShellGap.NOT_BOUND -> {
+                PilotDivider()
+                PilotNote(text = stringResource(R.string.pilot_fullshell_need_bound))
+            }
+        }
+        PilotDivider()
+        PilotNote(text = stringResource(R.string.pilot_fullshell_risk_note))
+    }
+}
+
+/**
+ * 特权通路执行身份的呈现：档位由 [fullShellIdentity] 判（纯函数，单测覆盖），
+ * 这里只按档取词；其余 uid 那一档把原始数值带上。
+ */
+@Composable
+private fun fullShellIdentityLabel(uid: Int): String = when (val identity = fullShellIdentity(uid)) {
+    FullShellIdentity.SHELL -> stringResource(R.string.pilot_fullshell_identity_shell)
+    FullShellIdentity.ROOT -> stringResource(R.string.pilot_fullshell_identity_root)
+    FullShellIdentity.OTHER_UID -> stringResource(R.string.pilot_fullshell_identity_uid, uid)
+    FullShellIdentity.UNKNOWN -> stringResource(R.string.pilot_fullshell_identity_unknown)
 }
 
 /**
@@ -1645,12 +2319,6 @@ private fun surfacesLabel(surfaces: Set<SurfaceKind>): String {
     val parts = ArrayList<String>(surfaces.size)
     for (surface in surfaces) parts += stringResource(surfaceKindLabel(surface))
     return parts.joinToString(" · ")
-}
-
-private fun ceilingExplanationRes(ceiling: TierCeiling): Int = when (ceiling) {
-    TierCeiling.ANY -> R.string.pilot_ceiling_any
-    TierCeiling.SESSION_ONLY -> R.string.pilot_ceiling_session
-    TierCeiling.ASK_ONLY -> R.string.pilot_ceiling_ask_only
 }
 
 /** 引导文字取自注册表分类，界面不再自己判断「该给哪种引导」。 */

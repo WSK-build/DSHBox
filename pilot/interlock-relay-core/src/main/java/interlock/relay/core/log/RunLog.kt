@@ -37,6 +37,17 @@ enum class LogEvent(val level: LogLevel, val template: String) {
     // 控制通道与工作循环各自起停、互不遮挡：起停各记一条，读日志的人才能分清
     // 「通道断过」与「工作循环断过」。被拒的控制请求只记操作与受控原因短语，
     // 不透传投递内容。
+    // 实时流控制端点：起停与绑定失败各一条；token 不进任何日志字段。
+    STREAM_CONTROL_STARTED(LogLevel.INFO, "stream control started"),
+    STREAM_CONTROL_STOPPED(LogLevel.INFO, "stream control stopped"),
+    STREAM_CONTROL_UNAVAILABLE(LogLevel.WARN, "stream control unavailable cause=%{cause}"),
+    // 宿主侧流会话的读数（诊断埋点）：一次预览会话走到哪一步、结论如何、
+    // 已经写出多少字节。字段只有会话序号、阶段、结论、短原因、字节数、时长与
+    // source/encode 四个维度读数 —— 屏幕内容、token、参数原文一律不进
+    // （与 DISPLAY_* 同一把尺子）。
+    // 失败的那一场走 STREAM_SESSION_FAILED（WARN），成功与收尾走 STREAM_SESSION（INFO）。
+    STREAM_SESSION(LogLevel.INFO, "stream session session=%{session} phase=%{phase} result=%{result} reason=%{reason} bytes=%{bytes} durationMs=%{durationMs} sourceW=%{sourceW} sourceH=%{sourceH} encodeW=%{encodeW} encodeH=%{encodeH}"),
+    STREAM_SESSION_FAILED(LogLevel.WARN, "stream session failed session=%{session} phase=%{phase} result=%{result} reason=%{reason} bytes=%{bytes} durationMs=%{durationMs} sourceW=%{sourceW} sourceH=%{sourceH} encodeW=%{encodeW} encodeH=%{encodeH}"),
     CONTROL_STARTED(LogLevel.INFO, "control channel started"),
     CONTROL_STOPPED(LogLevel.INFO, "control channel stopped"),
     CONTROL_REQUEST_REJECTED(LogLevel.WARN, "control request rejected op=%{op} cause=%{cause}"),
@@ -87,6 +98,10 @@ enum class LogEvent(val level: LogLevel, val template: String) {
     // 对不上的字段会被渲染成 unresolved（见 [RunLog.render] 的标注规则）。
     CALL_ACCEPTED(LogLevel.INFO, "request accepted id=%{id}"),
     CALL_SETTLED(LogLevel.INFO, "request settled ms=%{ms}"),
+    // 受保护应用的一条拒绝读数：能力、目标包与拒绝层级（entry=调用入口、
+    // pre_dispatch=批准后执行前、execution=执行场景）。只记这一个包名，
+    // 完整名单不进日志——名单是用户的选择，不是排查信息。
+    PACKAGE_PROTECTED_BLOCKED(LogLevel.WARN, "protected app blocked cap=%{cap} target=%{target} where=%{where}"),
     ARTIFACT_CREATE_FAILED(LogLevel.ERROR, "artifact create failed cap=%{cap}"),
     AUDIT_WRITE_FAILED(LogLevel.WARN, "audit write failed %{detail}"),
     AUDIT_PURGED(LogLevel.INFO, "audit purged files=%{files}"),
@@ -125,6 +140,20 @@ enum class LogEvent(val level: LogLevel, val template: String) {
     // 设备上动作却后来完成了」这类账全靠这两条。
     REMOTE_SUBMITTED(LogLevel.INFO, "remote submitted cap=%{cap} waitMs=%{waitMs}"),
     REMOTE_GIVE_UP(LogLevel.WARN, "remote gave up cap=%{cap} submittedAgoMs=%{ago}"),
+    // ── 可信虚拟屏：建屏兼容与主屏自检的读数 ──
+    // 字段只放 flags、显示号、任务号、包名、布尔状态与失败原因；屏幕内容、token、
+    // 参数原文与用户数据一律不进这些事件。Honor 类用户复制「手机助手 → 运行日志」
+    // 里的这几条即可做，不要求新增诊断页或导出页。
+    DISPLAY_CREATE_FLAGS(LogLevel.INFO, "display create flags display=%{display} sdk=%{sdk} trusted=%{trusted} flags=%{flags} windowingOk=%{windowingOk} imePolicyOk=%{imePolicyOk}"),
+    DISPLAY_MAIN_STATE(LogLevel.INFO, "display main state display=%{display} beforeTop=%{beforeTop} afterTop=%{afterTop} beforeTask=%{beforeTask} afterTask=%{afterTask} beforeFocus=%{beforeFocus} afterFocus=%{afterFocus} beforeIme=%{beforeIme} afterIme=%{afterIme} launcher=%{launcher} displayGroup=%{displayGroup} coverage=%{coverage}"),
+    DISPLAY_SELF_CHECK_FAILED(LogLevel.WARN, "display self-check failed display=%{display} violations=%{violations}"),
+    // 首轮见到、复采已恢复的破坏：只记录、不锁死设备（用户自己的切应用/息屏会造成
+    // 一次性的假差异）。与 SELF_CHECK_FAILED 分开：那条是复采仍在的稳定结论。
+    DISPLAY_SELF_CHECK_TRANSIENT(LogLevel.INFO, "display self-check transient display=%{display} recovered=%{recovered}"),
+    DISPLAY_RELEASE_STATE(LogLevel.INFO, "display release state display=%{display} released=%{released} afterTop=%{afterTop} afterFocus=%{afterFocus} afterIme=%{afterIme}"),
+    // 备屏入口整体被档位跳过时的点名：`surface.virtual` 拨在「禁止」时不建屏、不弹卡，
+    // 但「优先后台」没备屏不能静默——这条回答「为什么优先后台没有备屏」。
+    SURFACE_PREPARE_SKIPPED(LogLevel.WARN, "surface prepare skipped cap=%{cap} cause=%{cause}"),
     ;
 }
 

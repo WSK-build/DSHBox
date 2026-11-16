@@ -12,7 +12,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 麦克风采集。落一个有时长上限的音频产物，不做常驻录音：
- * 采集类能力的失控形态是「一直录」，所以时长上限做成参数上界，由校验挡住而不是靠调用方自觉。
+ * 采集类能力的失控形态是「一直录」，所以时长上限做成参数上界，由校验夹住而不是靠调用方自觉。
+ *
+ * 内容上限是 120 秒；外层等待预算（入口/插件的 `--timeout` 档位与宿主有效期）都放在
+ * **130 秒**——比内容多出的 10 秒是编码落盘、回执与回写的收尾余量，预算与内容同值
+ * 会让满时长录音必然被外层提前掐断。三处同表，不新增任何配置项。
  *
  * 产物先写未绑定的暂存文件，采完再落进产物目录，与截图走同一条排他与符号链接纪律。
  */
@@ -27,8 +31,7 @@ class AudioCapture(
         if (!busy.compareAndSet(false, true)) {
             return BackendResult.Failed(RelayError.RATE_LIMITED, "capture already in flight")
         }
-        val seconds = call.args.optInt(KEY_SECONDS, DEFAULT_SECONDS)
-            .coerceIn(1, MAX_SECONDS)
+        val seconds = clampSeconds(call.args.optInt(KEY_SECONDS, DEFAULT_SECONDS))
         val estimate = seconds.toLong() * BYTES_PER_SECOND
         val staged = reaper.newArtifactFile(call.requestId, ARTIFACT_EXTENSION, estimate)
             ?: run {
@@ -93,13 +96,26 @@ class AudioCapture(
 
     private fun bytesOf(file: File): Long = file.length()
 
-    private companion object {
+    internal companion object {
         const val KEY_SECONDS = "seconds"
         const val DEFAULT_SECONDS = 5
-        const val MAX_SECONDS = 30
+
+        /**
+         * 单次采集的**内容**时长上限。等待方（入口/插件档位与宿主有效期）放在 130 秒：
+         * 比内容多出的 10 秒是编码落盘与回执的收尾余量，等待与内容同值会让满时长录音
+         * 被外层提前掐断——三处同表，任何一侧单改都会复发同一个假失败。
+         */
+        const val MAX_SECONDS = 120
         const val ARTIFACT_EXTENSION = "m4a"
 
         /** 按 AAC 上限估，宁可高估也不允许越过配额后全量清空。 */
         const val BYTES_PER_SECOND = 32L * 1024L
+
+        /**
+         * 时长参数的收敛口径：夹紧而不是拒绝。与截屏同表——越界的请求录到上限为止
+         * 并如实回带时长，调用方从回包里看到夹紧，不必先撞一次参数错误。
+         * 抽成纯函数是为了在 JVM 单测里把 30 秒以上、120 秒边界与越界三档穷举掉。
+         */
+        internal fun clampSeconds(raw: Int): Int = raw.coerceIn(1, MAX_SECONDS)
     }
 }

@@ -73,6 +73,11 @@ data class ApprovalPrompt(
     val risk: RiskLevel,
     val callIndexInSession: Int,
     val paramDetail: String?,
+    /**
+     * 这张卡上要不要给「本会话内允许」。会话授权对所有「询问审批」的调用开放，档位是
+     * 唯一开关（见 [InterlockGate.authorize]），闸门一律传 true；呈现侧按它决定渲染
+     * 哪几颗按钮。它只属于呈现契约，不参与「同一件事」的判定。
+     */
     val allowsSessionGrant: Boolean,
     val deadlineAtMs: Long = monotonicNow() + DEFAULT_APPROVAL_WINDOW_MS,
 )
@@ -87,11 +92,7 @@ enum class RiskLevel { LOW, MEDIUM, HIGH }
  */
 internal fun ApprovalPrompt.sameQuestionAs(other: ApprovalPrompt): Boolean =
     capability == other.capability &&
-        argsIdentity == other.argsIdentity &&
-        // 「能不能给会话档」也在判据里：它等于「这次是不是系统授权界面」。少了这一项，
-        // 一次普通能力上点的「本会话内允许」会被一次落在授权框上的重试原样花掉，
-        // 而授权框的规矩是不认会话授权、每次当场问。
-        allowsSessionGrant == other.allowsSessionGrant
+        argsIdentity == other.argsIdentity
 
 /**
  * 用户真的答过的那三种。
@@ -104,28 +105,6 @@ internal val InterlockChoice.isAnswer: Boolean
     get() = this == InterlockChoice.ALLOW_ONCE ||
         this == InterlockChoice.ALLOW_SESSION ||
         this == InterlockChoice.DENY
-
-/**
- * 这一答被丢掉之后，要不要顺手给这一问一个终点。
- *
- * 判据是「既不认迟到答案，又没有会话档可退」：`volatileTarget` 的那 28 条里，用户点一次
- * 「本会话内允许」就退出了反复问的环；剩下这几条（档位上限是「每次询问」的那些 ——
- * `app.install`、`audio.capture`、`clip.read`、`loc.read`、`media.write`）没有那颗按钮，
- * 于是抬手慢一步就会一直"答了但不算数"：助手按可重试去重试，每一轮都重新问一张，
- * 而每一张都被同一只慢手答晚。落成终态，让这一问到此为止，改由用户重新发起。
- *
- * 落在系统授权界面上的调用也走这一支（它同样拿不到会话档），这是有意的：那一类本来就
- * 每次当场问，更不该被一次迟到的抬手反复重问。
- */
-internal val ApprovalPrompt.terminatesWhenAnswerDropped: Boolean
-    get() = volatileTarget && !allowsSessionGrant
-
-/**
- * 上限为「每次询问」或落在系统授权界面上的调用没有「本会话内允许」这个选项：
- * 呈现侧漏判时必须降级为「仅本次」，否则一次误点就把每次询问升成永久免弹。
- */
-internal fun InterlockChoice.downgradedFor(prompt: ApprovalPrompt): InterlockChoice =
-    if (this == InterlockChoice.ALLOW_SESSION && !prompt.allowsSessionGrant) InterlockChoice.ALLOW_ONCE else this
 
 /**
  * 风险那一行的字串。放在枚举旁边而不是界面文件里：确认卡与界面两处都要显示它，

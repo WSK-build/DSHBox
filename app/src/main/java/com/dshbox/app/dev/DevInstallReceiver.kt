@@ -6,6 +6,7 @@ import android.content.Intent
 import com.dshbox.app.BuildConfig
 import com.dshbox.app.DshApp
 import com.dshbox.app.common.AppResult
+import com.dshbox.app.service.startSandboxWithRelay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,7 +56,7 @@ class DevInstallReceiver : BroadcastReceiver() {
                         manager.stopSandbox()
                         manager.promoteRuntimeBundle()
                         if (autoStart) {
-                            manager.startSandbox()
+                            startSandboxWithRelay(context.applicationContext, manager)
                         }
                         android.util.Log.i(TAG, "runtime bundle installed and promoted")
                     }

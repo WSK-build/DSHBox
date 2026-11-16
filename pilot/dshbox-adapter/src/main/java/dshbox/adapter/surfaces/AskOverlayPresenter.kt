@@ -40,7 +40,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 与审批悬浮卡的关系：两者都是 TYPE_APPLICATION_OVERLAY，**同屏只允许一张**，
  * 而且这是双向的——审批卡在屏（或有一个审批已经排着队）时本卡直接回忙；本卡在屏时
  * 审批那条路自己会让位（`InterlockQueue` 的 `otherCardOnScreen`），不让两张卡叠在一起。
- * 后台可信屏在跑时浮窗会被平台跨屏隐藏，沿用与审批相同的 overlayBlind 判据主动放弃。
+ * 后台可信屏在跑时浮窗会被平台跨屏隐藏，经装配根的 overlayBlind 判据直接让位：
+ * 提问卡没有第二条通路（无通知兜底、无页内卡），让位换的是更快的失败与可行动的原因串；
+ * 审批悬浮卡自此不再用这一判据（它有通知与页内两条后备，实际显示与交互）。
  */
 class AskOverlayPresenter(
     context: Context,

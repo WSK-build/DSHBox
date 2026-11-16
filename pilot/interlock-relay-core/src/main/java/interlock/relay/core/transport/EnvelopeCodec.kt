@@ -330,7 +330,13 @@ object EnvelopeCodec {
     private const val MAX_JSON_CHARS = 200_000
     private const val MAX_DEPTH = 24
     private const val MIN_TTL_MS = 1_000L
-    private const val MAX_TTL_MS = 120_000L
+
+    /**
+     * 上限给录音的收尾留了余量：内容上限是 120 秒，但编码落盘、回执与回写都要时间，
+     * TTL 与内容同值会让满时长录音必然被外层掐断——等待方（入口/插件档位、这里的
+     * 宿主有效期）都比内容上限高 10 秒，三处同表。internal 供跨层契约测试比对。
+     */
+    internal const val MAX_TTL_MS = 130_000L
     private val DEFAULT_TTL_MS = RelayRequest.DEFAULT_TIMEOUT_MS.coerceIn(MIN_TTL_MS, MAX_TTL_MS)
 
     /**

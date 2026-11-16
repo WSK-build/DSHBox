@@ -172,7 +172,7 @@ test('超时按能力分档，且一律夹到入口 --timeout 接受的区间内
   const plan = timeoutPlan('screen.record')
   assert.deepEqual(
     { ms: plan.ms, requestedMs: plan.requestedMs, clamped: plan.clamped },
-    { ms: 120000, requestedMs: 180000, clamped: true },
+    { ms: 130000, requestedMs: 180000, clamped: true },
   )
 })
 
@@ -183,7 +183,7 @@ process.exit(3)
 `)
   const r = await channelFor(dir).call('screen.record', { seconds: 5 })
   assert.equal(r.code, 'E_TRANSPORT_TIMEOUT')
-  assert.equal(r.timeoutMs, 120000)
+  assert.equal(r.timeoutMs, 130000)
   assert.equal(r.timeoutClamped, true)
   assert.match(describe(r), /夹紧/)
   assert.match(describe(r), /入口/)
@@ -195,7 +195,7 @@ test('本层掐断要说成"包装层"，并保留夹紧痕迹', async (t) => {
   assert.equal(r.code, 'E_WRAPPER_TIMEOUT')
   assert.equal(r.retryable, true)
   assert.match(r.reason, /包装层/)
-  assert.match(describe(r), /120000ms/)
+  assert.match(describe(r), /130000ms/)
 })
 
 test('退出码与 error.code 原样透出，不揉成一个"失败"', async (t) => {
@@ -1085,22 +1085,20 @@ test('成功回包的解释走 note，失败原因才走 reason：一个键不�
 // ---------------------------------------------------------------------------
 // 宿主入口 CLI（core 资产名 relay-client.cjs，物化后是无扩展名的 bin/pilot）：
 // v2 控制通道的纯函数与严格参数边界。参数/用法错误都在触碰文件系统之前退出。
-// 入口测试优先使用设备侧所用的核模块资产 relay-client.cjs；
-// source/pilot 的 pilot-client.cjs 是已冻结的回退基线，只作最后兜底。
 // core 资产的通道目录与命令名都从脚本自身位置/基名推导（不再写死 /opt/pilot），
 // spawn 前按设备布局物化到固定路径 /opt/pilot/bin/pilot：
 // 通道落在 <入口>/run、命令名是基名 pilot，与 mock 宿主的固定通道对上；
 // 进程收尾时拆除。物化不成（固定路径不可写）则退回原地直跑。
 // ---------------------------------------------------------------------------
 const CLI_PATH = [
-  // 工程根 pilot/interlock-relay-core/src/main/assets/relay/relay-client.cjs（首选，新位置）
-  new URL('../../../../../../../../pilot/interlock-relay-core/src/main/assets/relay/relay-client.cjs', import.meta.url),
-  // source/pilot/src/main/assets/pilot/pilot-client.cjs（冻结基线，最后回退）
-  new URL('../../../../../../pilot/src/main/assets/pilot/pilot-client.cjs', import.meta.url),
+  // 工作树根 pilot/interlock-relay-core/src/main/assets/relay/relay-client.cjs：
+  // 本目录连接近工作树根要退六级（test → mobile-pilot → plugins → assets →
+  // dshbox-plugins → plugin-manager → 工作树根）。
+  new URL('../../../../../../pilot/interlock-relay-core/src/main/assets/relay/relay-client.cjs', import.meta.url),
 ]
   .map(fileURLToPath)
   .find((p) => fs.existsSync(p))
-if (!CLI_PATH) throw new Error('找不到宿主入口脚本：core 资产 relay-client.cjs 与基线 pilot-client.cjs 均不存在')
+if (!CLI_PATH) throw new Error('找不到宿主入口脚本：工作树根 pilot/interlock-relay-core/src/main/assets/relay/relay-client.cjs 不存在')
 const cli = require(CLI_PATH)
 
 const CONTROL_PRESENT = fs.existsSync('/opt/pilot/run/control-inbox') && fs.existsSync('/opt/pilot/run/control-outbox')
@@ -1958,4 +1956,42 @@ test('端到端现场自检：整批跳过就是没有证据，按失败收场�
     )
   }
   assert.ok(e2eRan.length > 0, `实跑 ${e2eRan.length} 条、跳过 ${e2eSkipped.length} 条：一条端到端用例都没能真跑（跳过原因见各条的 skip 说明）`)
+})
+
+test('命令失败两码的摘要先给 exit 与 stderr，不被 stdout 挤出预览', () => {
+  const failed = describe({
+    ok: false, code: 'E_COMMAND_FAILED', capability: 'sys.shell.full',
+    data: { output: 'x'.repeat(700), stderr: 'Permission Denial: cannot run', exit: 1 },
+  })
+  const exitIdx = failed.indexOf('exit: 1')
+  const stderrIdx = failed.indexOf('stderr: Permission Denial')
+  const outputIdx = failed.indexOf('output: ')
+  assert.ok(exitIdx !== -1, 'exit 先行')
+  assert.ok(stderrIdx !== -1, 'stderr 可见')
+  assert.ok(exitIdx < stderrIdx && stderrIdx < outputIdx, 'exit → stderr → output 的次序')
+
+  const permitted = describe({
+    ok: false, code: 'E_COMMAND_NOT_PERMITTED', capability: 'sys.shell.full',
+    data: { output: '', stderr: 'SecurityException: uid 2000...', exit: 1 },
+  })
+  assert.match(permitted, /exit: 1  stderr: SecurityException/)
+})
+
+test('成功回包带 stderr 也先行展示；字段缺失与短输出不空转', () => {
+  const warned = describe({
+    ok: true, capability: 'sys.shell', data: { output: 'done', stderr: 'a warning', exit: 0 },
+  })
+  assert.match(warned, /exit: 0  stderr: a warning/)
+  assert.match(warned, /output: done/)
+
+  const short = describe({
+    ok: false, code: 'E_COMMAND_FAILED', capability: 'sys.shell.full',
+    data: { output: '', stderr: '', exit: 1 },
+  })
+  assert.match(short, /exit: 1  stderr: \(empty\)/)
+  assert.match(short, /output: \(empty\)/)
+
+  // 没有任何 shell 事实的回包不注入这三行。
+  const plain = describe({ ok: true, capability: 'notify.post', data: { id: 'n1' } })
+  assert.ok(!plain.includes('exit: '), '无 exit 字段不注入')
 })

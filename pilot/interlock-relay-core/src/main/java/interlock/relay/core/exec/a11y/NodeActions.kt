@@ -5,8 +5,11 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
+import interlock.relay.core.interlock.ProtectedVerdict
+import interlock.relay.core.interlock.protectedVerdict
 import interlock.relay.core.protocol.RelayError
 import interlock.relay.core.exec.BackendResult
+import interlock.relay.core.exec.namesHostPackage
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 
@@ -69,13 +72,16 @@ internal class NodeActions(
     private val budgetMs: Long,
     private val selfPackage: String,
     /**
-     * 判「这一颗是不是系统授权界面上的控件」。
-     *
-     * 必须由调用方在**解析出目标之后**再问一次：闸门那一条判据读的是参数里自报的包名，
-     * 而 `selector` 不写 `package` 时它读不到任何东西 —— 也就是说只靠参数，
-     * 想点掉授权框上的「允许」可以靠省掉一个键绕过。这里补的是执行时的那一道。
+     * 受保护名单的**实时读数**（provider，由装配根递进来），不是调用发起那一刻的快照：
+     * waitFor 的每一轮、滚动的每一步、写操作每次重取树、动作后的每次回读都现读一遍——
+     * 用户在途把眼前这个应用加进名单，下一次取根（含回读）立即被拒。空集 = 名单未启用。
      */
-    private val consentTarget: (AccessibilityNodeInfo) -> Boolean = { false },
+    private val protectedPackages: () -> Set<String> = { emptySet() },
+    /**
+     * 拒绝的运行日志钩子（能力、目标包由调用方补齐）。守卫命中时回调一次；
+     * waitFor 每 150ms 轮询同一份守卫，去重在本类内部做（每次调用至多记一条）。
+     */
+    private val onProtectedBlocked: ((String?) -> Unit)? = null,
 ) {
 
     /** 节点矩形的裁剪面，与 [tree] 同一块屏 —— 换一棵树就换一套坐标。 */
@@ -91,34 +97,6 @@ internal class NodeActions(
     private fun root(): AccessibilityNodeInfo? = tree.root()
 
     /**
-     * 解析出来的那颗节点落在系统授权界面上时拒掉这次派发。
-     *
-     * 闸门那道同名的判据只能读参数：`selector` 不写 `package` 时它什么也读不到，
-     * 于是"点掉授权框的允许"可以用省掉一个键的方式绕过去。这一问是在树上拿到真身之后
-     * 做的，绕不开。
-     */
-    private fun consentRefusal(target: Target.One): BackendResult? {
-        if (!consentTarget(target.node)) return null
-        return BackendResult.Failed(
-            RelayError.NODE_SYSTEM_CONSENT_TARGET,
-            "the resolved target is a system consent control: the user has to answer that dialog. " +
-                "Refused at execution time - naming the target by nodeId, by view id, or by leaving " +
-                "the package out of the selector does not bypass this check.",
-        )
-    }
-
-    /**
-     * 按编号回查归属（包名 + view 资源 id），只读。
-     *
-     * 给闸门判「这是不是系统授权界面」用：助手递 `nodeId` 时参数里没有任何归属信息，
-     * 只有回到当前这棵树才看得出要点的是谁家的按钮。
-     */
-    fun ownerOf(nodeId: Int): Pair<String?, String?>? {
-        val node = findByIdPreorder(root(), nodeId) ?: return null
-        return node.packageName?.toString() to node.viewIdResourceName
-    }
-
-    /**
      * 写操作重新取树时用的那一版。
      *
      * 入口那道宿主窗口检查（`A11yBackend.execute`）挡的是"开始这一刻宿主在前台"，
@@ -126,7 +104,59 @@ internal class NodeActions(
      * 确认框上。助手点掉自己的确认框等于自己给自己授权，所以每一轮都要再问一次归属。
      */
     private fun rootForWrite(): AccessibilityNodeInfo? =
-        root()?.takeUnless { it.packageName?.toString() == selfPackage }
+        root()?.takeUnless { namesHostPackage(it.packageName?.toString(), selfPackage) }
+
+    /**
+     * 回读取根的结果。[root] 为 null 且 [blocked] 为 true 表示"树读得到，但名单守卫拒了"，
+     * [reason] 此时逐字带上判据文案（滚动收尾要把这条原因回给助手）；
+     * [blocked] 为 false 且 [root] 为 null 是既有的"树读不到/节点没了"——两条的后续动作不同：
+     * 前者必须当作回读不可得（受保护应用的节点文本/描述不能交出去），后者维持原语义。
+     */
+    private class ReadbackRoot(val root: AccessibilityNodeInfo?, val blocked: Boolean, val reason: String? = null)
+
+    /**
+     * 动作后的回读（describe、setValue 的 text 回读、量程回读、滚动收尾的"还在不在"
+     * 检查）统一从这里取根——先过名单守卫再把树交出去。守卫命中时 [reportProtectedBlock]
+     * 记一次日志（每次调用至多一条）。
+     *
+     * 有意**不**套 [rootForWrite] 的宿主窗口过滤：这里是"读"，宿主界面本来就是允许读的
+     * （读宿主自己的界面是能力的一部分，execute 的 controlsInput 只挡写）——名单守卫之外
+     * 不要在这里加宿主例外，"看起来不一致"是故意的，别把它修齐。
+     */
+    private fun rootForReadback(): ReadbackRoot {
+        val top = root() ?: return ReadbackRoot(null, false)
+        val reason = protectedRejection(top.packageName?.toString())
+        return ReadbackRoot(if (reason == null) top else null, reason != null, reason)
+    }
+
+    /**
+     * 每次（重新）取树后的名单复查。树上窗口的包名命中名单即拒；读不到包名按
+     * fail-closed 拒（reason 写清"无法确认前台应用"）。名单每现读一遍（实时 provider），
+     * 在途变更下一轮立即生效。名单为空时恒 null，场景零改动。
+     * 与宿主自保护（[rootForWrite]）并存：一条挡宿主窗口，一条挡名单。
+     * 判据本体是文件顶层的纯函数 [protectedRootGuardReason]，生产与单测同走这一份。
+     */
+    private fun protectedRootGuard(rootPackage: String?): Target.Bad? =
+        protectedRejection(rootPackage)?.let { Target.Bad(RelayError.PACKAGE_PROTECTED, it) }
+
+    /**
+     * 名单复查的统一入口：现读名单、算判据、命中时记一次运行日志。
+     * 回 null = 放行；非 null = 拒绝原因（交给各出口包成 [RelayError.PACKAGE_PROTECTED]）。
+     */
+    private fun protectedRejection(rootPackage: String?): String? {
+        val reason = protectedRootGuardReason(rootPackage, protectedPackages())
+        if (reason != null) reportProtectedBlock(rootPackage)
+        return reason
+    }
+
+    /** 拒绝只记一次：waitFor 每 150ms 轮询同一份守卫，逐轮记会把运行日志刷掉。 */
+    private var protectedBlockLogged = false
+
+    private fun reportProtectedBlock(observedPackage: String?) {
+        if (protectedBlockLogged) return
+        protectedBlockLogged = true
+        onProtectedBlocked?.invoke(observedPackage)
+    }
 
     /** 节点的稳定指纹：编号会随树形变而换人，指纹不会。 */
     /**
@@ -163,6 +193,7 @@ internal class NodeActions(
         val top = root()
             ?: return Target.Bad(RelayError.BACKEND_UNAVAILABLE, "no window tree to read on display ${tree.displayId} after a second read: no window holds " +
                 "focus there - retry once one does")
+        protectedRootGuard(top.packageName?.toString())?.let { return it }
         val anchorNode = findByIdPreorder(top, anchor.nodeId)
             ?: return Target.Bad(
                 RelayError.NODE_NOT_FOUND,
@@ -277,6 +308,7 @@ internal class NodeActions(
                     "no window tree to read on display ${tree.displayId} after a second read: no window holds " +
                 "focus there - retry once one does",
                 )
+                protectedRootGuard(currentRoot.packageName?.toString())?.let { return it }
                 val node = findByIdPreorder(currentRoot, spec.nodeId)
                     ?: return Target.Bad(
                         RelayError.NODE_NOT_FOUND,
@@ -293,6 +325,7 @@ internal class NodeActions(
                         "no window tree to read on display ${tree.displayId} after a second read: no window holds " +
                 "focus there - retry once one does",
                     )
+                protectedRootGuard(top.packageName?.toString())?.let { return it }
                 val matches = NodeSelector.findAll(AccessibilityNodeView(top), spec.selector)
                 when {
                     matches.isEmpty() -> Target.Bad(RelayError.NODE_NOT_FOUND, "selector matched no node")
@@ -328,7 +361,6 @@ internal class NodeActions(
         allowUnadvertised: Boolean = false,
     ): BackendResult {
         val name = actionName(action)
-        consentRefusal(target)?.let { return it }
         if (!allowUnadvertised && target.node.actionList.orEmpty().none { it.id == action }) {
             return BackendResult.Failed(RelayError.NODE_NOT_ACTIONABLE, "node does not support $name")
         }
@@ -339,13 +371,24 @@ internal class NodeActions(
         return if (applied) {
             // 交回的是**动作之后**重读的那颗节点：`AccessibilityNodeInfo` 是取回那一刻的
             // 字段副本，拿派发前那颗去 describe，成功响应里就是一张过期的状态照。
-            val fresh = findByIdPreorder(root(), target.nodeId)
+            // 回读取根先过名单守卫：用户在途切进受保护应用时，新树上的节点不描述，
+            // 派发前那颗的旧读数也不回退交出——用户既然把它加了名单，文本/描述就到此为止。
+            val readback = rootForReadback()
+            val fresh = findByIdPreorder(readback.root, target.nodeId)
+            val body = JSONObject()
+                .put("dispatched", true)
+                .put("effectVerified", false)
+                .put("nodeId", target.nodeId)
+            if (readback.blocked) {
+                body.put(
+                    "readBackUnavailable",
+                    "the refreshed window belongs to a protected app: node state is not read back",
+                )
+            } else {
+                body.put("node", describe(fresh ?: target.node))
+            }
             BackendResult.Ok(
-                data = JSONObject()
-                    .put("dispatched", true)
-                    .put("effectVerified", false)
-                    .put("nodeId", target.nodeId)
-                    .put("node", describe(fresh ?: target.node))
+                data = body
                     .put(
                         "note",
                         "dispatched means the node accepted the action, not that the UI changed; " +
@@ -419,8 +462,7 @@ internal class NodeActions(
             is Target.Many -> return ambiguous(target.matches)
             is Target.One -> target
         }
-        // 滚动不走 [act]（它自己按轮派发），所以这道判据在这里也要问一次。
-        consentRefusal(picked)?.let { return it }
+        // 滚动不走 [act]（它自己按轮派发）。
         val startValue = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             picked.node.rangeInfo?.current
         } else {
@@ -457,6 +499,9 @@ internal class NodeActions(
         var reached = false
         var landed = startValue
         var stoppedReason: String? = null
+        // 滚动途中回读被名单拒下的原因（判据逐字）。settle 的失败原因由它给出，
+        // 不再重读未过滤的 root()——回读用的是哪一轮的根，守卫就问哪一轮（fail-closed）。
+        var settleProtectedReason: String? = null
         val wanted = fingerprint(picked.node)
         // 每一步的让拍都算在这一次调用的预算里：越过它，信箱会把一次其实成功的滚动判成
         // E_TRANSPORT_TIMEOUT，而助手只能重发——那正是这批能力要避免的循环。
@@ -468,70 +513,123 @@ internal class NodeActions(
             reached = true
             landed = startValue
         }
-        for (round in 0 until (if (reached) 0 else stepLimit)) {
-            // 每轮按编号重新取节点，并重新问一次动作表：滚动会把目标换掉甚至回收，
-            // 而滚到底之后节点会撤下这个动作 —— 继续派只拿到 false，
-            // 那是"到底了"不是"应用没认"，报成后者会被 retryable 引向无限重发。
-            val fresh = findByIdPreorder(rootForWrite(), picked.nodeId)
-            if (fresh == null) {
-                stoppedReason = if (dispatched == 0) "node is gone from the tree" else "node is gone after $advanced observed step(s) of $dispatched accepted"
-                break
-            }
-            // 编号只是"前序第几颗"这个位置，滚动恰恰最容易改变位置之上挂着几颗节点
-            // （折叠标题、下拉头、RecyclerView 回收）。不比对指纹，后续几轮就会去滚
-            // 另一颗容器，而响应只报"派了几次"——那是一次看起来成功的错误操作。
-            if (fingerprint(fresh) != wanted) {
-                stoppedReason = "the node at this position changed after $advanced observed step(s) of $dispatched accepted"
-                break
-            }
-            if (fresh.actionList.orEmpty().none { it.id == action }) {
-                stoppedReason = "node stopped accepting scroll after $advanced observed step(s) of $dispatched accepted"
-                break
-            }
-            // 量程是当前这一格的值。有它才量得出位移；列表类容器没有量程，只能等一拍再派下一次。
-            val before = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                fresh.rangeInfo?.current
-            } else {
-                null
-            }
-            if (!runCatching { fresh.performAction(action) }.getOrDefault(false)) {
-                stoppedReason = "app stopped accepting scroll after $advanced observed step(s) of $dispatched accepted"
-                break
-            }
-            dispatched++
-            if (before == null) {
-                delay(SCROLL_STEP_SETTLE_MS)
-                continue
-            }
-            measured = true
-            // 派发被接受不等于滚轮走了一格：滚轮与滑杆在动画途中会把紧接着的派发吞掉或
-            // 合并，连发 20 次实际只走 1-2 格，而助手拿到的 dispatched 是 20。所以每一步
-            // 都等这一格走过去再派下一次，并且只把**观察到变化**的那几次算进 advanced。
-            val movedTo = settleUntilMoved(picked.nodeId, wanted, before, stepDeadline)
-            if (movedTo == null) {
-                stoppedReason = if (interlock.relay.core.runtime.monotonicNow() >= stepDeadline) {
-                    "call budget exhausted after $advanced step(s)"
-                } else {
-                    "value stopped changing after $advanced step(s); likely at either end"
+        // 主循环抽在文件顶层的 [runScrollRounds]：每轮 取根 → 名单判据 → 找到节点 → 派发。
+        // 抽成可注入依赖的泛型循环是为了让"守卫在找节点与派发之前、每轮现读名单"能被 JVM
+        // 单测钉住（见 ProtectedScrollLoopTest）——上一轮的缺陷恰恰发生在调用点：重取树之后
+        // 忘了调判据。本轮的滚动语义（指纹、动作表、量程、settle）全部在 dispatchRound 里。
+        val verdict = runScrollRounds(
+            roundLimit = if (reached) 0 else stepLimit,
+            rootProvider = { rootForWrite() },
+            packageNameOf = { it.packageName?.toString() },
+            packagesProvider = { protectedPackages() },
+            findNode = { top ->
+                // 每轮按编号重新取节点：滚动会把目标换掉甚至回收，编号是前序位次。
+                findByIdPreorder(top, picked.nodeId).also {
+                    if (it == null) {
+                        stoppedReason = if (dispatched == 0) {
+                            "node is gone from the tree"
+                        } else {
+                            "node is gone after $advanced observed step(s) of $dispatched accepted"
+                        }
+                    }
                 }
-                break
-            }
-            advanced++
-            landed = movedTo
-            if (until != null && valueReached(movedTo, until)) {
-                reached = true
-                break
-            }
+            },
+            onProtectedBlocked = { observed -> reportProtectedBlock(observed) },
+            dispatchRound = { fresh ->
+                // 重新问一次动作表与指纹：滚到底之后节点会撤下这个动作——继续派只拿到
+                // false，那是"到底了"不是"应用没认"，报成后者会被 retryable 引向无限重发。
+                // 编号只是"前序第几颗"这个位置，滚动恰恰最容易改变位置之上存在几颗节点
+                // （折叠标题、下拉头、RecyclerView 回收）。不比对指纹，后续几轮就会去滚
+                // 另一颗容器，而响应只报"派了几次"——那是一次看起来成功的错误操作。
+                if (fingerprint(fresh) != wanted) {
+                    stoppedReason = "the node at this position changed after $advanced observed step(s) of $dispatched accepted"
+                    ScrollRoundOutcome.Stop
+                } else if (fresh.actionList.orEmpty().none { it.id == action }) {
+                    stoppedReason = "node stopped accepting scroll after $advanced observed step(s) of $dispatched accepted"
+                    ScrollRoundOutcome.Stop
+                } else {
+                    // 量程是当前这一格的值。有它才量得出位移；列表类容器没有量程，只能等一拍再派下一次。
+                    val before = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        fresh.rangeInfo?.current
+                    } else {
+                        null
+                    }
+                    if (!runCatching { fresh.performAction(action) }.getOrDefault(false)) {
+                        stoppedReason = "app stopped accepting scroll after $advanced observed step(s) of $dispatched accepted"
+                        ScrollRoundOutcome.Stop
+                    } else {
+                        dispatched++
+                        if (before == null) {
+                            delay(SCROLL_STEP_SETTLE_MS)
+                            ScrollRoundOutcome.Continue
+                        } else {
+                            measured = true
+                            // 派发被接受不等于滚轮走了一格：滚轮与滑杆在动画途中会把紧接着的
+                            // 派发吞掉或合并，连发 20 次实际只走 1-2 格，而助手拿到的
+                            // dispatched 是 20。所以每一步都等这一格走过去再派下一次，并且只把
+                            // **观察到变化**的那几次算进 advanced。
+                            when (val settled = settleUntilMoved(picked.nodeId, wanted, before, stepDeadline)) {
+                                is SettleOutcome.Protected -> {
+                                    // 回读被名单挡下（用户在途切进了受保护应用）时按保护收场，
+                                    // 而不是把这次归成"值不动了/预算用尽"——fail-closed 的
+                                    // 出口只有一种说法。原因来自这一拍守卫过的那次取根。
+                                    settleProtectedReason = settled.reason
+                                    ScrollRoundOutcome.Stop
+                                }
+                                is SettleOutcome.Moved -> {
+                                    advanced++
+                                    landed = settled.value
+                                    if (until != null && valueReached(settled.value, until)) {
+                                        reached = true
+                                        ScrollRoundOutcome.Stop
+                                    } else {
+                                        ScrollRoundOutcome.Continue
+                                    }
+                                }
+                                SettleOutcome.Unresolved -> {
+                                    stoppedReason = if (interlock.relay.core.runtime.monotonicNow() >= stepDeadline) {
+                                        "call budget exhausted after $advanced step(s)"
+                                    } else {
+                                        "value stopped changing after $advanced step(s); likely at either end"
+                                    }
+                                    ScrollRoundOutcome.Stop
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        if (verdict is ScrollLoopVerdict.Protected) {
+            return BackendResult.Failed(verdict.error, verdict.reason)
+        }
+        settleProtectedReason?.let { reason ->
+            return BackendResult.Failed(RelayError.PACKAGE_PROTECTED, reason)
         }
         return if (dispatched == 0 && !reached) {
             // 一格都滚不动是"这里滚不动"，不是"应用拒了这次调用"：码要能分开这两件事。
             // 节点已经不在树上又是第三种：那是编号作废（该重读界面），不是这里滚不动。
+            // 这一遍只用来回答"还在不在"，不交节点数据，取根同样过名单守卫。
+            // 守卫拒了要回 E_PACKAGE_PROTECTED 而不是 NODE_NOT_FOUND：root 为 null 在这里
+            // 既可能是"节点不在"也可能是"名单拒了"，混成后者会引导助手去重读一个它
+            // 根本不许读的界面。
+            val readback = rootForReadback()
             val gone = stoppedReason?.startsWith("node is gone") == true ||
-                findByIdPreorder(root(), picked.nodeId) == null
-            BackendResult.Failed(
-                if (gone) RelayError.NODE_NOT_FOUND else RelayError.NODE_NOT_ACTIONABLE,
-                stoppedReason ?: "node would not scroll from here",
-            )
+                findByIdPreorder(readback.root, picked.nodeId) == null
+            when {
+                readback.blocked -> BackendResult.Failed(
+                    RelayError.PACKAGE_PROTECTED,
+                    readback.reason ?: stoppedReason ?: "node would not scroll from here",
+                )
+                gone -> BackendResult.Failed(
+                    RelayError.NODE_NOT_FOUND,
+                    stoppedReason ?: "node would not scroll from here",
+                )
+                else -> BackendResult.Failed(
+                    RelayError.NODE_NOT_ACTIONABLE,
+                    stoppedReason ?: "node would not scroll from here",
+                )
+            }
         } else {
             BackendResult.Ok(
                 data = JSONObject()
@@ -567,21 +665,38 @@ internal class NodeActions(
     }
 
     /**
-     * 等这一格真的走过去：读到量程变了才回 true。
+     * 等这一格真的走过去：读到量程变了才回 [SettleOutcome.Moved]。
      *
      * 每拍都重新按编号取节点并核身份（同 `ui.setProgress` 的回读），否则换人之后读到的是
-     * 另一颗滚杆的值 —— 那会把没动的一次说成动了。
+     * 另一颗滚杆的值 —— 那会把没动的一次说成动了。守卫拒了这一拍的回读取根时回
+     * [SettleOutcome.Protected]：拒绝来自同一拍守卫过的那次取根，不在调用点
+     * 再重读一遍未过滤的 root() —— 重读的口径会跟这一拍看到的场景裂开（"切走又切回"）。
+     * 其余读不到量程的情况（节点没了/换人/没量程）与预算到点一律回 [SettleOutcome.Unresolved]，
+     * 由调用方按既有口径记账。
      */
-    private suspend fun settleUntilMoved(nodeId: Int, identity: String, before: Float, deadline: Long): Float? {
+    private suspend fun settleUntilMoved(nodeId: Int, identity: String, before: Float, deadline: Long): SettleOutcome {
         var rounds = 0
         while (rounds < MAX_SCROLL_SETTLE_ROUNDS) {
             delay(SCROLL_SETTLE_POLL_MS)
             rounds += 1
-            val current = readBackRange(nodeId, identity) ?: return null
-            if (current != before) return current
-            if (interlock.relay.core.runtime.monotonicNow() >= deadline) return null
+            val read = readBackRange(nodeId, identity)
+            if (read.blocked) return SettleOutcome.Protected(read.reason.orEmpty())
+            val current = read.value ?: return SettleOutcome.Unresolved
+            if (current != before) return SettleOutcome.Moved(current)
+            if (interlock.relay.core.runtime.monotonicNow() >= deadline) return SettleOutcome.Unresolved
         }
-        return null
+        return SettleOutcome.Unresolved
+    }
+
+    /** 一拍回读的结局，见 [settleUntilMoved]。 */
+    private sealed interface SettleOutcome {
+        data class Moved(val value: Float) : SettleOutcome
+
+        /** 这一拍的回读取根被名单守卫拒下：reason 逐字来自 [protectedRootGuardReason]。 */
+        data class Protected(val reason: String) : SettleOutcome
+
+        /** 没有量程读数（节点没了/换人/没量程）或预算与拍数到点：不是名单拒绝。 */
+        object Unresolved : SettleOutcome
     }
 
     /**
@@ -613,9 +728,18 @@ internal class NodeActions(
             // 联想替换、maxLength 截断），不相等不等于失败——判等要交给看得见现场的助手，
             // 口径与 ui.setProgress 一致。
             result.data.put("requested", text)
-            val fresh = findByIdPreorder(root(), picked.nodeId)
+            // 回读同样先过名单守卫：受保护应用的输入框内容不交出去。
+            val readback = rootForReadback()
+            val fresh = findByIdPreorder(readback.root, picked.nodeId)
             if (fresh == null) {
-                result.data.put("readBackUnavailable", "node is no longer in the tree")
+                result.data.put(
+                    "readBackUnavailable",
+                    if (readback.blocked) {
+                        "the refreshed window belongs to a protected app: text is not read back"
+                    } else {
+                        "node is no longer in the tree"
+                    },
+                )
             } else {
                 result.data.put("readBack", fresh.text?.toString().orEmpty())
             }
@@ -677,6 +801,10 @@ internal class NodeActions(
         // 一到就把整条请求判成 E_TRANSPORT_TIMEOUT —— 助手读到的是"宿主没应答"，
         // 真相是"界面还没变成那样"。宁可自己按预算收口，并把收口这件事说出去。
         // 传进来的 [budgetMs] 已经扣过回写响应要留的余量，见 RelayCoordinator。
+        // 每轮复查覆盖点：每一轮 [evaluate] 都从 [resolve] 重新取根并过一次
+        // [protectedRootGuard]——等待期间目标应用被加进名单，下一次轮询（≤150ms）即以
+        // E_PACKAGE_PROTECTED 收场（Outcome.Rejected），而不是把受保护窗口的状态当条件
+        // 继续判。逐轮现读名单，与滚动主循环同一形状。
         val timeoutMs = requested.coerceAtMost(budgetMs.coerceAtLeast(0L))
         // 单调钟：墙钟不参与任何差值计算是全模块的纪律（用户把系统时间往回调一次，
         // 用墙钟算的 deadline 就到不了，这条等待会一直跑，最后由信箱掐成
@@ -920,9 +1048,11 @@ internal class NodeActions(
             val readBack = readBackUntilSettled(picked.nodeId, value, identity)
             if (readBack.value == null) {
                 // 与 setValue 同一形状：回读不成时给的是**原因**，不是一个裸布尔。
+                // 名单守卫拒了取根也在"回读不成"之列：受保护应用的量程值不交出去。
                 result.data.put(
                     "readBackUnavailable",
-                    "node is gone from the tree, took another node's place, or reports no range",
+                    "node is gone from the tree, took another node's place, reports no range, " +
+                        "or the refreshed window belongs to a protected app",
                 )
             } else {
                 result.data.put("readBack", readBack.value)
@@ -951,7 +1081,9 @@ internal class NodeActions(
         val deadline = interlock.relay.core.runtime.monotonicNow() +
             minOf(READBACK_BUDGET_MS, budgetMs.coerceAtLeast(0L))
         while (rounds < MAX_READBACK_ROUNDS) {
-            last = readBackRange(nodeId, identity) ?: return SettledRead(null, rounds + 1)
+            val read = readBackRange(nodeId, identity)
+            if (read.blocked || read.value == null) return SettledRead(null, rounds + 1)
+            last = read.value
             rounds += 1
             if (last == wanted || interlock.relay.core.runtime.monotonicNow() >= deadline) break
             delay(READBACK_POLL_MS)
@@ -964,13 +1096,19 @@ internal class NodeActions(
 
     /**
      * 重新按编号取节点、读它现在的量程值。节点已被换掉、**换成了别的节点**、
-     * 或没有量程则回 null。
+     * 没有量程、或取根过了名单守卫（受保护应用的量程值不交出去）则 [value] 为 null；
+     * [blocked] 单独区分守卫命中（调用方要能分开"读不到"与"不许读"，fail-closed 的
+     * 出口只有一种说法），[reason] 在 blocked 时逐字带上判据文案。
      */
-    private fun readBackRange(nodeId: Int, identity: String): Float? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return null
-        val node = findByIdPreorder(root(), nodeId) ?: return null
-        if (fingerprint(node) != identity) return null
-        return node.rangeInfo?.current
+    private class ReadbackRange(val value: Float?, val blocked: Boolean, val reason: String? = null)
+
+    private fun readBackRange(nodeId: Int, identity: String): ReadbackRange {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return ReadbackRange(null, false)
+        val readback = rootForReadback()
+        if (readback.blocked) return ReadbackRange(null, true, readback.reason)
+        val node = findByIdPreorder(readback.root, nodeId) ?: return ReadbackRange(null, false)
+        if (fingerprint(node) != identity) return ReadbackRange(null, false)
+        return ReadbackRange(node.rangeInfo?.current, false)
     }
 
     /**
@@ -1136,4 +1274,87 @@ internal fun staleNodeIdReason(
         "from another display always means a different tree). Take a fresh ui.snapshot on the display " +
         "you mean to act on and use the nodeId from it - do not act on this result as if it were the " +
         "intended node."
+}
+
+/**
+ * 滚动每一轮（以及一切"取到根之后再动作/回读"的场景）的名单复查判据。
+ *
+ * 做成文件顶层的纯函数而不是成员：`NodeActions` 的伴生对象里有依赖框架类的常量，
+ * 在 JVM 单测里连类初始化都过不去（见 [staleNodeIdReason] 的同款说明）。输入就是
+ * 任务要求的三个：这一轮取到的根包名（null/空 = 读不到包名）、**当前**名单读数、
+ * 以及由"包名是否为 null"表达的"能不能读到包名"；输出是放行（null）或拒绝原因，
+ * 原因文案与各出口回给助手的 reason 逐字一致。生产循环每轮以实时 provider 的读数
+ * 调它，回归测试复刻"首轮名单为空、下一轮根变成受保护应用"的状态迁移时走同一份。
+ */
+internal fun protectedRootGuardReason(rootPackage: String?, packages: Set<String>): String? =
+    when (val verdict = protectedVerdict(packages, rootPackage)) {
+        ProtectedVerdict.Pass -> null
+        is ProtectedVerdict.Hit ->
+            "package ${verdict.packageName} is on the user's protected-apps list: the assistant " +
+                "can neither operate it nor read it"
+        ProtectedVerdict.Unconfirmable ->
+            "cannot confirm the app in front (the refreshed window carries no package), and the " +
+                "protected-apps list is not empty: refusing to proceed"
+    }
+
+/**
+ * 一轮派发之后调用方给出的走向：继续下一轮，或循环到此收场。
+ * 收场的具体原因（节点没了/指纹变了/应用不认/值不动了/预算尽/目标已到）由调用方自己记账
+ * ——循环只管轮次与守卫次序，不解释滚动语义。
+ */
+internal enum class ScrollRoundOutcome { Continue, Stop }
+
+/**
+ * 滚动主循环的收场判定（纯数据，JVM 单测直接断言）：
+ * - [Protected]：某一轮的名单守卫命中，循环在该轮**派发之前**收场。[error] 恒为
+ * `E_PACKAGE_PROTECTED`，[reason] 逐字来自 [protectedRootGuardReason]；
+ * - [Completed]：步数走完、节点没了或调用方判停，未撞名单，由生产调用方按既有口径回包。
+ */
+internal sealed interface ScrollLoopVerdict {
+    data class Protected(val error: RelayError, val reason: String) : ScrollLoopVerdict
+    object Completed : ScrollLoopVerdict
+}
+
+/**
+ * 滚动（以及一切"每轮取根后再动作"）的主循环：每轮 **取根 → 名单判据 → 找到节点 → 派发**。
+ *
+ * 做成可注入依赖的泛型顶层函数（Root/Node 都是类型参数，签名里不出现任何 Android 类型）
+ * 而不是 [NodeActions.scroll] 的私有实现，是为了让"守卫在找节点与派发**之前**、名单每轮
+ * 现读"这件事能被 JVM 单测钉住：上一轮的缺陷恰恰发生在调用点——重取树之后忘了调判据，
+ * 把守卫删掉或挪到 performAction 之后，只测纯判据的测试一条都不会红。生产
+ * `NodeActions.scroll` 的每一轮走这里；判据本体是 [protectedRootGuardReason]，生产与
+ * ProtectedScrollLoopTest 同走一份。
+ *
+ * 次序即语义：
+ * 1. 每轮先取根（[rootProvider]）。null = 这一轮没有树：**跳过守卫**继续走——根读不到
+ * （无树/宿主窗口）维持既有的"节点已不在树上"出口，名单判据不把"没树"说成"读不到包名"；
+ * 2. 有根时先问名单（[packagesProvider] 是实时读数，每轮现读一次）：命中或读不到包名
+ * 按 fail-closed 收场，经 [onProtectedBlocked] 记一次运行日志（去重由调用方做）；
+ * 3. 然后 [findNode] 按编号取节点，null = 节点没了，循环收场（原因由调用方记账）；
+ * 4. 最后 [dispatchRound] 派发本轮动作，回 [ScrollRoundOutcome.Stop] 即收场。
+ * [roundLimit] 用尽同样自然收场。
+ */
+internal suspend fun <Root, Node> runScrollRounds(
+    roundLimit: Int,
+    rootProvider: () -> Root?,
+    packageNameOf: (Root) -> String?,
+    packagesProvider: () -> Set<String>,
+    findNode: (Root?) -> Node?,
+    onProtectedBlocked: (String?) -> Unit,
+    dispatchRound: suspend (Node) -> ScrollRoundOutcome,
+): ScrollLoopVerdict {
+    for (round in 0 until roundLimit) {
+        val root = rootProvider()
+        if (root != null) {
+            val rootPackage = packageNameOf(root)
+            val reason = protectedRootGuardReason(rootPackage, packagesProvider())
+            if (reason != null) {
+                onProtectedBlocked(rootPackage)
+                return ScrollLoopVerdict.Protected(RelayError.PACKAGE_PROTECTED, reason)
+            }
+        }
+        val node = findNode(root) ?: return ScrollLoopVerdict.Completed
+        if (dispatchRound(node) == ScrollRoundOutcome.Stop) return ScrollLoopVerdict.Completed
+    }
+    return ScrollLoopVerdict.Completed
 }

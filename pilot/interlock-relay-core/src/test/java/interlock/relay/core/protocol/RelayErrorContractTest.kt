@@ -27,9 +27,13 @@ class RelayErrorContractTest {
             // 拒绝类（重试也会被再次挡下）
             RelayError.GATE_HOST_DENIED to RelayExitCode.DENIED,
             RelayError.SURFACE_SECURE_WINDOW to RelayExitCode.DENIED,
+            // 目标在受保护名单里：名单优先于档位，改档位没用，重发被再次挡下。
+            RelayError.PACKAGE_PROTECTED to RelayExitCode.DENIED,
             // 超时类
             RelayError.GATE_APPROVAL_TIMEOUT to RelayExitCode.TIMEOUT,
             RelayError.TRANSPORT_TIMEOUT to RelayExitCode.TIMEOUT,
+            // 事务已提交但结局无法证实：与「可能根本没发出去」的超时是两个事实，退避后先查再动。
+            RelayError.TRANSPORT_UNKNOWN to RelayExitCode.RETRY_LATER,
             RelayError.WAIT_TIMEOUT to RelayExitCode.TIMEOUT,
             // 要用户去手机上动一下
             RelayError.GATE_SYSTEM_MISSING to RelayExitCode.NEEDS_USER_ACTION,
@@ -39,11 +43,12 @@ class RelayErrorContractTest {
             RelayError.SURFACE_API_LEVEL to RelayExitCode.NEEDS_USER_ACTION,
             RelayError.SURFACE_NO_SHELL to RelayExitCode.NEEDS_USER_ACTION,
             RelayError.SURFACE_TRUSTED_DENIED to RelayExitCode.NEEDS_USER_ACTION,
+            // 自检判「可信屏破坏主屏」：屏已当场释放，原样重发只会再破坏一次——改前台。
+            RelayError.SURFACE_TRUSTED_UNSAFE to RelayExitCode.NEEDS_USER_ACTION,
             RelayError.SURFACE_UNAVAILABLE to RelayExitCode.NEEDS_USER_ACTION,
             // 单一执行面能力被偏好卡死：要用户去切偏好/建屏，不是改脚本也不是重试。
             RelayError.SURFACE_MODE_REQUIRED to RelayExitCode.NEEDS_USER_ACTION,
             RelayError.SURFACE_SYSTEM_CONSENT_REQUIRED to RelayExitCode.NEEDS_USER_ACTION,
-            RelayError.NODE_SYSTEM_CONSENT_TARGET to RelayExitCode.NEEDS_USER_ACTION,
             // 瞬时可重试
             RelayError.GATE_AWAITING_CONSENT to RelayExitCode.RETRY_LATER,
             // 等待队列满：位置没排上，退避一阵后位置必然腾出。
@@ -63,6 +68,10 @@ class RelayErrorContractTest {
             // 目标判错：这颗节点根本没有输入法动作可触发（改脚本，不是去授予什么）
             RelayError.NODE_NO_IME_ACTION to RelayExitCode.USAGE,
             RelayError.INTERNAL to RelayExitCode.INTERNAL,
+            // 命令自己的失败与权限拒绝：都已执行、不可重试原样，退出码 7 让脚本
+            // 先读 data 里的 output / stderr / exit 再决定下一步。
+            RelayError.COMMAND_FAILED to RelayExitCode.COMMAND_FAILED,
+            RelayError.COMMAND_NOT_PERMITTED to RelayExitCode.COMMAND_FAILED,
         )
         assertEquals("这张表必须覆盖整条枚举", RelayError.entries.size, expected.size)
         expected.forEach { (error, exitCode) -> assertEquals(error.code, exitCode, error.exitCode) }
@@ -77,6 +86,7 @@ class RelayErrorContractTest {
             RelayExitCode.NEEDS_USER_ACTION,
             RelayExitCode.RETRY_LATER,
             RelayExitCode.INTERNAL,
+            RelayExitCode.COMMAND_FAILED,
         )
         RelayError.entries.forEach { assertTrue(it.code, it.exitCode in documented) }
     }
@@ -92,6 +102,7 @@ class RelayErrorContractTest {
             RelayExitCode.NEEDS_USER_ACTION,
             RelayExitCode.RETRY_LATER,
             RelayExitCode.INTERNAL,
+            RelayExitCode.COMMAND_FAILED,
         ).forEach { assertTrue("exit $it has no error code", it in produced) }
     }
 
@@ -114,6 +125,7 @@ class RelayErrorContractTest {
                 "E_RATE_LIMITED",
                 "E_QUEUE_FULL",
                 "E_TRANSPORT_TIMEOUT",
+                "E_TRANSPORT_UNKNOWN",
                 "E_ACTION_REJECTED",
                 "E_WAIT_TIMEOUT",
             ),

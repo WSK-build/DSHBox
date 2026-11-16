@@ -172,6 +172,9 @@ class ShizukuState(context: Context, runLog: RunLog) {
                     .processNameSuffix("shizuku")
                     .tag("relay")
                     .debuggable(false)
+                    // version(1) 保持不动：daemon(false) 下用户服务进程随绑定走、随宿主
+                    // 进程消失，宿主更新后的重绑总是拉起新代码 —— 版本号只在需要跨宿主
+                    // 版本保留常驻服务时才值得动（那会把"旧服务陪着旧 APK"变成状态）。
                     .version(1),
                 connection,
             )
@@ -235,6 +238,65 @@ object ShellProtocol {
      * 会撞事务缓冲区上限。
      */
     const val CODE_SCREENSHOT = IBinder.FIRST_CALL_TRANSACTION + 7
+
+    /**
+     * 开一条实时流（只读预览）：参数是宿主建好的 pipe **写端 fd**；回
+     * (0 或 <0, 原因[, 元数据 JSON])。编码在用户服务进程内做，fMP4 字节从写端
+     * 流出；宿主从此只读自己的读端。一次只有一条流：已在跑时拒绝（见
+     * `RelayShellService` 的 StreamSession）。
+     */
+    const val CODE_STREAM_START = IBinder.FIRST_CALL_TRANSACTION + 8
+
+    /** 停实时流：无参数；回 (1=收了一条 / 0=本来就没有 / <0=失败, 原因)。 */
+    const val CODE_STREAM_STOP = IBinder.FIRST_CALL_TRANSACTION + 9
+
+    /**
+     * 主屏自检的「before」快照：无参数；回 (0 或 <0, 原因)。
+     *
+     * 建屏**之前**由宿主发一次，用户服务把主屏此刻的状态（top/焦点/IME/launcher/显示组）
+     * 抓在手里，等 [CODE_DISPLAY_SELF_CHECK] 回来对账。快照读不全不算失败：读不到的项
+     * 按 unknown 记录，自检据此不判破坏。
+     */
+    const val CODE_DISPLAY_PREPARE = IBinder.FIRST_CALL_TRANSACTION + 10
+
+    /**
+     * 主屏自检与建屏后兼容：参数 (displayId)；
+     * 回 (0 或 <0, 自检结果 JSON)。
+     *
+     * 用户服务在此做三件事：先把这块屏钉回全屏窗口模式、IME 收回屏内（尽力而为，
+     * 成败只记录）；再抓一份建屏后的主屏状态；与 before 对账。观察到不变量破坏时
+     * **当场释放**这块屏再回包，JSON 里带 `selfCheck:"unsafe"` 与破坏清单、
+     * 释放后的主屏状态；没有破坏则 `selfCheck:"pass"`。
+     */
+    const val CODE_DISPLAY_SELF_CHECK = IBinder.FIRST_CALL_TRANSACTION + 11
+
+    /**
+     * 列**指定显示**上的任务（面板任务面板）：参数 (displayId)；回 (0 或 <0, 任务 JSON)。
+     *
+     * 用户服务在此跑 `dumpsys activity activities`，取 `displayId == 参数` 的每个 RootTask
+     * 及其顶层活动（解析抽 [RelayShellService.TrustedTasks.parse] 纯函数）。
+     * 正文 JSON 由 [RelayShellService.TrustedTasks.tasksJson] 摊平：taskId/package/label/activity，
+     * displayId 是**服务端实际解析**的号。
+     */
+    const val CODE_TASKS_LIST = IBinder.FIRST_CALL_TRANSACTION + 12
+
+    /**
+     * 把一个 RootTask 整体搬到目标显示（面板三动作）：参数 (rootTaskId, 目标 displayId)；
+     * 回 (0 或 <0, 原因)。服务端只执行 `am display move-stack <rootTaskId> <target>`；
+     * root 解析与失败判定在宿主侧（[RelayShellService.TrustedTasks]），叶子任务先解析 root。
+     */
+    const val CODE_TASKS_MOVE = IBinder.FIRST_CALL_TRANSACTION + 13
+
+    /** 用户主屏的编号（面板任务面的搬迁目标之一，客户端与服务端共用）。 */
+    const val MAIN_DISPLAY_ID = 0
+
+    /**
+     * 把可信虚拟屏 resize 到新尺寸（面板旋转的本体）：
+     * 参数 (宽, 高, dpi)；回 (0 或 <0, 原因)。服务端只执行 `VirtualDisplay.resize` +
+     * 换 Surface，**不 release/不重建** —— 屏号不变、屏上任务不销毁。宽高/dpi 由服务端
+     * 夹到与建屏同一判据的安全区间。
+     */
+    const val CODE_DISPLAY_RESIZE = IBinder.FIRST_CALL_TRANSACTION + 14
 
     /**
      * Shizuku 通知用户服务「该退了」的事务码。

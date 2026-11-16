@@ -64,7 +64,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
-import dshbox.adapter.dshboxRelayConfig
 import interlock.relay.core.runtime.RelayRuntime
 
 /**
@@ -620,7 +619,9 @@ class SandboxService : Service() {
             val firstRun = !prefs.getBoolean(Constants.PREF_FIRST_RUN_COMPLETED, false)
             if (firstRun) {
                 Log.i(TAG, "bootstrap: first run, starting sandbox and dsh")
-                sandboxManager.startSandbox()
+                startSandboxWithRelay(applicationContext, sandboxManager) {
+                    ensureDeveloperAccessReady()
+                }
                 if (sandboxManager.sandboxState.value == SandboxState.RUNNING) {
                     val dshResult = startDsh()
                     if (dshResult is AppResult.Success) {
@@ -1415,7 +1416,8 @@ class SandboxService : Service() {
      * 暂存包里参与一致性比对的文件（相对 `plugin/` 根，已排序）。
      *
      * 由**暂存包的实际内容**推导，而不是写死一份清单：各适配包的组成并不相同
-     * （适配包有 `lib/client.js`，mobile-pilot 空壳只有 `lib/index.js`）。
+     * （两个包现在都带 `lib/client.js`，但 mobile-pilot 另有 `bin/mobile-pilot`、
+     * `lib/mount.js` 等适配包没有的文件，工具集也不同）。
      * 写死的清单一旦包含包里并不存在的文件，探测就永远判不出「已最新」——
      * 表现为每次启动都重装一遍，而日志只像是"又更新了"。
      */
@@ -1572,10 +1574,10 @@ class SandboxService : Service() {
 
     private suspend fun startSandbox() {
         // 助手通道必须在 DSH 起来之前就绪：guest 侧把它当成 /opt/pilot，
-        // 通道不在时每一次调用都会等到超时。
-        RelayRuntime.start(applicationContext, dshboxRelayConfig(applicationContext))
-        ensureDeveloperAccessReady()
-        sandboxManager.startSandbox()
+        // 通道不在时每一次调用都会等到超时。onboarding 也走同一个入口。
+        startSandboxWithRelay(applicationContext, sandboxManager) {
+            ensureDeveloperAccessReady()
+        }
     }
 
     /**
@@ -1586,13 +1588,11 @@ class SandboxService : Service() {
      * 已安装则是一次文件存在性检查，不产生 guest 进程。
      */
     private suspend fun ensureDeveloperAccessReady() {
-        runCatching {
-            com.dshbox.app.runtime.DeveloperAccessBootstrap(
-                applicationContext,
-                sandboxManager,
-                ((application as DshApp).container.sandboxConfig).runtimeDir,
-            ).ensureAdbReady()
-        }.onFailure { Log.w(TAG, "developer access recheck before sandbox start failed", it) }
+        recheckDeveloperAccess(
+            applicationContext,
+            sandboxManager,
+            ((application as DshApp).container.sandboxConfig).runtimeDir,
+        )
     }
 
     private suspend fun stopSandbox() {
@@ -1608,6 +1608,9 @@ class SandboxService : Service() {
         restartInProgress = true
         try {
             ensureDeveloperAccessReady()
+            // restartSandbox 只重启沙箱，不碰 relay：若用户先 stopSandbox 把通道
+            // 停了，这里必须先重新铺 /opt/pilot，否则 DSH 重启后又会没有流路由。
+            ensureRelayReady(applicationContext)
             sandboxManager.restartSandbox()
         } finally {
             restartInProgress = false

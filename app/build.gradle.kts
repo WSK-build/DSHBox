@@ -48,8 +48,8 @@ extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
         minSdk = 29
         targetSdk = 36
         // 多语言版本：联合国六语 + 语言选择器 + 硬编码清零 + 布局恒 LTR + i18n 门禁。
-        versionCode = 13
-        versionName = "1.5.4"
+        versionCode = 14
+        versionName = "1.5.5"
         buildConfigField("String", "DSH_GECKOVIEW_VERSION", "\"${libs.versions.geckoview.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -117,6 +117,9 @@ dependencies {
     add("systemWebViewImplementation", project(":dsh-renderer:system"))
     add("geckoImplementation", project(":dsh-renderer:api"))
     add("geckoImplementation", project(":dsh-renderer:gecko"))
+    // GeckoView 158 的 lifecycle 2.11 要求 Compose runtime 1.11；gecko 变体
+    // 必须用与它匹配的 BOM 编译/运行，否则 LocalViewModelStoreOwner 会缺 HostDefaultKey。
+    add("geckoImplementation", enforcedPlatform(libs.androidx.compose.bom.gecko))
 
     implementation(project(":common"))
     implementation(project(":browser:browser-api"))

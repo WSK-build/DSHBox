@@ -42,7 +42,9 @@ const monotonicNowMs = () => performance.now()
  * 因此本层先夹紧，并在结果里说明夹紧发生在这一层。
  */
 const ENTRY_TIMEOUT_MIN_MS = 1000
-const ENTRY_TIMEOUT_MAX_MS = 120000
+// 上限比录音的内容上限（120 秒）多 10 秒收尾余量：预算与内容同值，满时长录音会在
+// 编码落盘、回执回写还没走完时就被这里掐断。宿主有效期（EnvelopeCodec TTL）同表 130000。
+const ENTRY_TIMEOUT_MAX_MS = 130000
 
 /**
  * 按能力分档的超时。需要用户确认的能力（ASK / SESSION_CONSENT）给足余量：
@@ -50,6 +52,10 @@ const ENTRY_TIMEOUT_MAX_MS = 120000
  */
 const TIMEOUTS = [
   [/^screen\.record$/, 180000],
+  // 录音的内容上限是 120 秒（宿主把 seconds 夹在 1..120）：等待档位放在 130 秒，
+  // 多出的 10 秒是编码落盘与回执回写的收尾余量——档位与内容同值会让满时长录音
+  // 没等产物落地就先被这里掐断，回包里的失败与录音本身无关。
+  [/^audio\.capture$/, 130000],
   [/^screen\.(capture|observe)$/, 90000],
   [/^ui\./, 20000],
   [/^sys\./, 30000],
@@ -77,9 +83,10 @@ function timeoutFor (capability, override) {
 /**
  * 提问通路（`bin/pilot ask`）的窗口区间与载荷长度上限。
  *
- * 与入口 CLI 及宿主 EnvelopeCodec 同一组数：本层按同一组数先拒，超长载荷才会走成
- * 用法错误（退出码 1）而不是交给宿主拒、被记成传输层故障（退出码 6）—— 后者会把
- * 「改调用就能修」报成「宿主坏了」，让调用方不再重试。
+ * 与入口 CLI 及宿主 EnvelopeCodec 同一组数（ask 有自己的 120000 上限，与调用通路的
+ * 130000 无关）：本层按同一组数先拒，超长载荷才会走成用法错误（退出码 1）而不是交给
+ * 宿主拒、被记成传输层故障（退出码 6）—— 后者会把「改调用就能修」报成「宿主坏了」，
+ * 让调用方不再重试。
  */
 const ASK_MIN_TIMEOUT_MS = 5000
 const ASK_MAX_TIMEOUT_MS = 120000
@@ -360,6 +367,33 @@ function hintFor (result) {
   // 没有错误码可挂靠，而 data.observed 已经点名了停在最前面的包。
   const observed = result && result.data && typeof result.data.observed === 'string' ? result.data.observed : null
   if (observed && MEDIATORS.has(observed)) return chooserHint(observed, result.ok === true)
+  // 收屏回包的输入状态没有"已恢复"可宣称：unknown 说明这次 release 已被服务端
+  // 答话（屏按服务端回执处理完），但手势是否回来无法证实——给兜底动作，不给假结论。
+  if (result && result.ok && result.data && result.data.inputStateRestored === 'unknown') {
+    return '这次 release 已被宿主确认处理完毕；`inputStateRestored:"unknown"` 表示该回包证实不了系统手势已经回到用户屏上，不能当作已恢复读。' +
+      '用户若仍手势异常（返回条、上滑失灵），重启设备一次即可恢复，无需反复重建/释放虚拟屏。'
+  }
+  // 收屏失败的回包把同一字段落成**布尔 false**（屏还在，输入状态可确认没有恢复）：
+  // 与 unknown 字符串两档类型不同——失败档的下一步是重试 RELEASE 这件事本身
+  // （release 不改设备状态，重试是安全的），而不是当"已释放"往下走。
+  if (!result.ok && result.capability === 'surface.virtual' && result.data && result.data.inputStateRestored === 'unknown') {
+    // 收屏的"结局未知"只有一条路：等待被放弃，事务本身没有被取消——屏可能已被收掉、
+    // 也可能稍后才会被收掉；不按"已释放"读，也不按"未执行"读。
+    if (result.code === 'E_TRANSPORT_TIMEOUT') {
+      return '这次 release 的本地等待被放弃（事务本身没有被取消，没有拿到成败回执）：' +
+        '后台屏**可能还在、也可能稍后才会被收掉**——既不能当作"这次收掉了"读，' +
+        '也不能当作"什么都没发生"读；' +
+        '用 surface.virtual query 与 backend.shizuku.trustedDisplay.alive 复核屏在不在，' +
+        '拿到了明确结论再决定是否再 release 或改前台。'
+    }
+    return '收屏等待被放弃（结局未知）：后台屏可能还在、事务也可能稍后完成——' +
+      '不要按"已释放"读，先 query 复核屏在不在，拿到明确结论再走下一步。'
+  }
+  if (!result.ok && result.data && typeof result.data.inputStateRestored === 'boolean' &&
+    result.data.inputStateRestored === false) {
+    return '这次 release 没有把后台虚拟屏收掉（`inputStateRestored:false`——屏还在，输入状态确认未恢复）：' +
+      'release 不改设备状态，可以重试一次 release；若反复失败，改用前台模式而不是继续重建。'
+  }
   // 宿主报 UNKNOWN 时它比任何错误码都优先：这一刻连"做没做"都无法证实，
   // 按错误码给的重试建议照做就可能变成对非幂等动作的二次执行。
   if (result && result.state === 'UNKNOWN') {
@@ -390,7 +424,23 @@ function hintFor (result) {
     case 'E_GATE_NO_FOREGROUND':
       return '三处确认入口都不可用（无悬浮卡窗口、通知被挡、助手页不在前面）。请让用户切到其他应用或把宿主带到前台，再重试。'
     case 'E_GATE_HOST_DENIED':
+      // 完全 Shizuku 是独立的特权开关（默认禁止）：被拒时反复重试没有意义，
+      // 唯一的下一步是让用户到宿主特权模式页把开关打开；它也不会回退到 sys.shell。
+      if (result && result.capability === 'sys.shell.full') {
+        return '完全 Shizuku 能力当前处于关闭状态（特权开关默认禁止），重试无效：' +
+          '请让用户到宿主的特权模式页打开“完全 Shizuku 能力”开关后再试。' +
+          '它不会回退到 sys.shell 的封闭动词表——表外命令（脚本、管道、重定向）只有这一条通路。'
+      }
       return '被规则或档位拒绝，重试无效：该能力可能处于 DENIED 状态（例如 sys.shell 需用户逐条开启）；reason 点名了参数时，是那个参数写了宿主自身的包名——被拒的是这个过滤条件本身而不是数据，去掉它重发即可。'
+    case 'E_GATE_SYSTEM_MISSING':
+      // 通知发送在发出**之前**就被宿主拦下：通知权限或渠道被关，系统会静默丢掉这次发送。
+      // 重试无效，唯一下一步是让用户在系统设置里把通知权限或渠道打开。
+      if (result && result.capability === 'notify.post') {
+        return '通知发不出去（不是助手审批的问题）：通知权限或通知渠道被关闭，系统会静默丢掉这次发送。' +
+          'reason 点名了缺的是哪一环；请让用户为本应用打开通知权限或重新启用对应渠道后再发。' +
+          '开启之前原样重试仍会被拦下。'
+      }
+      return ''
     case 'E_GATE_CANCELLED':
       // 这条只在续行入口、任何外部动作提交之前产出：宿主可证未派发，原请求已终局。
       return '该请求已被取消，宿主证实它未执行、没有留下任何副作用：不需要再用 status/cancel 跟进。' +
@@ -425,6 +475,21 @@ function hintFor (result) {
     case 'E_SURFACE_UNAVAILABLE':
       // 这一码说的是执行面，不是启动结果：它可能挂在一次成功的调用上（作为 degradeReason 出现），
       // 也可能挂在失败上。只报码不给方向，调用方会去查后端连接，而后端好好的。
+      // 大屏场景：宿主按物理屏算过安全建屏尺寸，两边都越界时建屏根本不出本地。
+      // 结构化判据是 data.sizePolicy === 'none_safe'（配 physicalShortSide/physicalLongSide，
+      // 按短/长边命名不按横竖命名，竖用横用两枚字段都不会互换），
+      // 机器优先读它；reason 里的 "no safe trusted-display size" 只作人读的同义补充，
+      // 旧装配/回包不带字段时才退回正则。那不是 ROM 拒绝（清单不会有 denied 标记、
+      // 该能力仍可用），反复 surface.virtual 也建不出来，唯一有效的下一步是前台模式。
+      if (result && result.data && result.data.sizePolicy === 'none_safe') {
+        return '这台机器的物理屏短边×长边 = ' + (result.data.physicalShortSide ?? '?') + '×' + (result.data.physicalLongSide ?? '?') +
+          '，两边都超出安全建屏范围，宿主决定不建虚拟屏（不是 ROM 拒绝，清单里该能力仍可用）：' +
+          '不要反复 surface.virtual 重试，改用前台模式执行这些操作。'
+      }
+      if (result && result.reason && /no safe trusted-display size/.test(result.reason)) {
+        return '这台机器的物理屏两边都超出安全建屏范围，宿主决定不建虚拟屏（不是 ROM 拒绝，清单里该能力仍可用）：' +
+          '不要反复 surface.virtual 重试，改用前台模式执行这些操作。'
+      }
       return '本次没有走到所期望的后台执行面：请求要虚拟屏，实际落在前台或被拒。' +
         '读 phone_status 的 backend.shizuku（authorized / bound / trustedDisplay.alive）定位缺的那一环：' +
         '屏不在就 surface.virtual {} 建一面，Shizuku 没绑上就先把绑定接通。' +
@@ -438,12 +503,23 @@ function hintFor (result) {
           ? '系统版本低于建屏要求（要 Android 13 及以上），换任何开关都不会变。'
           : 'Shizuku 用户服务没在跑，读 phone_status 的 backend.shizuku（running / authorized / bound）先把这三档接通。') +
         '本次调用已落在前台屏（surface=foreground、degraded=true），同一条回包里 reason / note 说的是这一趟本身。'
+    case 'E_SURFACE_TRUSTED_DENIED':
+      // 个别 ROM 整个拒绝为宿主建 trusted 屏：这是设备上的固定结论，不是通路抖动。
+      // 反复 surface.virtual 只会反复撞同一堵墙；清单里这条已随 rejected 标记 unusable
+      // （degradeReason 与本码同字），唯一有效的下一步是换前台模式。
+      return '该 ROM 拒绝为本应用创建 trusted 虚拟屏（建屏请求被系统直接拒回，非断连）：' +
+        '不要反复重试 surface.virtual，清单里这条能力已标记 unusable；' +
+        '后续操作请改用前台模式（surface=foreground），宿主侧恢复只发生在一次建屏真正成功或重连后对账屏还活着。'
+    case 'E_SURFACE_MODE_REQUIRED':
+      // 单一执行面能力被偏好链卡死：调用方自己切偏好/建屏就修得回来，它**不是**机器否决。
+      // 与 E_SURFACE_TRUSTED_DENIED 分开：那一条会以"不要重试"收尾，这一条允许重试修正；
+      // 清单里 degraded 标记与"该机型拒绝可信屏"共用一列时，拒绝优先——读到 denied 不要按本条建议切偏好。
+      return '该能力只能在后台可信屏上跑，而当前的执行模式到不了它：让用户把执行偏好切到优先后台，' +
+        '或先 surface.virtual 建屏再重试（清单 backend.shizuku.trustedDisplay.denied=true 时不再按这条处理，那是 ROM 拒绝，改走前台）。'
     case 'E_BACKEND_UNAVAILABLE':
       return '后端不可用：读取清单中的 backend.shizuku（running / authorized / bound / trustedDisplay.alive / trustedDisplay.nodeTree）确认断点；reason 已点名具体环节时按其处置。'
     case 'E_CAPABILITY_UNAVAILABLE_ON_DEVICE':
       return '这台设备给不出这个能力，重试与开任何开关都不会变（例如 sys.shell 的 media 动词：reason 里带 "this device has no such command" 时说明那条二进制不在本机）。改走别的路径，或告诉用户这条在这台机器上做不了。'
-    case 'E_NODE_SYSTEM_CONSENT_TARGET':
-      return '解析出来的那颗控件属于系统授权界面，宿主直接拒了：权限弹窗只能由用户本人回答，不写 package、改用 nodeId 或补个 view id 都绕不过这一问。要往下走请用户自己点，或换一个不是授权框的目标。'
     case 'E_NODE_NOT_FOUND':
       return '选择器在当前控件树中未命中，或 nodeId 已失效。重新 ui.snapshot 后重取 nodeId / 选择器。'
     case 'E_NODE_AMBIGUOUS':
@@ -457,6 +533,13 @@ function hintFor (result) {
     case 'E_TRANSPORT_UNKNOWN':
       // 请求已确认投进控制信箱、通道随后失联：连宿主是否收到都无法证实，
       // 任何「再发一次」的建议在这里都是对非幂等动作的重复执行。
+      // notify.post 的专用场景：宿主已把通知交给系统、但复查窗口里没看见它——
+      // 回包 data 仍带 id/posted/verified=false，结局未知，重发同 id 可能产生重复通知。
+      if (result && result.capability === 'notify.post') {
+        return '系统已接受这条通知的发送，但短窗口复查里没有看到它出现在本应用的活动通知中，结局未知：' +
+          '它可能稍后出现，也可能被系统静默丢弃。不要用同一 id 原样重发（可能造成重复通知）；' +
+          '请让用户看一眼通知栏，或确认通知权限/渠道后换一个 id 再发。'
+      }
       return '请求已投进宿主，但控制通道随后失联，结果无法证实：' +
         '先用 mobile-pilot status 查询同一请求（用结果里的 requestId），或用 mobile-pilot cancel 尝试取消；' +
         '拿到明确终态之前，禁止按原参数重新发起非幂等动作。'
@@ -503,6 +586,16 @@ function hintFor (result) {
       // 需要用户动手：宿主侧没有可用的呈现面（无悬浮窗授权 / 后台模式隐藏浮窗）。
       return '此刻没有可用的呈现面（原因见 reason）：要么请用户授予悬浮窗权限，要么改走用户自己看得见的路径' +
         '把问题带到对话里问。改问法、重发都不会凭空变出一张卡。'
+    case 'E_COMMAND_FAILED':
+      // 命令已执行且非零退出：命令自己的失败，不是宿主内部错误。输出在 data 里。
+      return '命令已执行且非零退出（exit 见 data.exit）：这是命令自身的失败，不是宿主内部错误。' +
+        'stdout / stderr 在 data.output 与 data.stderr（grep -m1 之类管道提前关闭时，output 是已产出的那部分）。' +
+        '先读输出判断下一步，不要不看不改地原样重发。'
+    case 'E_COMMAND_NOT_PERMITTED':
+      // 命令已执行但被 Android 服务侧拒绝：执行身份与权限的事，单独归类。
+      return '命令已执行但被 Android 服务侧拒绝（Permission Denial / SecurityException，见 data.stderr）：' +
+        '当前 Shizuku 身份（shell / root，见清单 backend.shizuku.shellUid）做不了这件事，原样重发仍会被拒；' +
+        '换 root 身份或换一条能做的路径。'
     case 'E_ASK_NO_REPLY':
       // 入口在通道在位时没等到回包：卡可能没上屏，也可能宿主正忙。
       return '通道在位但没有回包：卡片可能根本没上屏，也可能宿主正忙。没有「没有答复」以外的结论；' +
@@ -536,6 +629,16 @@ function describe (result, dumpFull) {
   if (result.reason) lines.push(`reason: ${result.reason}`)
   if (result.note) lines.push(`note: ${result.note}`)
   if (result.degradeReason) lines.push(`degrade: ${result.degradeReason}`)
+  // 命令结果的 exit / stderr 先行，output 只给一段预览——600 字符的 data 预览里
+  // stdout 排在前面，会把 stderr 与 exit 挤出预览，而那两样才是判读的第一场景。
+  // 覆盖命令失败两码，也覆盖成功回包里随带的告警 stderr（raw 通路成功也保留 stderr）。
+  const shellData = (result.data && typeof result.data === 'object') ? result.data : {}
+  if (shellData.exit != null || shellData.stderr != null || shellData.output != null) {
+    const stderr = String(shellData.stderr ?? '')
+    const output = String(shellData.output ?? '')
+    lines.push(`exit: ${shellData.exit ?? '?'}  stderr: ${stderr ? stderr.slice(0, 300) : '(empty)'}`)
+    lines.push(`output: ${output ? output.slice(0, 400) : '(empty)'}${output.length > 400 ? ' …(truncated; full text in data)' : ''}`)
+  }
   if (result.data != null) {
     // 预览要截、完整数据不能丢：本层另存一份并给出路径。宿主侧没有分页与过滤参数，
     // 一次 200 多条的列表在这里被截掉之后就再也取不回来，调用方只能绕开通道去 grep。
@@ -642,7 +745,7 @@ class PilotChannel {
    * 与 call 共用同一条通道纪律（有界入队、串行投递、预算自受理时刻起算），差别有三处：
    *   1) 载荷是 `ask --json {question,options,timeoutMs}`，**不下发 `--timeout`** ——
    *      入口对这个子命令明确拒绝它（等待窗口只由载荷里的 timeoutMs 决定，两个来源会互相打架）；
-   *   2) 因此本层的等待预算取「窗口 + 余量」，可以高过入口对 `--timeout` 接受的 120000 上限，
+   * 2) 因此本层的等待预算取「窗口 + 余量」，可以高过入口对 `--timeout` 接受的 130000 上限，
    *      也不参与夹紧：窗口写在载荷里，本层改了就等于替调用方改问题窗口。排队吃掉的预算不足以
    *      覆盖一次最小提问时当场退回不投件，不把调用方的等待承诺悄悄放大；
    *   3) 答复三支皆为成功（选中 / 全部驳回 / 重新提问），由调用方按回包的 `choice.kind` 处置 ——

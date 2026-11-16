@@ -121,7 +121,7 @@ enum class RelayError(
     GATE_SYSTEM_MISSING("E_GATE_SYSTEM_MISSING", false, RelayExitCode.NEEDS_USER_ACTION),
     GATE_APPROVAL_TIMEOUT("E_GATE_APPROVAL_TIMEOUT", false, RelayExitCode.TIMEOUT),
     /**
-     * 正在等用户当场确认（本模块确认窗或系统授权框）。
+     * 正在等用户当场确认（本模块确认窗，档位是唯一开关）。
      *
      * 单独一档是因为它容易与两件事混：等满客户端 TTL 的 `E_TRANSPORT_TIMEOUT`
      * （读起来像宿主没应答）与选不到后端的 `E_NOT_IMPLEMENTED`（读起来像能力没实现）。
@@ -151,6 +151,16 @@ enum class RelayError(
      * 分开，脚本才不会把"请离开这一屏"当成"用户拒绝"而直接放弃整条任务链。
      */
     GATE_SUSPENDED_BY_HOST("E_TASK_SUSPENDED_BY_HOST", true, RelayExitCode.RETRY_LATER),
+    /**
+     * 目标应用在用户自选的「受保护应用」名单里：名单优先级高于能力档位，
+     * 「完全访问」不放宽它。调用入口（进审批之前）与执行场景（下发之前）都会判，
+     * 命中即拒；回包只说明该包受保护与尝试的包名，不暴露完整名单。
+     *
+     * 与 [GATE_HOST_DENIED] 分开：那条说的是"这条能力被拨到禁止"，改档位就能过；
+     * 这条说的是"这个应用被用户点名保护"，换档位没用，唯一出路是用户把包移出名单。
+     * 退出码取 DENIED（策略拒绝）：名单在，重发会被再次挡下。
+     */
+    PACKAGE_PROTECTED("E_PACKAGE_PROTECTED", false, RelayExitCode.DENIED),
     /** 当前没有聚焦的可编辑控件：多半是上一次点击没落进输入框，而不是系统权限缺失。
      * 退出码取 USAGE（改脚本）且不可重试：原样重发答案不变，要改的是调用顺序。
      */
@@ -188,16 +198,19 @@ enum class RelayError(
     NODE_NO_IME_ACTION("E_NODE_NO_IME_ACTION", false, RelayExitCode.USAGE),
 
     /**
-     * 解析出来的那颗节点属于系统授权界面：这一格只能由用户本人点。
-     *
-     * 不复用 [SURFACE_SYSTEM_CONSENT_REQUIRED]：那一句的六语原文说的都是"这次采集会话需要
-     * 你在系统弹窗里确认"，指的是投屏同意框，与"你想点的是别人家的授权按钮"不是同一件事。
-     * 一个码装两种处置，向用户转述的那一句就一定会错。
+     * 远端命令已执行且非零退出：命令自己的失败，不是宿主内部错误。
+     * 失败回包的 data 带 output / stderr / exit 三份原始事实（管道提前关闭、命令
+     * 半途失败都不丢已产出的输出）；副作用状态按已派发为 UNKNOWN —— 命令跑过，
+     * 效果未知或部分发生，先读输出再决定下一步，不盲目原样重发。
      */
-    NODE_SYSTEM_CONSENT_TARGET(
-        "E_NODE_SYSTEM_CONSENT_TARGET", false,
-        RelayExitCode.NEEDS_USER_ACTION,
-    ),
+    COMMAND_FAILED("E_COMMAND_FAILED", false, RelayExitCode.COMMAND_FAILED),
+
+    /**
+     * 命令已执行但被 Android 服务侧拒绝（Permission Denial / SecurityException）：
+     * 单独归类，不与内部错误混装。这是执行身份（shell / root）与服务侧权限的事，
+     * 原样重发仍会被拒；换身份或换路径才有意义。
+     */
+    COMMAND_NOT_PERMITTED("E_COMMAND_NOT_PERMITTED", false, RelayExitCode.COMMAND_FAILED),
 
     /**
      * 启动请求被系统接下、但目标没有成为所在那块屏的前台窗口：前台屏那一路由
@@ -213,6 +226,16 @@ enum class RelayError(
     SURFACE_API_LEVEL("E_SURFACE_API_LEVEL", false, RelayExitCode.NEEDS_USER_ACTION),
     SURFACE_NO_SHELL("E_SURFACE_NO_SHELL", true, RelayExitCode.NEEDS_USER_ACTION),
     SURFACE_TRUSTED_DENIED("E_SURFACE_TRUSTED_DENIED", false, RelayExitCode.NEEDS_USER_ACTION),
+    /**
+     * 可信屏建成之后、主屏运行时自检发现破坏（launcher 被搬走 / 主屏 topTask 变了 /
+     * 主屏焦点被清空 / IME 被拽到主屏）：屏已当场释放，这台设备被标记「可信屏不安全」，
+     * 后续调用在标记解除前不再尝试 trusted display。
+     *
+     * 与 [SURFACE_TRUSTED_DENIED] 分开：那条是「系统当场拒绝建屏」，这一条是「屏建成了
+     * 但把主屏带坏了」——同一句"改前台"，两种病历必须分开记，用户抄日志时才能对上。
+     * 不可重试（退出码 4）：原样重发只会再次破坏主屏，处置是改前台模式。
+     */
+    SURFACE_TRUSTED_UNSAFE("E_SURFACE_TRUSTED_UNSAFE", false, RelayExitCode.NEEDS_USER_ACTION),
     SURFACE_UNAVAILABLE("E_SURFACE_UNAVAILABLE", false, RelayExitCode.NEEDS_USER_ACTION),
     /**
      * 这条能力只声明了一个执行面（如 `surface.virtual` 只有可信屏），而用户当前的偏好链
@@ -244,6 +267,15 @@ enum class RelayError(
     REQUEST_TOO_LARGE("E_REQUEST_TOO_LARGE", false, RelayExitCode.USAGE),
     TRANSPORT_MALFORMED("E_TRANSPORT_MALFORMED", false, RelayExitCode.USAGE),
     TRANSPORT_TIMEOUT("E_TRANSPORT_TIMEOUT", true, RelayExitCode.TIMEOUT),
+    /**
+     * 事务确已提交给远端，但结局无法证实：命令可能跑完、跑了一半或没跑成。
+     *
+     * 与 [TRANSPORT_TIMEOUT] 分开：那条的「未知」来自本地等待到点，可能根本没发出去；
+     * 这一条有后端在递交边界标注的「已提交」事实（见 `BackendResult.Failed.dispatched`），
+     * 副作用状态按 UNKNOWN 作答。处置与超时同向：先查状态再决定下一步，
+     * 不按原参数自动重试非幂等动作。
+     */
+    TRANSPORT_UNKNOWN("E_TRANSPORT_UNKNOWN", true, RelayExitCode.RETRY_LATER),
     INTERNAL("E_INTERNAL", false, RelayExitCode.INTERNAL),
     ;
 
@@ -264,6 +296,7 @@ fun RelayError.defaultMessageRes(): Int = when (this) {
     RelayError.GATE_WAITING_TURN -> R.string.relay_err_gate_waiting_turn
     RelayError.GATE_CANCELLED -> R.string.relay_err_gate_cancelled
     RelayError.GATE_SUSPENDED_BY_HOST -> R.string.relay_err_suspended_by_host
+    RelayError.PACKAGE_PROTECTED -> R.string.relay_err_package_protected
     RelayError.NO_EDITABLE_TARGET -> R.string.relay_err_no_editable_target
     RelayError.NODE_NOT_FOUND -> R.string.relay_err_node_not_found
     RelayError.NODE_AMBIGUOUS -> R.string.relay_err_node_ambiguous
@@ -275,11 +308,11 @@ fun RelayError.defaultMessageRes(): Int = when (this) {
     RelayError.CAPABILITY_UNAVAILABLE_ON_DEVICE -> R.string.relay_err_unavailable_device
     RelayError.CAPABILITY_NOT_IMPLEMENTED -> R.string.relay_err_not_implemented
     RelayError.NODE_NO_IME_ACTION -> R.string.relay_err_node_no_ime_action
-    RelayError.NODE_SYSTEM_CONSENT_TARGET -> R.string.relay_err_node_consent_target
     RelayError.LAUNCH_NOT_LANDED -> R.string.relay_err_launch_not_landed
     RelayError.SURFACE_API_LEVEL -> R.string.relay_err_surface_api_level
     RelayError.SURFACE_NO_SHELL -> R.string.relay_err_surface_no_shell
     RelayError.SURFACE_TRUSTED_DENIED -> R.string.relay_err_surface_trusted_denied
+    RelayError.SURFACE_TRUSTED_UNSAFE -> R.string.relay_err_surface_trusted_unsafe
     RelayError.SURFACE_UNAVAILABLE -> R.string.relay_err_surface_unavailable
     RelayError.SURFACE_MODE_REQUIRED -> R.string.relay_err_surface_mode_required
     RelayError.SURFACE_SYSTEM_CONSENT_REQUIRED -> R.string.relay_err_surface_consent
@@ -292,7 +325,10 @@ fun RelayError.defaultMessageRes(): Int = when (this) {
     RelayError.REQUEST_TOO_LARGE -> R.string.relay_err_request_large
     RelayError.TRANSPORT_MALFORMED -> R.string.relay_err_malformed
     RelayError.TRANSPORT_TIMEOUT -> R.string.relay_err_timeout
+    RelayError.TRANSPORT_UNKNOWN -> R.string.relay_err_transport_unknown
     RelayError.INTERNAL -> R.string.relay_err_internal
+    RelayError.COMMAND_FAILED -> R.string.relay_err_command_failed
+    RelayError.COMMAND_NOT_PERMITTED -> R.string.relay_err_command_not_permitted
 }
 
 /**
@@ -316,4 +352,10 @@ object RelayExitCode {
     const val RETRY_LATER = 5
 
     const val INTERNAL = 6
+
+    /**
+     * 远端命令已执行且非零退出：命令自己的失败。不是宿主内部错误（宿主好好的），
+     * 也不是"重试就好"——先读回包里的 output / stderr 再决定下一步。
+     */
+    const val COMMAND_FAILED = 7
 }

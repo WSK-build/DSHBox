@@ -41,7 +41,6 @@ import interlock.relay.core.runtime.RelayContainer
 import dshbox.adapter.R
 import interlock.relay.core.protocol.AccessTier
 import interlock.relay.core.protocol.SystemGrantState
-import interlock.relay.core.interlock.InterlockGate
 
 /**
  * 手机助手界面的通用行、分组与状态呈现。
@@ -365,16 +364,18 @@ fun PilotPagePadding(content: @Composable (Modifier) -> Unit) {
 
 /**
  * 能力列表每一条前面的圆点：三档里「禁止」是中性点，「询问审批 / 完全访问」是主色点，
- * 而档位已开、系统那一侧还缺东西的是红点。
+ * 而此刻调不动（[RelayContainer.CapabilityRow.usable] 为假：缺系统授权、后端够不着、
+ * 执行面被拒等）或带着降级原因跑的是红点。
  *
  * 系统六态的颜色不在这里表达：六态说的是系统条件的细分，圆点说的是用户此刻需不需要
- * 处理这条能力。设为禁止的能力不着告警色（决定已由用户做完），只有缺系统授权才标红。
+ * 处理这条能力。设为禁止的能力不着告警色（决定已由用户做完），只有"此刻调不动才标红"
+ * ——与详情页、对外清单读的是同一个 `usable`，三处不各说各的。
  * 六态的文字标签在能力详情页逐项给出。
  */
 @Composable
 fun capabilityDotColor(row: RelayContainer.CapabilityRow): Color = when {
     row.state.tier == AccessTier.DENIED -> MaterialTheme.colorScheme.outline
-    InterlockGate.systemBlocks(row.state.system) -> MaterialTheme.colorScheme.error
+    !row.usable || row.degradeReason != null -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.primary
 }
 

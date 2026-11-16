@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -826,6 +827,11 @@ private fun RowScope.StatusActionButton(
         shape = MaterialTheme.shapes.medium,
         onClick = onClick,
         enabled = enabled,
+        // Material3 1.4 改了 OutlinedButton 默认内容色；显式绑定主题 primary，
+        // 保证两个变体、两种主题下都仍是 Accent 绿（0xFF10A37F），不被默认灰黑覆盖。
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = MaterialTheme.colorScheme.primary,
+        ),
         modifier = Modifier.weight(1f),
     ) {
         // 纯文字短词按钮（启动/重启/关闭）——去除图标，
@@ -950,6 +956,9 @@ private fun DshStatusCard(
                         shape = MaterialTheme.shapes.medium,
                         onClick = onOpenInBrowser,
                         enabled = dshReady,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary,
+                        ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier.height(28.dp),
                     ) {
@@ -1003,6 +1012,9 @@ private fun DshStatusCard(
                         OutlinedButton(
                             shape = MaterialTheme.shapes.medium,
                             onClick = { moreMenuOpen = true },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary,
+                            ),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                             modifier = Modifier.height(28.dp),
                         ) {

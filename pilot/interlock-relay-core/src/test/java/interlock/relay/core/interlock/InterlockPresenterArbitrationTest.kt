@@ -47,8 +47,11 @@ class InterlockPresenterArbitrationTest {
             onScreen = false
         }
 
+        override fun cancelCurrent() {}
+
         override var onParkedChoice: ((ApprovalPrompt, InterlockChoice) -> Unit)? = null
         override var onHidden: (() -> Unit)? = null
+        override var onPresented: ((ApprovalPrompt) -> Unit)? = null
 
         /** 窗还挂着却看不见了：被系统跨屏藏掉，或被别的可获焦窗盖过焦点。 */
         fun reportHidden() {
@@ -64,7 +67,6 @@ class InterlockPresenterArbitrationTest {
 
     private var now = 1_000L
     private var foreground = false
-    private var blind = false
     private var notifyOk = true
     private val overlay = FakeOverlay()
     private val routing = mutableListOf<InterlockQueue.Presentation>()
@@ -74,7 +76,6 @@ class InterlockPresenterArbitrationTest {
         isForegroundCapable = { foreground },
         onRouting = { routing.add(it) },
         overlay = overlay,
-        overlayBlind = { blind },
         canNotify = { notifyOk },
         onRevokePresenters = { revoked.add(it.id) },
         now = { now },
@@ -113,11 +114,11 @@ class InterlockPresenterArbitrationTest {
     @Test
     fun pageWinsOverOverlayWhichWinsOverNotification() {
         val q = queue()
-        blind = true
+        overlay.granted = false
         runBlocking { assertEquals(InterlockChoice.AWAITING, q.present(prompt())) }
-        assertEquals("只剩通知这条路时走通知", InterlockChannel.NOTIFICATION, lastVia())
-        assertEquals("悬浮有授权且没被盲掉时走悬浮", InterlockChannel.OVERLAY, q.let {
-            blind = false
+        assertEquals("悬浮没授权时走通知", InterlockChannel.NOTIFICATION, lastVia())
+        assertEquals("悬浮有授权时走悬浮", InterlockChannel.OVERLAY, q.let {
+            overlay.granted = true
             q.reroute()
             lastVia()
         })
@@ -129,21 +130,21 @@ class InterlockPresenterArbitrationTest {
     }
 
     /**
-     * 三条都不成立时如实回"问不了"，并且把挡住路的两条都点名出来。
+     * 三条都不成立时如实回"问不了"，并且把挡住路的那条点名出来。
      *
-     * 只回一句"没前台"的话，用户既不知道该去开通知，也不知道自己正开着后台模式。
+     * 只回一句"没前台"的话，用户不知道该去开通知。悬浮与页内用不用得上是各自的
+     * 授权与前台事实，拦在回包里说的只有真正挡住路的那几条。
      */
     @Test
-    fun noRouteAtAllNamesBothSwitches() {
+    fun noRouteAtAllNamesTheBlockedSwitch() {
         val q = queue()
         foreground = false
         overlay.granted = false
         notifyOk = false
-        blind = true
         assertEquals(InterlockChoice.UNABLE_TO_SHOW, runBlocking { q.present(prompt()) })
         val reason = q.lastDeadEndReason()
         assertTrue("应点名通知开关：$reason", reason!!.contains("notifications"))
-        assertTrue("应点名后台模式：$reason", reason.contains("background mode"))
+        assertFalse("后台模式不再是提前跳过的判据，不该再被点名：$reason", reason.contains("background mode"))
         // 没有待决项，因此不发任何呈现指令，也不撤销谁。
         assertTrue(routing.isEmpty())
     }
@@ -154,7 +155,6 @@ class InterlockPresenterArbitrationTest {
         val q = queue()
         overlay.granted = false
         notifyOk = false
-        blind = false
         runBlocking { q.present(prompt()) }
         val reason = q.lastDeadEndReason()!!
         assertTrue(reason.contains("notifications"))
@@ -177,11 +177,12 @@ class InterlockPresenterArbitrationTest {
         assertTrue(overlay.isPresented())
         val withdrawsBefore = overlay.withdrawCalls
 
-        blind = true
-        q.reroute()
+        // 卡拿不到焦点（被平台藏掉/被盖过）：悬浮这一条对本问失效，改判通知。
+        overlay.reportHidden()
 
         assertEquals(InterlockChannel.NOTIFICATION, lastVia())
-        assertEquals("改判时必须先收悬浮卡", withdrawsBefore + 1, overlay.withdrawCalls)
+        // 事件侧无条件收卡一次 + 改判对账再收一次（幂等）：收卡不依赖回调时 isPresented 已被清。
+        assertEquals("改判时必须先收悬浮卡", withdrawsBefore + 2, overlay.withdrawCalls)
         assertFalse("屏上不许还留着悬浮卡", overlay.isPresented())
     }
 
@@ -189,7 +190,7 @@ class InterlockPresenterArbitrationTest {
     @Test
     fun notificationYieldsToPageAndBack() {
         val q = queue()
-        blind = true
+        overlay.granted = false
         runBlocking { q.present(prompt()) }
         assertEquals(InterlockChannel.NOTIFICATION, lastVia())
 
@@ -230,7 +231,6 @@ class InterlockPresenterArbitrationTest {
         assertEquals("同一问不该因为回落而另开一张", 1, overlay.presentCalls)
 
         // 试砸过一次之后不该又回头找悬浮：条件没变，裁决也得稳。
-        blind = false
         q.reroute()
         assertEquals(InterlockChannel.NOTIFICATION, lastVia())
         assertEquals(1, overlay.presentCalls)
@@ -267,7 +267,7 @@ class InterlockPresenterArbitrationTest {
     @Test
     fun answerRevokesEveryPresenterAndOnlyCountsOnce() {
         val q = queue()
-        blind = true
+        overlay.granted = false
         runBlocking { q.present(prompt()) }
         val id = q.pendingSnapshot().displayed!!.id
 
@@ -286,7 +286,7 @@ class InterlockPresenterArbitrationTest {
     @Test
     fun aParkedClickAfterTheDecisionIsNotBuffered() {
         val q = queue()
-        blind = true
+        overlay.granted = false
         val asked = prompt()
         runBlocking { q.present(asked) }
         assertTrue(q.resolveCurrent(InterlockChoice.DENY, q.pendingSnapshot().displayed!!.id))
@@ -306,7 +306,7 @@ class InterlockPresenterArbitrationTest {
     fun aParkedClickReachesTheCallerStillWaiting() = runBlocking {
         val q = queue(inlineWaitMs = 5_000L)
         // 走通知通路：调用方这一趟真的在等（悬浮通路回的是"卡被留下"，不占通道）。
-        blind = true
+        overlay.granted = false
         val asked = prompt()
         val waiting = async(start = CoroutineStart.UNDISPATCHED) { q.present(asked) }
         while (q.pendingSnapshot().displayed == null) yield()
@@ -325,7 +325,7 @@ class InterlockPresenterArbitrationTest {
     @Test
     fun theSameQuestionIsNeverPostedTwice() {
         val q = queue(inlineWaitMs = 1L)
-        blind = true
+        overlay.granted = false
         val asked = prompt()
         repeat(4) { runBlocking { assertEquals(InterlockChoice.AWAITING, q.present(asked)) } }
         assertEquals(
@@ -339,7 +339,7 @@ class InterlockPresenterArbitrationTest {
     @Test
     fun swipingTheNotificationAwayDoesNotBringItBack() {
         val q = queue()
-        blind = true
+        overlay.granted = false
         runBlocking { q.present(prompt()) }
         val before = routing.size
         repeat(3) { q.reroute() }
@@ -358,7 +358,7 @@ class InterlockPresenterArbitrationTest {
     fun expiryClosesTheEntityAndRevokesEveryone() = runBlocking {
         val q = queue(inlineWaitMs = 5_000L)
         // 走通知通路，调用方这一趟真的在等：通知到点要能把这一趟一起收成 EXPIRED。
-        blind = true
+        overlay.granted = false
         val asked = prompt(ttlMs = 5_000L)
         val waiting = async(start = CoroutineStart.UNDISPATCHED) { q.present(asked) }
         while (q.pendingSnapshot().displayed == null) yield()

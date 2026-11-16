@@ -92,10 +92,24 @@ object CapabilityArgsSpec {
     private const val KEY_WIDTH = "width"
     private const val KEY_HEIGHT = "height"
     private const val KEY_DPI = "dpi"
+    /** 建屏方向（portrait/landscape，大小写不敏感；缺省不交换）。 */
+    private const val KEY_ORIENTATION = "orientation"
 
     /** ShellVerbs.KEY_VERB / KEY_ARGS：sys.shell 顶层两键。 */
     private const val KEY_VERB = "verb"
     private const val KEY_ARGS = "args"
+
+    /** ShizukuBackend 特权通路（sys.shell.full）的两键：command 必填，timeoutMs 可选。 */
+    private const val KEY_COMMAND = "command"
+    private const val KEY_FULL_TIMEOUT_MS = "timeoutMs"
+
+    /**
+     * 特权通路的拒绝型边界，键名与数值照抄 ShizukuBackend（本层不反向依赖 backend 包）：
+     * 命令长度上限、超时上下限。这类判据属「拒绝并指名怎么改」，不该等闸门后的后端去夹。
+     */
+    private const val FULL_COMMAND_MAX_CHARS = 4096
+    private const val FULL_TIMEOUT_MIN_MS = 1_000L
+    private const val FULL_TIMEOUT_MAX_MS = 120_000L
 
     /** 节点级目标键：指向写法只有 selector / nodeId / relative 三种（NodeSelector 判互斥）。 */
     private val TARGET_KEYS = setOf(KEY_SELECTOR, KEY_NODE_ID, KEY_RELATIVE)
@@ -189,7 +203,7 @@ object CapabilityArgsSpec {
 
         CapabilityId.APP_LAUNCH to Spec(setOf(KEY_PACKAGE), setOf(KEY_PACKAGE)),
         CapabilityId.APP_STOP to Spec(setOf(KEY_PACKAGE), setOf(KEY_PACKAGE)),
-        CapabilityId.SURFACE_VIRTUAL to Spec(setOf(KEY_ACTION, KEY_WIDTH, KEY_HEIGHT, KEY_DPI)),
+        CapabilityId.SURFACE_VIRTUAL to Spec(setOf(KEY_ACTION, KEY_WIDTH, KEY_HEIGHT, KEY_DPI, KEY_ORIENTATION)),
 
         CapabilityId.SYS_INTENT to Spec(
             // IntentTemplates 的封闭键集（template/hour/minute/length/message/page/
@@ -205,6 +219,14 @@ object CapabilityArgsSpec {
             allowed = setOf(KEY_VERB, KEY_ARGS),
             required = setOf(KEY_VERB),
             types = mapOf(KEY_VERB to ArgType.STRING, KEY_ARGS to ArgType.ARRAY),
+        ),
+        CapabilityId.SYS_SHELL_FULL to Spec(
+            // 特权通路只锁顶层形状：command 必须是字符串（显式 null 会被 optString 读成
+            // 字面量 "null"，类型档在这里把它打回）；timeoutMs 必须是数字且落在 1000..
+            // 120000ms，越界与超长命令一样是拒绝型判据，统一在 validate 的特判里前移。
+            allowed = setOf(KEY_COMMAND, KEY_FULL_TIMEOUT_MS),
+            required = setOf(KEY_COMMAND),
+            types = mapOf(KEY_COMMAND to ArgType.STRING),
         ),
         CapabilityId.PKG_INSTALL to Spec(setOf(KEY_UPLOAD), setOf(KEY_UPLOAD)),
         CapabilityId.SECURE_SETTINGS to Spec(
@@ -229,6 +251,8 @@ object CapabilityArgsSpec {
         ),
         CapabilityId.LOCATION_READ to Spec(emptySet()),
         CapabilityId.MEDIA_READ to Spec(setOf(KEY_KIND, KEY_LIMIT)),
+        // 设备状态一次读一组，不接受任何参数：形状与 clip.read 一类对齐。
+        CapabilityId.DEVICE_STATUS to Spec(emptySet()),
         CapabilityId.MEDIA_WRITE to Spec(setOf(KEY_FILE, KEY_KIND), setOf(KEY_FILE)),
         CapabilityId.NOTIFY_READ to Spec(setOf(KEY_LIMIT, KEY_PACKAGE, KEY_INCLUDE_ONGOING)),
         CapabilityId.NOTIFY_POST to Spec(setOf(KEY_TITLE, KEY_TEXT, KEY_ID), setOf(KEY_TITLE)),
@@ -243,6 +267,12 @@ object CapabilityArgsSpec {
      * 判定顺序与后端一致：先报未知键、再报缺失键、最后验类型——后端在一种形状内
      * 就是这个次序，同一次拼错在两处应当拿到同一种回答。
      */
+    /**
+     * 预校验放行的键集（反向断言用）：跨层对齐测试据此核对
+     * 「预校验放行的键后端都认识」。能力不在表内回空集。
+     */
+    internal fun allowedKeysOf(id: CapabilityId): Set<String> = specs[id]?.allowed ?: emptySet()
+
     fun validate(id: CapabilityId, args: JSONObject): String? {
         val spec = specs[id] ?: return null
         for (key in args.keys()) {
@@ -255,6 +285,28 @@ object CapabilityArgsSpec {
             if (!args.has(key)) continue
             val value = args.opt(key) ?: continue
             if (!matches(type, value)) return typeMismatch(key, type, value)
+        }
+        // 特权通路的拒绝型边界前移到闸门之前：命令超长、超时越界在这里点名怎么改，
+        // 不让一次注定被拒的调用先占掉审批与通道（判据与 ShizukuBackend 的拒绝表同源：
+        // fullShellTimeoutError 对同一组边界同样拒绝，不夹紧，两处同说「拒」）。
+        if (id == CapabilityId.SYS_SHELL_FULL) {
+            val command = args.opt(KEY_COMMAND)
+            if (command is String && command.length > FULL_COMMAND_MAX_CHARS) {
+                return "command too long: limit is $FULL_COMMAND_MAX_CHARS characters, got ${command.length}"
+            }
+            if (args.has(KEY_FULL_TIMEOUT_MS)) {
+                val timeout = args.opt(KEY_FULL_TIMEOUT_MS) as? Number
+                    ?: return ArgErrors.notNumber(KEY_FULL_TIMEOUT_MS, args.opt(KEY_FULL_TIMEOUT_MS))
+                val ms = timeout.toDouble()
+                // 小数先于区间：optLong 会把 120000.5 静默截成 120000，那等于替调用方改参数。
+                if (ms % 1.0 != 0.0) {
+                    return "$KEY_FULL_TIMEOUT_MS must be a whole number of milliseconds, got ${args.opt(KEY_FULL_TIMEOUT_MS)}"
+                }
+                if (ms < FULL_TIMEOUT_MIN_MS || ms > FULL_TIMEOUT_MAX_MS) {
+                    return "$KEY_FULL_TIMEOUT_MS must be between $FULL_TIMEOUT_MIN_MS and " +
+                        "$FULL_TIMEOUT_MAX_MS ms, got ${args.opt(KEY_FULL_TIMEOUT_MS)}"
+                }
+            }
         }
         // 整数值判据排在类型档之后：字符串先按「must be a number」报，数字里不构成
         // 整数值的才落到这里，同一次拼错在两处拿到的回答各有其位。

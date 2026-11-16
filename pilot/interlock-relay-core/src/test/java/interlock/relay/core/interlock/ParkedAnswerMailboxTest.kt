@@ -1,7 +1,6 @@
 package interlock.relay.core.interlock
 
 import interlock.relay.core.protocol.CapabilityId
-import interlock.relay.core.interlock.LateVerdict.Answered
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -38,7 +37,7 @@ class ParkedAnswerMailboxTest {
         risk = RiskLevel.MEDIUM,
         callIndexInSession = 1,
         paramDetail = detail,
-        allowsSessionGrant = false,
+        allowsSessionGrant = true,
         deadlineAtMs = deadline,
     )
 
@@ -46,29 +45,8 @@ class ParkedAnswerMailboxTest {
     fun answerSurvivesTheHandoffAndIsTakenOnce() {
         val asked = prompt()
         mailbox.put(asked, InterlockChoice.ALLOW_ONCE, asked.deadlineAtMs)
-        assertEquals(Answered(InterlockChoice.ALLOW_ONCE), mailbox.take(prompt()))
+        assertEquals(InterlockChoice.ALLOW_ONCE, mailbox.take(prompt()))
         assertNull("取走即清，第三条调用不该再吃到同一次同意", mailbox.take(prompt()))
-    }
-
-    /**
-     * 「这一答被丢掉了」也占同一格，且同样只花一次、同样随那张卡的窗口作废。
-     *
-     * 它存在的意义是让下一次重试拿到终态而不是重新问一张 —— 见 `terminatesWhenAnswerDropped`。
-     */
-    @Test
-    fun aDiscardedAnswerIsTakenOnceLikeAnyOtherVerdict() {
-        val asked = prompt()
-        mailbox.putDiscarded(asked, asked.deadlineAtMs)
-        assertEquals(LateVerdict.Discarded, mailbox.take(prompt()))
-        assertNull("这一格已经花掉，第三条调用该正常重新问", mailbox.take(prompt()))
-    }
-
-    @Test
-    fun aDiscardedVerdictExpiresWithTheCardThatTookIt() {
-        val asked = prompt()
-        mailbox.putDiscarded(asked, asked.deadlineAtMs)
-        clock = asked.deadlineAtMs
-        assertNull("窗口过了还挡着，就等于永久不许这条能力", mailbox.take(prompt()))
     }
 
     @Test
@@ -78,7 +56,7 @@ class ParkedAnswerMailboxTest {
         assertNull(mailbox.take(prompt(capability = CapabilityId.PKG_INSTALL)))
         assertNull(mailbox.take(prompt(target = "com.android.contacts", identity = "args-contacts")))
         assertNull(mailbox.take(prompt(detail = "seconds=5", identity = "args-seconds")))
-        assertEquals("问的不是同一件事时原答案要留着", Answered(InterlockChoice.DENY), mailbox.take(prompt()))
+        assertEquals("问的不是同一件事时原答案要留着", InterlockChoice.DENY, mailbox.take(prompt()))
     }
 
     @Test

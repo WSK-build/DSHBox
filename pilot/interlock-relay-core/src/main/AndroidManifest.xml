@@ -16,6 +16,10 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- device.status reads the active network type / connectivity via ConnectivityManager.
+         A normal permission granted at install: it never raises a runtime prompt, so the
+         capability stays prompt-free as a whole. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- The four clock entries of `sys.intent` (set alarm, set timer, open alarm
          page, open timer page) target receiver Activities that declare
          `android:permission="com.android.alarm.permission.SET_ALARM"`: without it

@@ -32,6 +32,8 @@ import com.dshbox.app.sandbox.online.PackagesIndex
 import com.dshbox.app.sandbox.online.RuntimeProfileWriter
 import com.dshbox.app.sandbox.online.Shasums256
 import com.dshbox.app.sandbox.online.TrimSpec
+import com.dshbox.app.service.recheckDeveloperAccess
+import com.dshbox.app.service.startSandboxWithRelay
 import com.dshbox.app.util.BackgroundOps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -585,9 +587,16 @@ class OnlineRuntimeImportManager(
         }
         setStage(_debianState, R.string.online_stage_dsh)
         provisionBundledDshBaseline(_debianState)
-        sandboxManager.startSandbox()
+        // 与 SandboxService 同一入口：先铺 /opt/pilot，再起沙箱；否则随后
+        // startDsh() 起来时 mobile-pilot 会因挂载点缺失跳过流路由。
+        startSandboxWithRelay(appContext, sandboxManager) {
+            recheckDeveloperAccess(appContext, sandboxManager, config.runtimeDir)
+        }
         if (nodeLayerInPlace() && sandboxManager.sandboxState.value == SandboxState.RUNNING) {
-            sandboxManager.startDsh()
+            val dsh = sandboxManager.startDsh()
+            if (dsh is AppResult.Failure) {
+                appendLog(_debianState, "· dsh start failed: ${dsh.error.message}")
+            }
         }
         return AppResult.Success(Unit)
     }
@@ -709,9 +718,15 @@ class OnlineRuntimeImportManager(
                     setStage(_nodeState, R.string.online_stage_dsh)
                     provisionBundledDshBaseline(_nodeState)
                 }
-                sandboxManager.startSandbox()
+                // 同 Debian 路径：通道先于 DSH 就绪，避免全新安装首次预览 404。
+                startSandboxWithRelay(appContext, sandboxManager) {
+                    recheckDeveloperAccess(appContext, sandboxManager, config.runtimeDir)
+                }
                 if (sandboxManager.sandboxState.value == SandboxState.RUNNING) {
-                    sandboxManager.startDsh()
+                    val dsh = sandboxManager.startDsh()
+                    if (dsh is AppResult.Failure) {
+                        appendLog(_nodeState, "· dsh start failed: ${dsh.error.message}")
+                    }
                 }
                 AppResult.Success(Unit)
             } finally {

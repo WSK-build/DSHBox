@@ -43,11 +43,21 @@ sealed class BackendResult {
      * [consentKind] 标注这条失败卡在哪一种许可上（字面量见
      * `RelayResponse.CONSENT_KIND_*`）：本模块自己的审批与 Android 系统的采集同意
      * 互不代替，各自失败要给用户的是不同的下一步。空表示这一趟不涉及许可归类。
+     *
+     * [dispatched] 说的是失败发生之前，真正的外部动作**有没有被提交出去**（对 shell 通路
+     * 即远端事务已递交）。副作用状态按它判定：true → UNKNOWN（命令可能已跑、跑了一半
+     * 或没跑成），false → NOT_STARTED（动作未出本端）。它是每个失败出口自己标注的
+     * 结构化事实，判定方不得拿 reason 字符串去猜。
+     *
+     * [data] 是失败出口随回包携带的结构化事实（如通知发送的字段口径），机器判读读字段，
+     * 不解析 reason 字符串；默认为空对象，绝大多数失败出口没有要另带的字段。
      */
     data class Failed(
         val error: RelayError,
         val reason: String? = null,
         val consentKind: String? = null,
+        val dispatched: Boolean = false,
+        val data: JSONObject = JSONObject(),
     ) : BackendResult()
 }
 
@@ -85,15 +95,4 @@ interface RelayBackend {
      * 默认什么都不做：多数后端没有需要修的连接。
      */
     fun reconnect() {}
-
-    /**
-     * 只读回查「这个节点编号现在属于哪个应用、是哪个控件」，不得有副作用。
-     *
-     * 闸门要判断目标是不是系统授权界面，而助手常常只递一个 `nodeId` —— 光看参数认不出来，
-     * 必须按当前控件树回查一次。默认回 null：多数后端没有「节点」这个概念。
-     */
-    fun targetOwner(nodeId: Int): TargetOwner? = null
-
-    /** 节点归属。两个字段都可能取不到，取不到时由调用方按"不确定"处理。 */
-    data class TargetOwner(val packageName: String?, val viewId: String?)
 }

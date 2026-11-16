@@ -189,7 +189,11 @@ class EnvelopeCodecTest {
         assertEquals(120_000L, ((high as ControlDecodeResult.Valid).control as ControlRequest.Ask).timeoutMs)
     }
 
-    /** 宿主有效期只影响宿主自己排多久队：缺省 90 秒，越界夹进 [1000, 120000]。 */
+    /**
+     * 宿主有效期只影响宿主自己排多久队：缺省 90 秒，越界夹进 [1000, 130000]。
+     * 上限 130 秒比录音的内容上限（120 秒）多出收尾余量：满时长录音的编码落盘与
+     * 回执回写不再被宿主有效期先掐断（与入口/插件的等待档位同一张表）。
+     */
     @Test
     fun hostTtlIsClampedOrDefaulted() {
         fun ttlOf(body: String): Long {
@@ -200,7 +204,9 @@ class EnvelopeCodecTest {
         }
         assertEquals(90_000L, ttlOf("""{"v":2,"op":"submit","id":"c1","capability":"ui.tap","args":{},"payloadDigest":"$digest"}"""))
         assertEquals(1_000L, ttlOf("""{"v":2,"op":"submit","id":"c1","capability":"ui.tap","args":{},"hostTtlMs":5,"payloadDigest":"$digest"}"""))
-        assertEquals(120_000L, ttlOf("""{"v":2,"op":"submit","id":"c1","capability":"ui.tap","args":{},"hostTtlMs":999999,"payloadDigest":"$digest"}"""))
+        assertEquals(130_000L, ttlOf("""{"v":2,"op":"submit","id":"c1","capability":"ui.tap","args":{},"hostTtlMs":999999,"payloadDigest":"$digest"}"""))
+        // 满时长录音需要的预算必须原样收下：130000 不被夹短，120 秒内容加收尾余量拿得到产物。
+        assertEquals(130_000L, ttlOf("""{"v":2,"op":"submit","id":"c1","capability":"audio.capture","args":{},"hostTtlMs":130000,"payloadDigest":"$digest"}"""))
     }
 
     @Test

@@ -72,6 +72,9 @@
     <string name="pilot_perm_notification_listener">Notification listening</string>
     <string name="pilot_cap_missing_perm">·%1$s not granted</string>
     <string name="pilot_cap_missing_service">·%1$s is off</string>
+    <string name="pilot_cap_missing_grant">Shizuku has not granted this app</string>
+    <string name="pilot_cap_missing_service_shizuku">Shizuku is not running; start it from the privileged page</string>
+    <string name="pilot_cap_missing_bound">Shizuku user service is not connected</string>
     <string name="pilot_projection_channel">Screen capture</string>
     <string name="pilot_fgs_label">Assistant readiness</string>
 
@@ -98,9 +101,47 @@
     <string name="pilot_tier_choice_ask">Ask each call</string>
     <string name="pilot_tier_choice_always">Full access</string>
 
-    <string name="pilot_ceiling_any">Full access can be granted permanently.</string>
-    <string name="pilot_ceiling_session">Permanent access is limited to the current assistant session.</string>
-    <string name="pilot_ceiling_ask_only">System security rules confirm every call here. Full access does not skip that.</string>
+    <string name="pilot_tier_note">All three tiers take effect as you choose. Full access only stops the assistant from asking; system permissions, system dialogs and rate limits still apply.</string>
+
+    <!-- 能力页右上角的全局档位选择器：批量设置，不是批量授权，不弹确认框。 -->
+    <string name="pilot_tier_all_denied">Block all</string>
+    <string name="pilot_tier_all_ask">Ask for all</string>
+    <string name="pilot_tier_all_always">Full access for all</string>
+
+    <!-- five-entry global config: default preset, saved custom preset editor and apply. -->
+    <string name="pilot_config_default">Default config</string>
+    <string name="pilot_config_custom">Saved custom preset</string>
+    <string name="pilot_config_unsaved">Mixed</string>
+    <string name="pilot_config_action_edit">Configure</string>
+    <string name="pilot_config_action_apply">Apply</string>
+    <string name="pilot_config_page_title">Saved custom preset</string>
+    <string name="pilot_config_save">Save</string>
+    <string name="pilot_config_note">Editing changes the draft only. Save (top right) stores it as the saved custom preset; applying stays a separate step and never happens automatically.</string>
+    <string name="pilot_config_scope_note">These are the 40 ordinary capabilities. The full-Shizuku switch and the execution mode preference are not part of any global config.</string>
+    <string name="pilot_config_missing_hint">No saved custom preset yet: configure and save one first, then apply it here.</string>
+    <string name="pilot_config_save_failed">Saving failed, so the draft stays on this page. Review the entries and save again.</string>
+
+    <!-- protected apps: user-chosen list, entry row in the access-control section. -->
+    <string name="pilot_page_protected_apps">Protected apps</string>
+    <string name="pilot_protected_status_unset">Not set</string>
+    <string name="pilot_protected_status_count">%1$d protected</string>
+    <string name="pilot_protected_apps_note">Apps on this list cannot be launched, read or operated by the assistant. Full Shizuku (arbitrary commands), ADB and root channels are not restricted by this list.</string>
+    <string name="pilot_protected_apps_search_hint">Search by app name or package</string>
+    <string name="pilot_protected_apps_empty">No protected apps yet</string>
+    <string name="pilot_protected_apps_save_failed">Saving the list failed, so the checkbox was reverted. Please try again.</string>
+    <string name="pilot_protected_apps_add_by_package">Add by package name</string>
+    <string name="pilot_protected_apps_package_placeholder">com.example.app</string>
+    <string name="pilot_protected_apps_add">Add</string>
+    <string name="pilot_protected_apps_invalid_package">Not a valid package name: it must start with a letter and contain only letters, digits, underscores and dots.</string>
+    <string name="pilot_protected_apps_unlisted">Not in the app list</string>
+
+    <!-- 档位说明页：由用户主动点开，区分助手审批与系统弹框。 -->
+    <string name="pilot_page_capability_help">About the tiers</string>
+    <string name="pilot_help_tier_only">Full access only means the assistant stops asking. It does not grant Android permissions, does not bypass system dialogs, and is neither Shizuku nor root.</string>
+    <string name="pilot_help_capture">Foreground screen recording and screenshots still go through Android\'s own screen-capture consent; only the background virtual display path raises no system dialog.</string>
+    <string name="pilot_help_install">Installing an app still shows the system install confirmation.</string>
+    <string name="pilot_help_runtime">Runtime permissions, notification listener access and the foreground requirement for the clipboard all remain in place.</string>
+    <string name="pilot_help_shell">System shell stays limited by its closed verb table and its per-verb switches; commands outside the table need the separate full-Shizuku switch.</string>
 
     <string name="pilot_category_observe">Observe</string>
     <string name="pilot_category_control">Control</string>
@@ -121,6 +162,8 @@
     <string name="pilot_surface_bg_reason_shizuku_missing">Shizuku is not installed on this device.</string>
     <string name="pilot_surface_bg_reason_shizuku_offline">Shizuku is not running.</string>
     <string name="pilot_surface_bg_reason_not_granted">Shizuku is running but has not granted this app.</string>
+    <string name="pilot_surface_bg_reason_display_refused">This device refused to create a trusted display; trusted background display is unavailable here. Switch to foreground mode for these tasks.</string>
+    <string name="pilot_surface_bg_reason_display_unsafe">The trusted display disrupted the main screen here, so it was released. Switch to foreground mode for these tasks.</string>
     <string name="pilot_surface_bg_reason_display_missing">No background display exists yet; the assistant has to create it.</string>
 
     <string name="pilot_surface_kind_foreground">Foreground</string>
@@ -135,6 +178,17 @@
     <string name="pilot_guide_accessibility_limit">Gestures only reach the default display, and screenshot without a system prompt requires Android 11 or later.</string>
     <string name="pilot_guide_shizuku_steps">Install Shizuku, start it by wireless debugging or through a computer, then return here and grant this app access. Privileged operations run as the shell identity and require it.</string>
     <string name="pilot_guide_shizuku_offline">Shizuku is not running. Privileged capabilities stay blocked until its service is detected.</string>
+    <string name="pilot_fullshell_section">"Full Shizuku capability"</string>
+    <string name="pilot_fullshell_switch">"Let the assistant run any shell command"</string>
+    <string name="pilot_fullshell_identity">"Current execution identity"</string>
+    <string name="pilot_fullshell_identity_shell">"shell (uid 2000)"</string>
+    <string name="pilot_fullshell_identity_root">"root (uid 0)"</string>
+    <string name="pilot_fullshell_identity_uid">"uid %1$d"</string>
+    <string name="pilot_fullshell_identity_unknown">"Unknown (the execution identity cannot be read right now)"</string>
+    <string name="pilot_fullshell_need_running">"Shizuku is not running: start Shizuku before turning this switch on."</string>
+    <string name="pilot_fullshell_need_granted">"This app is not authorized in Shizuku: grant it there first, then turn this switch on."</string>
+    <string name="pilot_fullshell_need_bound">"The Shizuku user service is not connected: wait for it to reconnect or tap Reconnect above, then turn this switch on."</string>
+    <string name="pilot_fullshell_risk_note">"With this switch on, the assistant can run any shell command: it bypasses the closed verb table, the argument whitelist and the assistant approval, with no second confirmation. The command runs as the identity Shizuku provides (shell when Shizuku was started over ADB or wireless debugging, root only when Shizuku itself runs as root) - this is not automatic root and does not bypass Android's own permissions or system dialogs. Output size and execution time still have limits; those are stability bounds, not approvals. A long-running command occupies the single shell execution channel and blocks other shell-backed calls until it finishes, and the host's self-protection filters do not apply to an arbitrary command line."</string>
 
     <string name="pilot_perm_contacts">Contacts</string>
     <string name="pilot_perm_calendar">Calendar</string>
@@ -277,15 +331,15 @@
     <string name="relay_a11y_description">Lets the assistant read the current screen and perform gestures and text entry on your behalf (taps, long presses, swipes, scrolling, setting control values and keys). The system grants this service once; the assistant itself still asks for each capability one by one, and it never controls this app.</string>
     <string name="relay_a11y_label">DSHBox phone assistant</string>
     <string name="relay_approval_char_count">%1$d characters</string>
-    <string name="relay_cap_app_install_summary">Installs through Shizuku, which may still need the user to confirm. Always asks.</string>
+    <string name="relay_cap_app_install_summary">Installs through Shizuku. The system install confirmation still appears.</string>
     <string name="relay_cap_app_install_title">Install application</string>
     <string name="relay_cap_app_launch_summary">Start another application on the current screen.</string>
     <string name="relay_cap_app_launch_title">Launch application</string>
     <string name="relay_cap_app_stop_summary">Force-stop another application. Affects the whole device.</string>
     <string name="relay_cap_app_stop_title">Stop application</string>
-    <string name="relay_cap_appops_set_summary">Adjusts per-app operation permissions through Shizuku. Always asks.</string>
+    <string name="relay_cap_appops_set_summary">Adjusts per-app operation permissions through Shizuku.</string>
     <string name="relay_cap_appops_set_title">Change app operations</string>
-    <string name="relay_cap_audio_capture_summary">Records sound picked up by the microphone, up to 30 seconds per call.</string>
+    <string name="relay_cap_audio_capture_summary">Records sound picked up by the microphone, up to 120 seconds per call.</string>
     <string name="relay_cap_audio_capture_title">Record with microphone</string>
     <string name="relay_cap_cal_read_summary">Read calendar events.</string>
     <string name="relay_cap_cal_read_title">Read calendar</string>
@@ -299,10 +353,12 @@
     <string name="relay_cap_contact_read_title">Read contacts</string>
     <string name="relay_cap_contact_write_summary">Add or modify contacts.</string>
     <string name="relay_cap_contact_write_title">Write contacts</string>
+    <string name="relay_cap_device_status_summary">Reads a bundle of read-only device facts: time and timezone, battery and charging, screen and lock state, network type and connectivity, media/ring/notification/alarm volumes, brightness, and manufacturer/model/Android version/resolution/language. Needs no Shizuku and raises no permission prompt.</string>
+    <string name="relay_cap_device_status_title">Device status</string>
     <string name="relay_cap_loc_read_summary">Reads the last known position; background tracking is not supported.</string>
     <string name="relay_cap_loc_read_title">Read location</string>
-    <string name="relay_cap_media_read_summary">List photos and videos from the shared media store.</string>
-    <string name="relay_cap_media_read_title">Read photos and videos</string>
+    <string name="relay_cap_media_read_summary">Lists images, videos or audio from the system media library, one kind per call. Each kind only needs its own media permission.</string>
+    <string name="relay_cap_media_read_title">Read media</string>
     <string name="relay_cap_media_write_summary">Write files into the shared media collections.</string>
     <string name="relay_cap_media_write_title">Save to photos</string>
     <string name="relay_cap_notify_post_summary">Send notifications from this application.</string>
@@ -321,7 +377,7 @@
     <string name="relay_cap_surface_virtual_title">Background virtual display</string>
     <string name="relay_cap_sys_intent_summary">"Sends a fixed system shortcut: set an alarm or timer, open the alarm or timer screen, a system settings page, an app's details page, the dial pad (it never dials) or a browser page. Needs neither accessibility nor Shizuku. Only the templates in the table are accepted, out-of-range arguments are refused, there is no entry that deletes or cancels an alarm, and nothing is sent while this app is in the background without the overlay permission."</string>
     <string name="relay_cap_sys_intent_title">System shortcut</string>
-    <string name="relay_cap_sys_settings_write_summary">Writes protected settings through Shizuku. Always asks.</string>
+    <string name="relay_cap_sys_settings_write_summary">Writes protected settings through Shizuku.</string>
     <string name="relay_cap_sys_settings_write_title">Change system settings</string>
     <string name="relay_cap_sys_shell_summary">"Controls the phone with system-level permissions. Includes read-only verbs and some basic ones by default."</string>
     <string name="relay_cap_sys_shell_title">"System shell"</string>
@@ -366,12 +422,13 @@
     <string name="relay_err_gate_system_missing">A system permission is still off for this capability.</string>
     <string name="relay_err_gate_timeout">The confirmation dialog expired without an answer, treated as denied.</string>
     <string name="relay_err_gate_waiting_turn">Earlier confirmations are still waiting for an answer; this one did not get a slot. Wait a moment and ask again.</string>
+    <string name="relay_err_command_failed">The command ran and exited non-zero (data.exit): this is the command\'s own failure, not a host error. stdout and stderr are in data.output and data.stderr - read them before deciding to retry.</string>
+    <string name="relay_err_command_not_permitted">The command ran but was refused by the Android service side (Permission Denial or SecurityException, see data.stderr): the current Shizuku identity cannot do this, and retrying as-is will be refused again.</string>
     <string name="relay_err_internal">An unexpected error occurred while handling the request.</string>
     <string name="relay_err_launch_not_landed">"The launch request was accepted, but the app did not become the front window of the main screen or the virtual display."</string>
     <string name="relay_err_malformed">The request did not match the channel format and was rejected.</string>
     <string name="relay_err_no_editable_target">No text field is focused; tap the input first and retry.</string>
     <string name="relay_err_node_ambiguous">Selector matched several controls</string>
-    <string name="relay_err_node_consent_target">This control belongs to a system consent dialog and the host refused it outright: only the user can answer a permission prompt - omitting package, switching to nodeId, or adding a view id all get you nowhere.</string>
     <string name="relay_err_node_no_ime_action">"This node has no input-method action to trigger: it is not an editable field."</string>
     <string name="relay_err_node_not_actionable">Control does not take this action</string>
     <string name="relay_err_node_not_found">No matching control</string>
@@ -385,7 +442,7 @@
     <string name="relay_err_surface_mode_required">This capability only runs on the background trusted display; switch the execution preference to background-first and make sure the display is up.</string>
     <string name="relay_err_surface_no_shell">Shizuku is not running, so background operation is unavailable.</string>
     <string name="relay_err_surface_secure">This window is marked secure, so its content cannot be captured.</string>
-    <string name="relay_err_surface_trusted_denied">The system refused to create a trusted display.</string>
+    <string name="relay_err_surface_trusted_denied">This ROM refuses to create trusted displays for this app. Do not retry repeatedly; switch to foreground mode.</string>
     <string name="relay_err_surface_unavailable">No execution mode can serve this capability right now.</string>
     <string name="relay_err_suspended_by_host">The assistant window is in front; move away from it and retry.</string>
     <string name="relay_err_timeout">The host did not answer within the requested lifetime.</string>

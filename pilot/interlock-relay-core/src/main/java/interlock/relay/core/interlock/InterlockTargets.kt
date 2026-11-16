@@ -37,6 +37,13 @@ object InterlockTargets {
                     "$verb${if (rest.isEmpty()) "" else " $rest"}".take(MAX_DETAIL_CHARS)
             }
 
+            // 特权通路的对象落到**命令的命令词**上：单段命令（如 reboot）本身就是对象；
+            // 多段命令只取首段，赋值前缀（NAME=value）的值与重定向的落点一律不进 target，
+            // 整条命令由 argsDigest 按参数原文（仅执行成功时）另行记录。取段判据见
+            // [fullShellTargetToken]。
+            CapabilityId.SYS_SHELL_FULL ->
+                fullShellTargetToken(args.opt("command") as? String) to null
+
             CapabilityId.SYS_INTENT -> {
                 // 卡上那一行要看得出「这是哪一件事、对谁做」。八条模板共用一个 template 名，
                 // 只写模板名就等于让用户批一个看不懂的词；而按默认分支去格式化时间，
@@ -135,6 +142,103 @@ object InterlockTargets {
         }
 
     /**
+     * 特权通路 target 的**命令词扫描**判据。单段命令词本身就是对象（`reboot` 的对象就是
+     * reboot）；多段命令取真正的命令词，三类前缀不算：
+     * - `NAME=value` 赋值前缀（含带引号的 `NAME="secret value"`）：等号右边的值可能是
+     * 机密，绝不落 target，继续找命令词；
+     * - 重定向操作符及其落点（`>file`、`>>file`、`2>&1`、`&>file`，无论出现在开头还是
+     * 赋值前缀之后）：落点不进 target；
+     * - 分隔符（`|` `;` `&`）：越过，找下一段。
+     * token 读取按引号成段——引号内的空白不切分，引号本身不进 target。
+     * 找不到命令词（空命令、只剩赋值与重定向）时回固定标识 [FULL_SHELL_TARGET_FALLBACK]
+     * 而不是 null：授权记录里「对象未知」要与「没有对象」分得开。
+     * 抽成纯函数是为了在 JVM 上把 tab、换行、无分隔长串、引号赋值与重定向这些场景
+     * 穷举掉——真执行路径不可达。
+     */
+    internal fun fullShellTargetToken(command: String?): String? {
+        if (command.isNullOrEmpty()) return null
+        var index = 0
+        while (index < command.length) {
+            while (index < command.length && command[index].isWhitespace()) index++
+            if (index >= command.length) break
+            val c = command[index]
+            // 重定向操作符及其落点：`>` `<` `>>` `2>` `&>` `>&2` `2>&1`，无论出现在开头
+            // 还是赋值前缀之后。fd 复制（括号后带 &数字）没有文件落点，不吞下一个词。
+            if (c == '<' || c == '>' || isFdRedirectStart(command, index)) {
+                var bracket = false
+                var dupAfterBracket = false
+                while (index < command.length) {
+                    val ch = command[index]
+                    when {
+                        ch == '<' || ch == '>' -> { bracket = true; index++ }
+                        ch == '&' -> { index++; if (bracket) dupAfterBracket = true }
+                        ch.isDigit() -> index++
+                        else -> break
+                    }
+                }
+                while (index < command.length && command[index].isWhitespace()) index++
+                if (!dupAfterBracket && index < command.length &&
+                    !startsAnotherRedirect(command, index) &&
+                    command[index] !in FULL_SHELL_TOKEN_BREAKS
+                ) {
+                    index = readShellToken(command, index).second
+                }
+                continue
+            }
+            if (c in FULL_SHELL_TOKEN_BREAKS) {
+                // 停在分隔符上：越过它找下一段，分隔符本身不是对象。
+                index++
+                continue
+            }
+            val (token, next) = readShellToken(command, index)
+            index = next
+            if (token.contains('=')) {
+                // NAME=value 赋值前缀：值可能是机密，跳过继续找命令词；
+                // 其余带等号的形状（+=、数组元素、--opt=value）认不出命令词，回固定标识。
+                if (NAME_PREFIX.matches(token.substringBefore('='))) continue
+                return FULL_SHELL_TARGET_FALLBACK
+            }
+            // 命令替换（$(…)）与以选项开头的残句：对象无法从参数读出，回固定标识。
+            if (token.startsWith("$") || token.startsWith("-")) return FULL_SHELL_TARGET_FALLBACK
+            if (token.isNotEmpty()) return token.take(MAX_DETAIL_CHARS)
+        }
+        return FULL_SHELL_TARGET_FALLBACK
+    }
+
+    /** `2>` / `2<` 形态的数字前缀重定向：数字后面紧跟括号才算，`2file` 这样的词不算。 */
+    private fun isFdRedirectStart(command: String, index: Int): Boolean =
+        command[index].isDigit() && index + 1 < command.length &&
+            (command[index + 1] == '<' || command[index + 1] == '>')
+
+    /** 落点位置是否是又一个重定向操作符（如 `> 2>file`），避免把下一个操作符当成文件名。 */
+    private fun startsAnotherRedirect(command: String, index: Int): Boolean =
+        command[index] == '<' || command[index] == '>' || isFdRedirectStart(command, index) ||
+            (command[index] == '&' && index + 1 < command.length && command[index + 1] == '>')
+
+    /** 引号成段地读一个 token：引号内的空白不切分，返回（去引号内容，停止下标）。 */
+    private fun readShellToken(command: String, start: Int): Pair<String, Int> {
+        var i = start
+        val token = StringBuilder()
+        while (i < command.length) {
+            val c = command[i]
+            if (c.isWhitespace() || c in FULL_SHELL_TOKEN_BREAKS) break
+            if (c == '"' || c == '\'') {
+                val quote = c
+                i++
+                while (i < command.length && command[i] != quote) {
+                    token.append(command[i])
+                    i++
+                }
+                if (i < command.length) i++
+                continue
+            }
+            token.append(c)
+            i++
+        }
+        return token.toString() to i
+    }
+
+    /**
      * 节点目标的可读写法：`nodeId=3`，或把选择器的条件列出来（`package=com.x class=Button`）。
      *
      * 只列选择器里那几个键：`direction`、`times` 这类本能力自己的参数与「对谁做」无关，
@@ -189,15 +293,16 @@ object InterlockTargets {
      * 放行的是另一段时间、另一个内容。路径同名不等于字节没换 —— 沙盒在两次调用之间
      * 重写 `uploads/app.apk`，装上去的就是另一个二进制，而核验是在执行时才做的。
      *
-     * 四条"把此刻设备上有什么列出来"的读同属这一类：应用清单、通讯录、日历、相册。
-     * `{"kind":"image","limit":20}` 说全了"最近 20 张"，没说全是哪 20 张 —— 拍一张新的
-     * 就换掉一格，而换掉的那一格用户从未见过。判据不是"读还是写"，是**内容有没有被参数说尽**。
+     * 五条"把此刻设备上有什么列出来"的读同属这一类：应用清单、通讯录、日历、相册，
+     * 以及一条一次读一组基础状态的设备状态——电量、网络、屏幕这些读数每一刻都在变，
+     * 参数里没有任何一个字段能把它说尽。判据不是"读还是写"，是**内容有没有被参数说尽**。
      */
     private val SCREEN_BOUND_CAPABILITIES = setOf(
         CapabilityId.AUDIO_CAPTURE,
         CapabilityId.CALENDAR_READ,
         CapabilityId.CLIPBOARD_READ,
         CapabilityId.CONTACT_READ,
+        CapabilityId.DEVICE_STATUS,
         CapabilityId.LOCATION_READ,
         CapabilityId.MEDIA_READ,
         CapabilityId.MEDIA_WRITE,
@@ -225,6 +330,21 @@ object InterlockTargets {
     )
 
     private const val MAX_DETAIL_CHARS = 80
+
+    /** 特权通路取段的分隔符：空白之外，这些 shell 元字符一出现即认为首段结束。 */
+    private const val FULL_SHELL_TOKEN_BREAKS = "<>|;&"
+
+    /**
+     * 赋值前缀的 NAME 形状：变量名（字母/下划线开头，后接字母数字下划线）加等号。
+     * `--opt=value`、`ARR+=x`、`arr[0]=x` 一类不匹配，按「认不出命令词」回固定标识。
+     */
+    private val NAME_PREFIX = Regex("[A-Za-z_][A-Za-z0-9_]*")
+
+    /**
+     * 特权通路没有命令词时的固定对象标识（重定向开头、只剩赋值前缀、分隔符残句）。
+     * 不用 "shell"：那与授权记录里的执行身份署名（uid=shell）撞词，问责时读不准。
+     */
+    internal const val FULL_SHELL_TARGET_FALLBACK = "command"
 
     /** 单个条件值的上限：够看清"点的是哪一个"，又不至于让一行吞掉整条目标。 */
     private const val MAX_VALUE_CHARS = 24

@@ -53,8 +53,22 @@ sealed interface GrantGap {
     /** 通知监听没开。 */
     data object NotificationListener : GrantGap
 
-    /** Shizuku 服务没在跑：shell 身份那几条的判据。 */
-    data object Shizuku : GrantGap
+    /**
+     * Shizuku 侧的缺口。**三环必须分开说**：服务没在跑、在跑但没授权给本应用、
+     * 授权齐了但执行侧用户服务没绑上——三者的下一步完全不同（启动它 / 在管理器里
+     * 放行 / 等重连或点重连），合成一句会把人支去修不存在的那一环。
+     * 判定在装配根（同一份 Shizuku 快照），探测按缺的那一环挑对应缺口。
+     */
+    interface ShizukuGap
+
+    /** 服务没在跑：去特权模式页启动它（或装它）。 */
+    data object Shizuku : GrantGap, ShizukuGap
+
+    /** 服务在跑但还没把权限给本应用：去 Shizuku 管理器里放行。 */
+    data object ShizukuNotGranted : GrantGap, ShizukuGap
+
+    /** 服务在跑且已授权，只是执行侧用户服务还没绑上：等自动重连或点重连。 */
+    data object ShizukuNotBound : GrantGap, ShizukuGap
 
     /** 某条运行时权限没授予。 */
     data class RuntimePermission(val permission: String) : GrantGap
@@ -67,11 +81,9 @@ data class ProbeResult(val state: SystemGrantState, val gaps: List<GrantGap>)
 enum class AccessTier { DENIED, ASK, ALWAYS }
 
 /**
- * 授权档位上限。必须三档，少一档就会把「新会话仍要确认」静默升成「永久免确认」。
- *
- * - [ANY] 「始终允许」即长期免弹；
- * - [SESSION_ONLY] 「始终允许」仅在本助手会话内免弹，新会话仍需确认；
- * - [ASK_ONLY] 永不免弹：行为不可逆或涉及第三方应用数据。
+ * 授权档位上限。**仅作描述符上的历史元数据保留，不参与任何判定**：
+ * 三档行为只由用户的档位选择决定（见 InterlockGate 的判定表）。
+ * 字段留着是为了既有调用方与审计记录不因字段消失而失义，读它做放行判断属于误用。
  */
 enum class TierCeiling { ANY, SESSION_ONLY, ASK_ONLY }
 
@@ -141,6 +153,13 @@ enum class CapabilityId(val wire: String, val category: CapabilityCategory) {
     MEDIA_WRITE("media.write", CapabilityCategory.DATA),
     AUDIO_CAPTURE("audio.capture", CapabilityCategory.DATA),
 
+    /**
+     * 设备状态：一条能力一次返回一组只读基础数据（时间/电量/屏幕/网络/音量/亮度/
+     * 设备信息），不拆成多条。不修改任何设置，也不需要 Shizuku；网络状态一项依赖
+     * 安装时普通权限 `ACCESS_NETWORK_STATE`，其余字段是普通应用直接可读的数据。
+     */
+    DEVICE_STATUS("device.status", CapabilityCategory.DATA),
+
     PKG_QUERY("pkg.query", CapabilityCategory.SYSTEM),
     PKG_INSTALL("app.install", CapabilityCategory.SYSTEM),
     SECURE_SETTINGS("sys.settings.write", CapabilityCategory.SYSTEM),
@@ -148,6 +167,13 @@ enum class CapabilityId(val wire: String, val category: CapabilityCategory) {
     SYS_INTENT("sys.intent", CapabilityCategory.SYSTEM),
     SYS_SHELL("sys.shell", CapabilityCategory.DANGEROUS),
     NOTIFY_POST("notify.post", CapabilityCategory.SYSTEM),
+
+    /**
+     * 完全 Shizuku：独立特权能力，不在普通能力三档之列。档位只有两态——用户在特权
+     * 模式页把开关拨开为 ALWAYS，关着即 DENIED；它不进全局档位选择器，也不进界面的
+     * 普通能力列表（成员资格见 [CapabilityDescriptor.privileged]）。
+     */
+    SYS_SHELL_FULL("sys.shell.full", CapabilityCategory.DANGEROUS),
     ;
 
     companion object {
@@ -174,7 +200,21 @@ data class CapabilityDescriptor(
     /** 需运行期申请的系统的权限名；为空表示不由系统运行时权限门禁约束。 */
     val runtimePermissions: List<String>,
     val minSdk: Int = 29,
-)
+    /**
+     * 是否为特权能力。成员资格**只看这一位**：默认 false（普通能力）；特权能力不进界面的
+     * 普通能力列表、不进全局档位选择器，也不计入首页「可用能力」的分子分母——它由自己的
+     * 独立开关管理，混进三档列表会让一次全局拨档看起来也管到了它。对外能力清单**照常包含**
+     * 特权能力（助手要知道它存在），过滤只发生在呈现侧的成员集上。
+     */
+    val privileged: Boolean = false,
+) {
+    /**
+     * 全局档位选择器成员位：与 [privileged] 同一判据的派生属性，不单独存储——
+     * 两套成员位必然漂移，普通能力列表、全局选择器、批量拨档与首页计数消费的都是
+     * [privileged] 派生出的同一个成员集（见 [CapabilityRegistry.ordinaryMembers]）。
+     */
+    val globalTierEligible: Boolean get() = !privileged
+}
 
 /** 某一能力在某一刻的完整状态。 */
 data class CapabilityState(

@@ -7,8 +7,7 @@ import interlock.relay.core.R
  * 能力注册表。新增能力只需在此追加一行，并在对应后端补一个实现，
  * 界面、通道能力清单与授权记录三处自动生效，不需要修改任何分发逻辑。
  *
- * [TierCeiling] 必须逐条按该能力的可逆性与数据敏感级填写：它决定「始终允许」这一档
- * 能免弹到什么程度，填错一档就会把「新会话仍要确认」升成永久免确认。
+ * [TierCeiling] 只作历史元数据随行，不参与判定；三档行为一律由用户的档位选择决定。
  */
 object CapabilityRegistry {
 
@@ -57,6 +56,7 @@ object CapabilityRegistry {
         CapabilityId.UI_IME_ACTION to (R.string.relay_cap_ui_imeaction_title to R.string.relay_cap_ui_imeaction_summary),
         CapabilityId.SYS_INTENT to (R.string.relay_cap_sys_intent_title to R.string.relay_cap_sys_intent_summary),
         CapabilityId.SYS_SHELL to (R.string.relay_cap_sys_shell_title to R.string.relay_cap_sys_shell_summary),
+        CapabilityId.SYS_SHELL_FULL to (R.string.relay_cap_sys_shell_full_title to R.string.relay_cap_sys_shell_full_summary),
         CapabilityId.APP_LAUNCH to (R.string.relay_cap_app_launch_title to R.string.relay_cap_app_launch_summary),
         CapabilityId.APP_STOP to (R.string.relay_cap_app_stop_title to R.string.relay_cap_app_stop_summary),
         CapabilityId.SURFACE_VIRTUAL to (R.string.relay_cap_surface_virtual_title to R.string.relay_cap_surface_virtual_summary),
@@ -75,6 +75,7 @@ object CapabilityRegistry {
         CapabilityId.SECURE_SETTINGS to (R.string.relay_cap_sys_settings_write_title to R.string.relay_cap_sys_settings_write_summary),
         CapabilityId.APPOPS_SET to (R.string.relay_cap_appops_set_title to R.string.relay_cap_appops_set_summary),
         CapabilityId.NOTIFY_POST to (R.string.relay_cap_notify_post_title to R.string.relay_cap_notify_post_summary),
+        CapabilityId.DEVICE_STATUS to (R.string.relay_cap_device_status_title to R.string.relay_cap_device_status_summary),
     )
 
     private val all: List<CapabilityDescriptor> = listOf(
@@ -210,10 +211,20 @@ object CapabilityRegistry {
             CapabilityId.SYS_INTENT, listOf(BackendId.DIRECT), setOf(SurfaceKind.FOREGROUND),
             GuideClass.NOT_REQUIRED, SettingsTarget.NONE, TierCeiling.ANY,
         ),
-        // 上限 ASK_ONLY：这条一次覆盖的就是一批 shell 身份动词，免确认等于把闸门整段让开。
+        // shell 身份的一次覆盖面是一批动词，历史上按最高风险元数据登记；判定仍只看用户档位，
+        // 封闭动词表与逐条开关另行约束（完全访问只免审批，不解除这两条）。
         cap(
             CapabilityId.SYS_SHELL, listOf(BackendId.SHIZUKU), emptySet(),
             GuideClass.NO_SETTINGS_PAGE, SettingsTarget.NONE, TierCeiling.ASK_ONLY,
+        ),
+        cap(
+            // 完全 Shizuku：表外命令与脚本、管道、重定向的唯一入口。执行不受封闭动词表、
+            // 参数白名单与助手审批约束，风险由用户在特权模式页的独立开关一次承担，
+            // 因此它是唯一的特权能力：不进普通能力列表，不进全局档位选择器，也不随批量拨档走。
+            // `ceiling` 沿用历史元数据口径，可为 ANY，不参与判定。
+            CapabilityId.SYS_SHELL_FULL, listOf(BackendId.SHIZUKU), emptySet(),
+            GuideClass.NO_SETTINGS_PAGE, SettingsTarget.NONE, TierCeiling.ANY,
+            privileged = true,
         ),
         cap(
             CapabilityId.APP_STOP, listOf(BackendId.SHIZUKU), emptySet(),
@@ -266,6 +277,11 @@ object CapabilityRegistry {
             ),
         ),
         cap(
+            // 一条能力覆盖图片/视频/音频，列表只出现这一条；`kind` 参数在调用时选类型。
+            // `runtimePermissions` 保留三类的并集作历史元数据，但**不参与判定**：
+            // 按类型校验在 SystemStateProbe（探测至少一类可读即可达）与 DirectBackend
+            // （调用时只报该类型真正缺的权限）两处按 MediaKinds 的判据走，
+            // 不允许「缺音频权限」把图片/视频一起判成不可用。
             CapabilityId.MEDIA_READ, listOf(BackendId.DIRECT), emptySet(),
             GuideClass.DEEP_LINK_OK, SettingsTarget.APP_DETAILS, TierCeiling.SESSION_ONLY,
             perms = listOf(
@@ -284,6 +300,15 @@ object CapabilityRegistry {
             CapabilityId.AUDIO_CAPTURE, listOf(BackendId.DIRECT), emptySet(),
             GuideClass.DEEP_LINK_OK, SettingsTarget.APP_DETAILS, TierCeiling.ASK_ONLY,
             perms = listOf(Manifest.permission.RECORD_AUDIO),
+        ),
+        cap(
+            // 设备状态：只读一组基础数据，不修改任何设置。网络状态一项依赖
+            // ACCESS_NETWORK_STATE——安装时**普通**（normal）权限，声明即授予，
+            // 因此**不进 runtimePermissions**：放进运行期缺口表会让探测把这条能力
+            // 报成「缺权限待授」，而系统侧没有任何要授的内容。
+            // 默认档位为完全访问（TierStore 的默认表），只读且无害，避免成为新的弹窗来源。
+            CapabilityId.DEVICE_STATUS, listOf(BackendId.DIRECT), emptySet(),
+            GuideClass.NOT_REQUIRED, SettingsTarget.NONE, TierCeiling.ANY,
         ),
 
         // ── 系统 ──
@@ -322,6 +347,7 @@ object CapabilityRegistry {
         ceiling: TierCeiling,
         perms: List<String> = emptyList(),
         minSdk: Int = 29,
+        privileged: Boolean = false,
     ) = CapabilityDescriptor(
         id = id,
         titleRes = titles.getValue(id).first,
@@ -333,6 +359,7 @@ object CapabilityRegistry {
         ceiling = ceiling,
         runtimePermissions = perms,
         minSdk = minSdk,
+        privileged = privileged,
     )
 
     val byId: Map<CapabilityId, CapabilityDescriptor> = all.associateBy { it.id }
@@ -345,4 +372,16 @@ object CapabilityRegistry {
     fun find(id: CapabilityId): CapabilityDescriptor? = byId[id]
 
     fun find(wire: String): CapabilityDescriptor? = CapabilityId.fromWire(wire)?.let { byId[it] }
+
+    /**
+     * 普通能力成员集：描述符上 `privileged` 为假的那些。这是**唯一的**成员过滤函数：
+     * 界面的能力列表、首页「可用能力」的分子分母、全局档位选择器与批量拨档都只消费
+     * 这里——特权能力由自己的独立开关管理，不进三档呈现，也不改变普通能力的可用计数。
+     * 成员资格与档位、系统权限、可用性无关（那些是状态，不是身份）。对外能力清单不经
+     * 这个过滤：助手必须看得到特权能力（含它关着时 usable=false 的那一行）。
+     * 默认实参覆盖内建注册表，宿主注入自定义能力表时显式传入。
+     */
+    fun ordinaryMembers(
+        descriptors: List<CapabilityDescriptor> = allDescriptors,
+    ): List<CapabilityDescriptor> = descriptors.filterNot { it.privileged }
 }

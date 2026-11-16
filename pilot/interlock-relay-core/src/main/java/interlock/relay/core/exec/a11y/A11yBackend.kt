@@ -15,11 +15,18 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import interlock.relay.core.protocol.CapabilityId
 import interlock.relay.core.protocol.ArgErrors
+import interlock.relay.core.interlock.ProtectedVerdict
+import interlock.relay.core.interlock.protectedVerdict
 import interlock.relay.core.protocol.RelayError
 import interlock.relay.core.protocol.SurfaceKind
+import interlock.relay.core.log.LogEvent
+import interlock.relay.core.log.LogSubsystem
+import interlock.relay.core.log.RunLog
 import interlock.relay.core.exec.BackendCall
+import interlock.relay.core.exec.namesHostPackage
 import interlock.relay.core.exec.BackendResult
 import interlock.relay.core.exec.RelayBackend
+import interlock.relay.core.exec.shizuku.ShizukuBackend
 import interlock.relay.core.runtime.monotonicNow
 import interlock.relay.core.storage.RelayPaths
 import interlock.relay.core.storage.StorageReaper
@@ -51,6 +58,14 @@ class A11yBackend(
      * 后端之间互不可见是这里的既有约束，跨后端的一个数只能这样递进来。
      */
     private val trustedDisplayId: () -> Int = { -1 },
+    /**
+     * 「受保护应用」名单的实时读数，由装配根递进来（本类不直接读偏好）。
+     * 名单检查是**额外**的拒绝，不是对既有 namesHostPackage 自保护的替换：
+     * 宿主窗口占屏的那条规则原样保留。名单为空时一次判定都不做。
+     */
+    private val protectedPackages: () -> Set<String> = { emptySet() },
+    /** 运行日志。执行场景拒绝在这里记一条；可空只为装配与测试的装配自由。 */
+    private val runLog: RunLog? = null,
 ) : RelayBackend {
 
     private val appContext = context.applicationContext
@@ -110,8 +125,19 @@ class A11yBackend(
         if (call.descriptor.id in TREE_CAPABILITIES) {
             val outcome = treeFor(service, call)
             val tree = outcome.tree ?: return trustedTreeMissing(outcome)
+            // 读取/刷新控件树之前先认树上窗口的包名。判据在 [protectedVerdict]：
+            // 命中名单即拒；读不到包名按 fail-closed 拒。名单为空时跳过。
+            // 取根只做这一次：快照复用这颗已守卫的根（见 [snapshot]），不在入口与
+            // snapshot 里各取一遍——两次取根之间窗口可能换人，守卫放行的是前一颗、
+            // 快照读的却是后一颗，两个口径就裂开了。
+            val entryRoot = tree.root()
+            val entryVerdict = protectedVerdict(protectedPackages(), entryRoot?.packageName?.toString())
+            protectedFailure(entryVerdict)?.let {
+                logProtectedBlock(call.descriptor.id, (entryVerdict as? ProtectedVerdict.Hit)?.packageName)
+                return it
+            }
             return when (call.descriptor.id) {
-                CapabilityId.UI_SNAPSHOT -> snapshot(tree)
+                CapabilityId.UI_SNAPSHOT -> snapshot(tree, entryRoot)
                 CapabilityId.UI_CLICK -> nodeActions(tree, call).click(call.args)
                 CapabilityId.UI_LONG_CLICK -> nodeActions(tree, call).longClick(call.args)
                 CapabilityId.UI_SELECT -> nodeActions(tree, call).select(call.args)
@@ -122,6 +148,16 @@ class A11yBackend(
                 CapabilityId.UI_WAIT_FOR -> nodeActions(tree, call).waitFor(call.args)
                 CapabilityId.UI_SET_PROGRESS -> nodeActions(tree, call).setProgress(call.args)
                 else -> nodeActions(tree, call).imeAction(call.args)
+            }
+        }
+        // 坐标手势、文字输入、按键与截图都落在用户眼前那块屏上，下发前认一次
+        // 当前活动（或可见）窗口的包名；读不到按 fail-closed 拒。名单为空时跳过，
+        // 一次系统查询都不做。
+        if (protectedPackages().isNotEmpty()) {
+            val foregroundVerdict = protectedVerdict(protectedPackages(), activeWindowPackage(service))
+            protectedFailure(foregroundVerdict)?.let {
+                logProtectedBlock(call.descriptor.id, (foregroundVerdict as? ProtectedVerdict.Hit)?.packageName)
+                return it
             }
         }
         return when (call.descriptor.id) {
@@ -163,8 +199,14 @@ class A11yBackend(
         return null
     }
 
-    private fun snapshot(tree: DisplayTree): BackendResult {
-        val root = tree.root() ?: return noActiveWindow(tree.displayId)
+    /**
+     * 快照。[guardedRoot] 是 execute 入口已过名单守卫的那颗根：二次取根（`tree.root()`）
+     * 与守卫时的取根是两次独立读取，窗口在中间换人时守卫放行的是前一颗、快照读的却是
+     * 后一颗——受保护应用的界面会整棵交出去，而回包口径上"守卫刚放过行"。同一轮用
+     * 同一颗根；null = 入口那一刻就没有树，维持既有的"无活动窗口"出口。
+     */
+    private fun snapshot(tree: DisplayTree, guardedRoot: AccessibilityNodeInfo?): BackendResult {
+        val root = guardedRoot ?: return noActiveWindow(tree.displayId)
         // 读不设宿主例外：要挡的是「助手驱动宿主自己的界面」，那是写操作，
         // 已在 execute() 里按 controlsInput 拦下。把读一起禁掉的后果是用户切回宿主那一刻
         // 助手读不到眼前界面，只能猜或干等；厂商助手都能读自己的界面。
@@ -185,35 +227,17 @@ class A11yBackend(
 
     /**
      * 节点级操作的入口。树与预算都在这里一次取好：十条能力各写一遍取树，
-     * 改天就会有一条漏了预算、另一条用了别的屏的尺寸。
+     * 改天就会有一条漏了预算、另一条用了别的屏的尺寸。受保护名单以**实时 provider**
+     * 递进去（waitFor 的每一轮、滚动的每一步、写操作每次重取树、动作后的每次回读都
+     * 现读一份），滚动等场景的逐轮复查与日志钩子在 [NodeActions] 内部做。
      */
-    private fun nodeActions(tree: DisplayTree, call: BackendCall): NodeActions =
-        NodeActions(tree, call.budgetMs, selfPackage) { node ->
-            // 同一个判据、同一个包名表，只是问的时机不同：闸门问参数，这里问树上解析出来的那颗。
-            interlock.relay.core.interlock.ConsentSurfaces.looksLikeConsentControl(
-                node.packageName?.toString(), node.viewIdResourceName,
-            )
-        }
-
-    /**
-     * 只读回查节点归属，给闸门判「是不是系统授权界面」用。
-     *
-     * 预算传 0：这一问不发起任何操作，也不该占掉调用预算；服务没连上时回 null，
-     * 由调用方按「认不出来」处理 —— 认不出来不等于放行，只是少一道判据。
-     *
-     * 两块屏都问一遍：系统授权页既可能挂在用户眼前这块屏上，也可能挂在助手自己开在
-     * 后台屏上的那颗窗口里，只查前者会漏掉后一种，而漏掉的代价正是这道判据要防的事。
-     */
-    override fun targetOwner(nodeId: Int): RelayBackend.TargetOwner? {
-        val service = RelayAccessibilityService.current() ?: return null
-        val trees = listOf(hostTree(service)) +
-            (if (trustedDisplayReachable()) listOfNotNull(trustedTree(service)) else emptyList())
-        for (tree in trees) {
-            val owner = NodeActions(tree, 0L, selfPackage).ownerOf(nodeId) ?: continue
-            return RelayBackend.TargetOwner(owner.first, owner.second)
-        }
-        return null
-    }
+    private fun nodeActions(tree: DisplayTree, call: BackendCall): NodeActions = NodeActions(
+        tree,
+        call.budgetMs,
+        selfPackage,
+        protectedPackages,
+        onProtectedBlocked = { target -> logProtectedBlock(call.descriptor.id, target) },
+    )
 
     /**
      * 这一次调用要读哪块屏的树，取不到时带上为什么取不到。
@@ -381,7 +405,50 @@ class A11yBackend(
      * 窗口本身不带包名公开访问器，归属只能从窗口根节点取。
      */
     private fun selfWindowVisible(service: RelayAccessibilityService): Boolean =
-        service.windows.orEmpty().any { it.root?.packageName?.toString() == selfPackage }
+        service.windows.orEmpty().any { namesHostPackage(it.root?.packageName?.toString(), selfPackage) }
+
+    /**
+     * 当前活动（或可见）窗口的包名，执行场景读数。取焦点窗口优先，
+     * 其次活动窗口根——与 Direct 后端 `foregroundPackage` 的取法同一口径。
+     * 读不到如实回 null：null 由 [protectedVerdict] 判成 fail-closed。
+     */
+    private fun activeWindowPackage(service: RelayAccessibilityService): String? =
+        service.windows.orEmpty().firstOrNull { it.isFocused }?.root?.packageName?.toString()
+            ?: service.rootInActiveWindow?.packageName?.toString()
+
+    /**
+     * 判定结果的统一出口。命中名单只说明"该包受保护"与本场景读到的包名，
+     * 完整名单不进任何回包；读不到（Unconfirmable）按 fail-closed 拒绝，
+     * reason 写清"无法确认前台应用"。
+     */
+    private fun protectedFailure(verdict: ProtectedVerdict): BackendResult.Failed? = when (verdict) {
+        ProtectedVerdict.Pass -> null
+        is ProtectedVerdict.Hit -> BackendResult.Failed(
+            RelayError.PACKAGE_PROTECTED,
+            "package ${verdict.packageName} is on the user's protected-apps list: the assistant " +
+                "can neither operate it nor read it",
+        )
+        ProtectedVerdict.Unconfirmable -> BackendResult.Failed(
+            RelayError.PACKAGE_PROTECTED,
+            "cannot confirm the app in front (no readable window package), and the " +
+                "protected-apps list is not empty: refusing to proceed",
+        )
+    }
+
+    /**
+     * 拒绝的一条运行日志：能力、目标包与层级，与 Shizuku 后端的同事件同字段
+     * （[ShizukuBackend.BLOCKED_AT_EXECUTION]；读不到包名时目标记 unknown）。
+     * 完整名单不进日志。调用侧（含 NodeActions 的逐轮守卫）已按次去重。
+     */
+    private fun logProtectedBlock(capability: CapabilityId, targetPackage: String?) {
+        runLog?.warn(
+            LogSubsystem.BACKEND,
+            LogEvent.PACKAGE_PROTECTED_BLOCKED,
+            "cap" to capability.wire,
+            "target" to (targetPackage ?: ShizukuBackend.UNKNOWN_FIELD),
+            "where" to ShizukuBackend.BLOCKED_AT_EXECUTION,
+        )
+    }
 
     /**
      * 宿主窗口占屏时的失败。规则本身不松：助手不得驱动宿主自己的界面；
@@ -536,7 +603,7 @@ class A11yBackend(
     private fun setText(service: RelayAccessibilityService, text: String): BackendResult {
         // 这一条只服务前台那块屏：`rootInActiveWindow` 只在默认屏上判定得出来。
         val root = service.rootInActiveWindow ?: return noActiveWindow(Display.DEFAULT_DISPLAY)
-        if (root.packageName?.toString() == selfPackage) {
+        if (namesHostPackage(root.packageName?.toString(), selfPackage)) {
             return suspendedByHost()
         }
         val target = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: firstEditable(root)

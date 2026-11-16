@@ -364,9 +364,9 @@
     <string name="home_metrics_memory">内存</string>
     <string name="home_metrics_storage">存储</string>
     <string name="home_update_highlights_title">版本更新要点（v%1$s）</string>
-    <string name="home_update_highlights_added">新增：\n1. 写者锁原子发布：DSH 写锁时先写完整 PID 再排他发布，从源头杜绝强杀产生空锁；\n2. 应急修复提示词模板：实例管理页与启动失败弹窗均可一键复制，指导应急实例中的 DSH 排查并修复主实例</string>
-    <string name="home_update_highlights_fixed">修复：\n1. 慢启动不再被 30 秒误杀：进程存活但尚未就绪时等待完整 120 秒启动窗口，插件较多或低性能设备不再反复重启；\n2. 强杀遗留空锁可自动恢复：启动前通过内核租约确认无活写者后清理历史空锁，不再永久阻塞启动</string>
-    <string name="home_update_highlights_improved">优化：\n1. 应急实例警示增强：明确标注主实例（.dsh）与应急实例（.dsh-emergency）的数据目录、临时用途与操作边界</string>
+    <string name="home_update_highlights_added">新增：\n1. 手机助手新增全局档位与自定义预设：默认配置、全部禁止、全部询问审批、全部完全访问一键切换，40 条普通能力可保存复用；全新安装自动写入推荐档位，老用户升级不改已选档位；\n2. 新增受保护应用名单：名单内应用不能被助手启动、读取或操作，审批等待期间加入也立即生效（完全 Shizuku / ADB / root 通道不受名单限制）；\n3. 新增完全 Shizuku 能力开关（默认关闭）：独立于普通能力审批，可执行表外命令，并显示当前执行身份与开启条件；\n4. 新增「设备状态」能力：一次读取时间、电量、屏幕、网络、音量、亮度与设备信息，无需 Shizuku、不弹权限框；\n5. DSH 右侧栏新增虚拟屏实时预览：支持点按、滑动、返回、主页、刷新、旋转、移到主屏、移回虚拟屏、释放虚拟屏；释放只关闭屏上应用，不把任务搬回主屏。</string>
+    <string name="home_update_highlights_fixed">修复：\n1. 审批入口不再缺失或重复：同一时刻只保留一处，离开助手页先悬浮卡、挂不上再通知；「本会话允许」覆盖所有询问审批能力；\n2. 三档位审批口径统一：修复已选「完全访问」仍被二次拦截的问题；「询问审批」仍逐次确认，「禁止」仍直接拒绝；\n3. 后台优先按目标落点执行：无法后台完成时明确说明降级原因，不再静默切到前台；结果未知不自动重放；\n4. Shizuku 未运行、未授权、用户服务未连接分别提示，不再笼统显示“服务未开启”；\n5. 通知发送后核实可见性，未核实可见时按结果未知回包，不再当成“已发送”；\n6. 大屏建可信屏按安全尺寸创建，无法安全建屏时明确回退前台，不再反复建屏失败。</string>
+    <string name="home_update_highlights_improved">优化：\n1. 媒体读取由图片、视频扩展为图片、视频、音频三类，一次只读一类，按类校验权限；\n2. 麦克风录音单次上限由 30 秒提升到 120 秒，等待预算同步放宽。</string>
     <string name="home_update_highlights_support">开发者业余维护，如果觉得有帮助可以点个 Star 支持。</string>
     <string name="home_update_highlights_star">去 GitHub 点 Star</string>
     <string name="home_update_highlights_feedback">问题反馈/建议</string>

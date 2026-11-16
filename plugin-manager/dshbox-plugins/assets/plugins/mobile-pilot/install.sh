@@ -57,7 +57,7 @@ PKGJSON="$PROFILE/package.json"
 BINLINK="$NM/.bin/mobile-pilot"
 # 必需文件清单：安装源、阶段目录与发布结果各核一遍。装包之前先知道"装齐了长什么样"，
 # 卸载与回滚才有凭据 —— 这份清单同时写进所有权清单（见第 7 步）。
-REQUIRED="package.json cordis.patch.yml lib/index.js lib/mount.js lib/pilot.js lib/tools.js bin/mobile-pilot"
+REQUIRED="package.json cordis.patch.yml lib/index.js lib/client.js lib/stream.js lib/mount.js lib/pilot.js lib/tools.js bin/mobile-pilot"
 
 # --- 0) 先验：任何一项不过都不写东西 ---
 PY="$(command -v python3 || true)"
@@ -65,7 +65,7 @@ if [ -z "$PY" ]; then
   echo "❌ 注册 bundle 要改 profile 的 package.json，这一步靠 python3；沙盒里没有就先装，别在半途退出"
   exit 1
 fi
-for f in "$SRC/package.json" "$SRC/cordis.patch.yml" "$SRC/lib/index.js" "$SRC/lib/mount.js" "$SRC/lib/pilot.js" "$SRC/lib/tools.js" "$SRC/bin/mobile-pilot"; do
+for f in "$SRC/package.json" "$SRC/cordis.patch.yml" "$SRC/lib/index.js" "$SRC/lib/client.js" "$SRC/lib/stream.js" "$SRC/lib/mount.js" "$SRC/lib/pilot.js" "$SRC/lib/tools.js" "$SRC/bin/mobile-pilot"; do
   [ -f "$f" ] || { echo "❌ 插件内容不完整，缺 $f"; exit 1; }
 done
 [ -f "$PKGJSON" ] || { echo "❌ 找不到 $PKGJSON (profile 结构不兼容)"; exit 1; }
@@ -197,7 +197,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# 清单核对：七个必需文件齐全且非空。空文件比缺文件更阴险 —— loader 装载时才炸。
+# 清单核对：八个必需文件齐全且非空。空文件比缺文件更阴险 —— loader 装载时才炸。
 check_inventory () {
   local root="$1" f
   for f in $REQUIRED; do
@@ -217,7 +217,7 @@ NODE="$(command -v node || true)"
 if [ -n "$NODE" ]; then
   # bin/mobile-pilot 也在列：它是 dsh 侧唯一能跑的调试通路，语法错会表现为"包装上了但什么都调不通"。
   # 别把 install.sh / uninstall.sh 加进来 —— 那是 sh，会被按 JS 判成语法错。
-  for f in "$STAGE/lib/index.js" "$STAGE/lib/mount.js" "$STAGE/lib/pilot.js" "$STAGE/lib/tools.js" "$STAGE/bin/mobile-pilot"; do
+  for f in "$STAGE/lib/index.js" "$STAGE/lib/client.js" "$STAGE/lib/stream.js" "$STAGE/lib/mount.js" "$STAGE/lib/pilot.js" "$STAGE/lib/tools.js" "$STAGE/bin/mobile-pilot"; do
     "$NODE" --check "$f" || { echo "❌ JS 语法检查没过：$f"; exit 1; }
   done
 else

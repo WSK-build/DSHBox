@@ -1,6 +1,7 @@
 package interlock.relay.core.log
 
 import interlock.relay.core.exec.shizuku.ShizukuBackend
+import interlock.relay.core.exec.stream.RunLogStreamSessionLog
 import interlock.relay.core.surface.BackendDispatcher
 import interlock.relay.core.transport.ControlChannelServer
 import interlock.relay.core.transport.MailboxServer
@@ -39,6 +40,17 @@ class StageEventDictionaryTest {
         "BACKEND_CALL" to (LogEvent.BACKEND_CALL to BackendDispatcher.CALL_FIELDS),
         "REMOTE_SUBMITTED" to (LogEvent.REMOTE_SUBMITTED to ShizukuBackend.SUBMITTED_FIELDS),
         "REMOTE_GIVE_UP" to (LogEvent.REMOTE_GIVE_UP to ShizukuBackend.GIVE_UP_FIELDS),
+        // 的五条显示事件：字段集与模板占位符同表对账（字段集在 ShizukuBackend 伴生）。
+        "DISPLAY_CREATE_FLAGS" to (LogEvent.DISPLAY_CREATE_FLAGS to ShizukuBackend.DISPLAY_FLAGS_FIELDS),
+        "DISPLAY_MAIN_STATE" to (LogEvent.DISPLAY_MAIN_STATE to ShizukuBackend.DISPLAY_MAIN_STATE_FIELDS),
+        "DISPLAY_SELF_CHECK_FAILED" to (LogEvent.DISPLAY_SELF_CHECK_FAILED to ShizukuBackend.DISPLAY_SELF_CHECK_FIELDS),
+        "DISPLAY_SELF_CHECK_TRANSIENT" to (LogEvent.DISPLAY_SELF_CHECK_TRANSIENT to ShizukuBackend.DISPLAY_TRANSIENT_FIELDS),
+        "DISPLAY_RELEASE_STATE" to (LogEvent.DISPLAY_RELEASE_STATE to ShizukuBackend.DISPLAY_RELEASE_FIELDS),
+        // 流会话的读数（诊断埋点）：两条事件共用同一组字段
+        // （会话序号、阶段、结论、短原因、字节数、时长），字段集在
+        // RunLogStreamSessionLog 伴生。
+        "STREAM_SESSION" to (LogEvent.STREAM_SESSION to RunLogStreamSessionLog.FIELDS),
+        "STREAM_SESSION_FAILED" to (LogEvent.STREAM_SESSION_FAILED to RunLogStreamSessionLog.FIELDS),
     )
 
     @Test
@@ -51,6 +63,24 @@ class StageEventDictionaryTest {
                 fields,
             )
         }
+    }
+
+    /**
+     * 流会话那两条事件必须**真的接进这张表**：字典对账只查「接进来的那些」，
+     * 事件没接进来时它一声不响 —— 而运行日志渲染会把没被替换的占位符落成
+     * `unresolved=…`，正文看起来像消息内容。本测试让「忘了接」这件事变红。
+     */
+    @Test
+    fun theStreamSessionEventsAreWiredIntoTheDictionary() {
+        val wiredEvents = wired.map { it.second.first }.toSet()
+        assertTrue(
+            "STREAM_SESSION 必须接进字典对账（否则模板占位符会被落成 unresolved）",
+            wiredEvents.contains(LogEvent.STREAM_SESSION),
+        )
+        assertTrue(
+            "STREAM_SESSION_FAILED 必须接进字典对账（否则模板占位符会被落成 unresolved）",
+            wiredEvents.contains(LogEvent.STREAM_SESSION_FAILED),
+        )
     }
 
     /**
@@ -91,6 +121,16 @@ class StageEventDictionaryTest {
         "result" -> "ok"
         "backend" -> "shizuku"
         "waitedMs", "ms", "bytes", "waitMs", "ago", "waiting" -> "42"
+        "sdk" -> "34"
+        "trusted", "windowingOk", "imePolicyOk", "released" -> "true"
+        "flags" -> "0x7f2d"
+        "display" -> "5"
+        "violations", "recovered" -> "TOP_TASK_CHANGED"
+        "coverage" -> "0.98"
+        "beforeTop", "afterTop", "launcher" -> "com.example.launcher"
+        "beforeTask", "afterTask", "displayGroup" -> "7"
+        "beforeFocus", "afterFocus" -> "5adfb70 u0 com.example.launcher/...@0"
+        "beforeIme", "afterIme" -> "0/false"
         else -> field
     }
 

@@ -27,9 +27,17 @@ extensions.configure<com.android.build.api.dsl.LibraryExtension> {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        // 闸门-装配级的单测要跑真实的 RunLog 与时间戳链路（其底层是 android.os.SystemClock /
+        // android.util.Log）；平台桩在 JVM 上默认抛"未 mock"，这里改为返回默认值，
+        // 使判定层的集成路径可以在无设备环境下穷举验证。时间相关判定由被测方自注入时钟。
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+
 
 dependencies {
     implementation(libs.androidx.core.ktx)

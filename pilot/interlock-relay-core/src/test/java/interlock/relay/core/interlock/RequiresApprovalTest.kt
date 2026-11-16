@@ -1,64 +1,55 @@
 package interlock.relay.core.interlock
 
 import interlock.relay.core.protocol.AccessTier
-import interlock.relay.core.protocol.TierCeiling
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 会话授权的免弹语义：界面上的「本会话内允许」必须真的换来一次免弹。
- * 会话授权若排在 `tier == ASK` 之后判，按钮答完下一次照样弹，这个按钮就是无效的。
+ * 三档档位的审批语义与「本会话内允许」的免弹效果：档位是唯一判定输入，
+ * 描述符上的上限元数据不参与。会话授权若排在 `tier == ASK` 之后判，按钮答完
+ * 下一次照样弹，那个按钮就无效了。
  */
 class RequiresApprovalTest {
 
-    private fun ask(ceiling: TierCeiling, tier: AccessTier, session: Boolean) =
-        InterlockGate.requiresApproval(tier, ceiling, session)
-
-    @Test
-    fun `ask only ceiling always asks even with a session grant`() {
-        assertTrue(ask(TierCeiling.ASK_ONLY, AccessTier.ASK, false))
-        assertTrue(ask(TierCeiling.ASK_ONLY, AccessTier.ALWAYS, true))
-    }
+    private fun ask(tier: AccessTier, session: Boolean) =
+        InterlockGate.requiresApproval(tier, session)
 
     @Test
     fun `session grant silences ask tier for the rest of the session`() {
-        assertFalse(ask(TierCeiling.SESSION_ONLY, AccessTier.ASK, true))
-        assertFalse(ask(TierCeiling.ANY, AccessTier.ASK, true))
+        assertFalse(ask(AccessTier.ASK, true))
     }
 
     @Test
-    fun `without a session grant the tier decides`() {
-        assertTrue(ask(TierCeiling.ANY, AccessTier.ASK, false))
-        assertFalse(ask(TierCeiling.ANY, AccessTier.ALWAYS, false))
+    fun `without a session grant the ask tier asks and full access does not`() {
+        assertTrue(ask(AccessTier.ASK, false))
+        assertFalse(ask(AccessTier.ALWAYS, false))
+        assertFalse(ask(AccessTier.ALWAYS, true))
     }
 
     /**
-     * 系统授权界面一律当场问：会话授权压不住它，「完全访问」这一档也压不住。
-     *
-     * 验证助手代用户答复第三方权限申请时的三档审批策略：
-     * 少钉一种，就留下「档位是完全访问于是授权框被静默点掉」这条路。
+     * 弹不弹只由档位与会话授权两个输入决定：三档 × 有无会话授权的逐格期望。
+     * 审批没有档位之外的例外输入——多一个输入就多一条绕开档位的路。
      */
     @Test
-    fun `consent screen always asks whatever the tier and the session say`() {
-        for (ceiling in TierCeiling.values()) {
-            for (tier in AccessTier.values()) {
-                for (session in listOf(false, true)) {
-                    assertTrue(
-                        "$ceiling/$tier/$session",
-                        InterlockGate.requiresApproval(tier, ceiling, session, consentScreen = true),
-                    )
-                }
+    fun `tier and session are the only approval inputs`() {
+        for (tier in AccessTier.values()) {
+            for (session in listOf(false, true)) {
+                assertEquals(
+                    "$tier/$session",
+                    tier == AccessTier.ASK && !session,
+                    InterlockGate.requiresApproval(tier, session),
+                )
             }
         }
-        // 验证未命中该判据时不影响其他审批规则。
-        assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, TierCeiling.ANY, true, consentScreen = false))
     }
 
-    /** 上限为 SESSION_ONLY 时连档位「始终允许」也只能换到本会话，缺授权就要弹一次。 */
+    /** 审批策略与判定同表派生：三档各对应一个稳定的机器值，供能力清单输出。 */
     @Test
-    fun `session only ceiling cannot be permanently silenced`() {
-        assertTrue(ask(TierCeiling.SESSION_ONLY, AccessTier.ALWAYS, false))
-        assertFalse(ask(TierCeiling.SESSION_ONLY, AccessTier.ALWAYS, true))
+    fun approvalPolicyFollowsTheTierAlone() {
+        assertEquals("denied", InterlockGate.approvalPolicy(AccessTier.DENIED))
+        assertEquals("ask_each_call", InterlockGate.approvalPolicy(AccessTier.ASK))
+        assertEquals("none", InterlockGate.approvalPolicy(AccessTier.ALWAYS))
     }
 }

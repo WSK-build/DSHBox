@@ -65,6 +65,9 @@
     <string name="pilot_perm_notification_listener">Lectura de notificaciones</string>
     <string name="pilot_cap_missing_perm">·%1$s no concedido</string>
     <string name="pilot_cap_missing_service">·%1$s sin activar</string>
+    <string name="pilot_cap_missing_grant">Shizuku no ha concedido permiso a esta aplicación</string>
+    <string name="pilot_cap_missing_service_shizuku">Shizuku no está en ejecución; inícielo desde la página privilegiada</string>
+    <string name="pilot_cap_missing_bound">El servicio de usuario de Shizuku no está conectado</string>
     <string name="pilot_a11y_notice_title">El servicio de accesibilidad no está conectado</string>
     <string name="pilot_a11y_notice_not_bound">%1$s necesita el servicio de accesibilidad. La lista del sistema aún incluye esta aplicación, así que el permiso no fue retirado: la aplicación se cerró en segundo plano. Basta con volver a abrirla; no hay que cambiar ningún ajuste.</string>
     <string name="pilot_a11y_notice_revoked">%1$s necesita el servicio de accesibilidad y el sistema ya no incluye esta aplicación entre los servicios activados: el permiso fue desactivado. Vuelva a activarlo.</string>
@@ -101,9 +104,47 @@
     <string name="pilot_tier_choice_denied">Bloqueado</string>
     <string name="pilot_tier_choice_ask">Preguntar en cada invocación</string>
     <string name="pilot_tier_choice_always">Acceso completo</string>
-    <string name="pilot_ceiling_any">El acceso completo puede concederse de forma permanente.</string>
-    <string name="pilot_ceiling_session">El acceso permanente se limita a la sesión actual del asistente.</string>
-    <string name="pilot_ceiling_ask_only">Los requisitos de seguridad confirman cada llamada. Acceso completo no la omite.</string>
+    <string name="pilot_tier_note">Los tres niveles se aplican tal como elijas. Acceso completo solo significa que el asistente deja de preguntar; los permisos del sistema, los cuadros de diálogo del sistema y los límites de frecuencia siguen aplicando.</string>
+
+    <!-- 能力页右上角的全局档位选择器：批量设置，不是批量授权，不弹确认框。 -->
+    <string name="pilot_tier_all_denied">Bloquear todas</string>
+    <string name="pilot_tier_all_ask">Preguntar por todas</string>
+    <string name="pilot_tier_all_always">Acceso completo para todas</string>
+
+    <!-- configuración global de cinco entradas: predefinida, editor y aplicación de la personalizada. -->
+    <string name="pilot_config_default">Configuración predeterminada</string>
+    <string name="pilot_config_custom">Configuración personalizada guardada</string>
+    <string name="pilot_config_unsaved">Mixto</string>
+    <string name="pilot_config_action_edit">Configurar</string>
+    <string name="pilot_config_action_apply">Aplicar</string>
+    <string name="pilot_config_page_title">Configuración personalizada guardada</string>
+    <string name="pilot_config_save">Guardar</string>
+    <string name="pilot_config_note">La edición cambia solo el borrador. Guardar (arriba a la derecha) lo convierte en la configuración personalizada guardada; aplicarla es otro paso y no sucede automáticamente.</string>
+    <string name="pilot_config_scope_note">Estas son las 40 capacidades ordinarias. El interruptor de Shizuku completo y la preferencia de modo de ejecución no forman parte de ninguna configuración global.</string>
+    <string name="pilot_config_missing_hint">Aún no hay una configuración personalizada guardada: configúrala y guárdala primero, y luego aplícala aquí.</string>
+    <string name="pilot_config_save_failed">No se pudo guardar; el borrador sigue en esta página. Revísalo e inténtalo de nuevo.</string>
+
+    <!-- aplicaciones protegidas: lista elegida por el usuario, entrada en la sección de control de acceso. -->
+    <string name="pilot_page_protected_apps">Aplicaciones protegidas</string>
+    <string name="pilot_protected_status_unset">Sin configurar</string>
+    <string name="pilot_protected_status_count">%1$d protegidas</string>
+    <string name="pilot_protected_apps_note">El asistente no puede iniciar, leer ni operar las aplicaciones de esta lista. Shizuku completo (comandos arbitrarios) y los canales ADB y root no están sujetos a esta lista.</string>
+    <string name="pilot_protected_apps_search_hint">Buscar por nombre o paquete</string>
+    <string name="pilot_protected_apps_empty">Aún no hay aplicaciones protegidas</string>
+    <string name="pilot_protected_apps_save_failed">No se pudo guardar la lista y la casilla volvió a su estado anterior. Inténtalo de nuevo.</string>
+    <string name="pilot_protected_apps_add_by_package">Añadir por nombre de paquete</string>
+    <string name="pilot_protected_apps_package_placeholder">com.example.app</string>
+    <string name="pilot_protected_apps_add">Añadir</string>
+    <string name="pilot_protected_apps_invalid_package">No es un nombre de paquete válido: debe empezar por una letra y contener solo letras, dígitos, guiones bajos y puntos.</string>
+    <string name="pilot_protected_apps_unlisted">No está en la lista de aplicaciones</string>
+
+    <!-- 档位说明页：由用户主动点开，区分助手审批与系统弹框。 -->
+    <string name="pilot_page_capability_help">Sobre los niveles</string>
+    <string name="pilot_help_tier_only">Acceso completo solo significa que el asistente deja de preguntar. No concede permisos de Android, no omite los cuadros de diálogo del sistema, y no es Shizuku ni root.</string>
+    <string name="pilot_help_capture">La grabación y las capturas de pantalla en primer plano pasan por la confirmación de captura del propio Android; solo la pantalla virtual en segundo plano no muestra ningún cuadro del sistema.</string>
+    <string name="pilot_help_install">Instalar una aplicación sigue mostrando la confirmación de instalación del sistema.</string>
+    <string name="pilot_help_runtime">Los permisos en tiempo de ejecución, el acceso de escucha de notificaciones y el requisito de primer plano del portapapeles siguen existiendo.</string>
+    <string name="pilot_help_shell">El shell del sistema sigue limitado por su tabla cerrada de verbos y sus interruptores por verbo; los comandos fuera de la tabla necesitan el interruptor independiente de Shizuku completo.</string>
     <string name="pilot_category_observe">Observar</string>
     <string name="pilot_category_control">Controlar</string>
     <string name="pilot_category_data">Datos</string>
@@ -119,6 +160,8 @@
     <string name="pilot_surface_bg_reason_shizuku_missing">Shizuku no está instalado en este dispositivo.</string>
     <string name="pilot_surface_bg_reason_shizuku_offline">Shizuku no se está ejecutando.</string>
     <string name="pilot_surface_bg_reason_not_granted">Shizuku se ejecuta pero no ha autorizado a esta aplicación.</string>
+    <string name="pilot_surface_bg_reason_display_refused">Este dispositivo rechazó crear una pantalla de confianza; la pantalla de fondo de confianza no está disponible aquí. Cambie al modo en primer plano para estas tareas.</string>
+    <string name="pilot_surface_bg_reason_display_unsafe">La pantalla de confianza alteró la pantalla principal de este dispositivo, por lo que se liberó. Cambie al modo en primer plano para estas tareas.</string>
     <string name="pilot_surface_bg_reason_display_missing">Aún no hay pantalla en segundo plano; el asistente debe crearla.</string>
     <string name="pilot_surface_kind_foreground">Primer plano</string>
     <string name="pilot_surface_kind_trusted">Pantalla en segundo plano</string>
@@ -131,6 +174,17 @@
     <string name="pilot_guide_accessibility_limit">Los gestos solo alcanzan la pantalla predeterminada, y capturar la pantalla sin diálogo del sistema requiere Android 11 o posterior.</string>
     <string name="pilot_guide_shizuku_steps">Instala Shizuku, inícialo mediante la depuración inalámbrica o desde un ordenador, y vuelve aquí para conceder el acceso a esta aplicación. Las operaciones privilegiadas se ejecutan como identidad de shell y lo requieren.</string>
     <string name="pilot_guide_shizuku_offline">Shizuku no se está ejecutando. Las capacidades privilegiadas siguen bloqueadas hasta que se detecte su servicio.</string>
+    <string name="pilot_fullshell_section">"Capacidad Shizuku completa"</string>
+    <string name="pilot_fullshell_switch">"Permitir que el asistente ejecute cualquier comando de shell"</string>
+    <string name="pilot_fullshell_identity">"Identidad de ejecución actual"</string>
+    <string name="pilot_fullshell_identity_shell">"shell (uid 2000)"</string>
+    <string name="pilot_fullshell_identity_root">"root (uid 0)"</string>
+    <string name="pilot_fullshell_identity_uid">"uid %1$d"</string>
+    <string name="pilot_fullshell_identity_unknown">"Desconocida (no se puede leer la identidad de ejecución ahora mismo)"</string>
+    <string name="pilot_fullshell_need_running">"Shizuku no está en ejecución: inicia Shizuku antes de activar este interruptor."</string>
+    <string name="pilot_fullshell_need_granted">"Esta aplicación no tiene autorización en Shizuku: concédasela allí primero y luego active este interruptor."</string>
+    <string name="pilot_fullshell_need_bound">"El servicio de usuario de Shizuku no está conectado: espere a que se reconecte o toque Reconectar arriba, y luego active este interruptor."</string>
+    <string name="pilot_fullshell_risk_note">"Con este interruptor activado, el asistente puede ejecutar cualquier comando de shell: sin la tabla cerrada de verbos, sin la lista blanca de argumentos y sin la aprobación del asistente, y sin una segunda confirmación. Los comandos se ejecutan con la identidad que proporciona Shizuku (shell cuando Shizuku se inició por ADB o depuración inalámbrica; root solo cuando el propio Shizuku se ejecuta como root); esto no es root automático ni omite los permisos ni los cuadros de diálogo del propio Android. El tamaño de la salida y el tiempo de ejecución siguen teniendo límites: son límites de estabilidad, no aprobaciones. Un comando largo ocupa el único canal de ejecución de shell y bloquea las demás llamadas que dependan de Shizuku hasta que termine, y los filtros de autoprotección del anfitrión no se aplican a una línea de comandos arbitraria."</string>
     <string name="pilot_perm_contacts">Contactos</string>
     <string name="pilot_perm_calendar">Calendario</string>
     <string name="pilot_perm_location">Ubicación</string>
@@ -202,6 +256,8 @@
     <string name="pilot_overlay_asking">¿Permitir %1$s?</string>
     <string name="pilot_overlay_allow">Permitir</string>
     <string name="pilot_page_overlay">Confirmación superpuesta</string>
+    <string name="pilot_page_developer_mode">Modo de desarrollador</string>
+    <string name="pilot_devmode_unavailable">El modo de desarrollador no está inicializado</string>
     <string name="pilot_overlay_note">El aviso tiene tres sitios posibles, en este orden: dentro de la pantalla del asistente cuando esa pantalla está en primer plano; por encima de todo cuando no lo está y este permiso está concedido; y el panel de notificaciones (bájalo y pulsa «Permitir») cuando no lo está. Si las notificaciones también están bloqueadas, ya no queda nada que pulsar.</string>
     <string name="pilot_action_shizuku_request">Solicitar acceso a Shizuku</string>
     <string name="pilot_section_artifacts">Artefactos del asistente (cada uno se recoge según su propio plazo)</string>
@@ -246,15 +302,15 @@
     <string name="relay_a11y_description">Permite al asistente leer la pantalla actual y realizar gestos y escritura de texto en tu lugar (toques, pulsaciones largas, deslizamientos, desplazamiento, escritura y ajuste de valores, envío de teclas). El sistema concede este servicio de una vez; el asistente sigue pidiendo permiso para cada capacidad una a una, y nunca controla esta aplicación.</string>
     <string name="relay_a11y_label">Asistente del teléfono DSHBox</string>
     <string name="relay_approval_char_count">%1$d caracteres</string>
-    <string name="relay_cap_app_install_summary">Instala mediante Shizuku, que aún puede requerir la confirmación del usuario. Siempre pregunta.</string>
+    <string name="relay_cap_app_install_summary">Instala mediante Shizuku. La confirmación de instalación del sistema sigue apareciendo.</string>
     <string name="relay_cap_app_install_title">Instalar aplicación</string>
     <string name="relay_cap_app_launch_summary">Arranca otra aplicación en la pantalla actual.</string>
     <string name="relay_cap_app_launch_title">Iniciar aplicación</string>
     <string name="relay_cap_app_stop_summary">Fuerza la detención de otra aplicación. Afecta a todo el dispositivo.</string>
     <string name="relay_cap_app_stop_title">Detener aplicación</string>
-    <string name="relay_cap_appops_set_summary">Ajusta los permisos de operación por aplicación mediante Shizuku. Siempre pregunta.</string>
+    <string name="relay_cap_appops_set_summary">Ajusta los permisos de operación por aplicación mediante Shizuku.</string>
     <string name="relay_cap_appops_set_title">Cambiar operaciones de aplicaciones</string>
-    <string name="relay_cap_audio_capture_summary">Graba el sonido que capta el micrófono, hasta 30 segundos por invocación.</string>
+    <string name="relay_cap_audio_capture_summary">Graba el sonido que capta el micrófono, hasta 120 segundos por invocación.</string>
     <string name="relay_cap_audio_capture_title">Grabar con el micrófono</string>
     <string name="relay_cap_cal_read_summary">Lee eventos del calendario.</string>
     <string name="relay_cap_cal_read_title">Leer el calendario</string>
@@ -268,10 +324,12 @@
     <string name="relay_cap_contact_read_title">Leer contactos</string>
     <string name="relay_cap_contact_write_summary">Añade o modifica contactos.</string>
     <string name="relay_cap_contact_write_title">Escribir contactos</string>
+    <string name="relay_cap_device_status_summary">Lee un conjunto de datos básicos de solo lectura del dispositivo: hora y zona horaria, batería y carga, estado de pantalla y bloqueo, tipo de red y conectividad, volúmenes de medios/tono/notificaciones/alarma, brillo, y fabricante/modelo/versión de Android/resolución/idioma del sistema. No necesita Shizuku ni muestra solicitudes de permisos.</string>
+    <string name="relay_cap_device_status_title">Estado del dispositivo</string>
     <string name="relay_cap_loc_read_summary">Lee la última posición conocida; no admite seguimiento en segundo plano.</string>
     <string name="relay_cap_loc_read_title">Leer la ubicación</string>
-    <string name="relay_cap_media_read_summary">Enumera fotos y vídeos del almacén de medios compartido.</string>
-    <string name="relay_cap_media_read_title">Leer fotos y vídeos</string>
+    <string name="relay_cap_media_read_summary">Enumera imágenes, vídeos o audio de la biblioteca de medios del sistema, un tipo por llamada. Cada tipo solo necesita su propio permiso de medios.</string>
+    <string name="relay_cap_media_read_title">Leer medios</string>
     <string name="relay_cap_media_write_summary">Escribe archivos en las colecciones de medios compartidas.</string>
     <string name="relay_cap_media_write_title">Guardar en Fotos</string>
     <string name="relay_cap_notify_post_summary">Envía notificaciones desde esta aplicación.</string>
@@ -290,7 +348,7 @@
     <string name="relay_cap_surface_virtual_title">Pantalla virtual en segundo plano</string>
     <string name="relay_cap_sys_intent_summary">"Envía un acceso directo fijo del sistema: poner alarma o temporizador, abrir la pantalla de alarmas o de temporizadores, una página de ajustes del sistema, los detalles de una aplicación, el teclado de marcado (nunca marca) o una página del navegador. No requiere accesibilidad ni Shizuku. Solo se aceptan las plantillas de la tabla, los parámetros fuera de rango se rechazan, no existe ninguna entrada que borre o cancele una alarma y no se envía nada si esta aplicación está en segundo plano sin permiso de superposición."</string>
     <string name="relay_cap_sys_intent_title">Acceso directo del sistema</string>
-    <string name="relay_cap_sys_settings_write_summary">Escribe ajustes protegidos mediante Shizuku. Siempre pregunta.</string>
+    <string name="relay_cap_sys_settings_write_summary">Escribe ajustes protegidos mediante Shizuku.</string>
     <string name="relay_cap_sys_settings_write_title">Cambiar ajustes del sistema</string>
     <string name="relay_cap_sys_shell_summary">"Controla el telefono con permisos de nivel de sistema. Incluye de forma predeterminada verbos de solo lectura y algunas funciones basicas."</string>
     <string name="relay_cap_sys_shell_title">"Capacidad de shell del sistema"</string>
@@ -335,12 +393,13 @@
     <string name="relay_err_gate_system_missing">Falta un permiso del sistema para esta capacidad.</string>
     <string name="relay_err_gate_timeout">El diálogo de confirmación caducó sin respuesta y se trató como denegación.</string>
     <string name="relay_err_gate_waiting_turn">Otras confirmaciones siguen esperando respuesta y esta no obtuvo un lugar; espera un momento y vuelve a preguntar.</string>
+    <string name="relay_err_command_failed">El comando se ejecutó y salió con código distinto de cero (data.exit): es un fallo del propio comando, no un error del host. stdout y stderr están en data.output y data.stderr: léelos antes de decidir reintentar.</string>
+    <string name="relay_err_command_not_permitted">El comando se ejecutó pero el lado del servicio de Android lo rechazó (Permission Denial o SecurityException, ver data.stderr): la identidad Shizuku actual no puede hacerlo y reintentarlo tal cual será rechazado de nuevo.</string>
     <string name="relay_err_internal">Se produjo un error inesperado al procesar la solicitud.</string>
     <string name="relay_err_launch_not_landed">"La solicitud de inicio fue aceptada, pero la aplicación no pasó a primer plano de la pantalla principal ni de la pantalla virtual."</string>
     <string name="relay_err_malformed">La solicitud no coincide con el formato del canal y se rechazó.</string>
     <string name="relay_err_no_editable_target">Ningún campo de texto tiene el foco; toca primero el campo y reintenta.</string>
     <string name="relay_err_node_ambiguous">El selector coincidió con varios controles; añade index o concreta el objetivo</string>
-    <string name="relay_err_node_consent_target">Este control pertenece a un diálogo de consentimiento del sistema y el host lo rechaza de plano: solo el usuario puede responder un permiso; omitir package, usar nodeId o añadir un view id no lo evita.</string>
     <string name="relay_err_node_no_ime_action">"Este nodo no tiene ninguna accion del metodo de entrada que activar: no es un campo editable."</string>
     <string name="relay_err_node_not_actionable">Este control no admite la acción; prueba otro objetivo o usa coordenadas</string>
     <string name="relay_err_node_not_found">Ningún control coincide; vuelve a leer la pantalla y elige el objetivo</string>
@@ -354,7 +413,7 @@
     <string name="relay_err_surface_mode_required">Esta capacidad solo se ejecuta en la pantalla de confianza en segundo plano; cambia la preferencia de ejecución a «priorizar el segundo plano» y asegúrate de que esa pantalla esté activa.</string>
     <string name="relay_err_surface_no_shell">Shizuku no se está ejecutando, así que la ejecución en segundo plano no está disponible.</string>
     <string name="relay_err_surface_secure">Esta ventana está marcada como segura, así que no se puede capturar su contenido.</string>
-    <string name="relay_err_surface_trusted_denied">El sistema rechazó crear una pantalla de confianza.</string>
+    <string name="relay_err_surface_trusted_denied">Este ROM se niega a crear pantallas de confianza para esta aplicación. No lo reintente repetidamente; cambie al modo en primer plano.</string>
     <string name="relay_err_surface_unavailable">Ningún modo de ejecución puede atender esta capacidad ahora.</string>
     <string name="relay_err_suspended_by_host">La ventana del asistente está en primer plano; sal de ella y reintenta.</string>
     <string name="relay_err_timeout">El anfitrión no respondió dentro del tiempo solicitado.</string>

@@ -350,7 +350,7 @@ class PilotApprovalNotification(
                 .build())
             .addAction(0, strings.getString(R.string.pilot_overlay_allow), answer(request, PilotApprovalReceiver.ACTION_ALLOW))
             .apply {
-                // 上限为「每次询问」的能力拿不到会话档，通知里也不能给这个口子。
+                // 会话档按钮照提示单上的标记渲染：页内、悬浮与通知三条通路给同一组答案。
                 if (prompt.allowsSessionGrant) {
                     addAction(
                         0,

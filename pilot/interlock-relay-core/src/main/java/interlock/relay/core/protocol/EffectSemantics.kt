@@ -63,6 +63,8 @@ fun retryPolicyOf(id: CapabilityId): RetryPolicy = when (id) {
     CapabilityId.NOTIFY_READ -> RetryPolicy.QUERY_FIRST
     CapabilityId.LOCATION_READ -> RetryPolicy.QUERY_FIRST
     CapabilityId.MEDIA_READ -> RetryPolicy.QUERY_FIRST
+    // 只读且廉价：一次快照没有副作用，重查至多重读一遍系统状态，重发是安全的。
+    CapabilityId.DEVICE_STATUS -> RetryPolicy.SAFE_RETRY
 
     // 可检查的状态设置：先读回当前值核对目标，写没写成功可以从状态上分辨。
     CapabilityId.UI_SET_VALUE -> RetryPolicy.QUERY_FIRST
@@ -79,6 +81,8 @@ fun retryPolicyOf(id: CapabilityId): RetryPolicy = when (id) {
     CapabilityId.APP_LAUNCH -> RetryPolicy.USER_DECIDE
     CapabilityId.APP_STOP -> RetryPolicy.USER_DECIDE
     CapabilityId.SYS_SHELL -> RetryPolicy.USER_DECIDE
+    // 特权通路同样按用户决定重投：任意命令重发就是再跑一遍，无例外。
+    CapabilityId.SYS_SHELL_FULL -> RetryPolicy.USER_DECIDE
     CapabilityId.NOTIFY_POST -> RetryPolicy.USER_DECIDE
 
     // UI 动作是一次性操控：重发就是再点一次、再滚一遍，无法证实第一次没生效。
@@ -100,13 +104,33 @@ fun retryPolicyOf(id: CapabilityId): RetryPolicy = when (id) {
 }
 
 /**
- * 按执行结论标注副作用状态。超时三兄弟（通道、等待、审批框）意味着动作可能
- * 已经派发出去，只能答 [EffectState.UNKNOWN]；其余失败都发生在派发之前。
- * 更细的 [EffectState.DISPATCHED] 由执行链路在派发边界接入，本层不产出。
+ * 按执行结论标注副作用状态。[dispatched] 是后端失败出口自己标注的「真正的外部动作
+ * 有没有被提交出去」（见 `BackendResult.Failed`）：
+ *
+ * - true → [EffectState.UNKNOWN]：动作可能已经发生（跑完、跑了一半或没跑成），任何
+ * 本地判据都分不清这三者；
+ * - false → 按错误码旧表：等待类超时（审批框、通道等待、无派发标记的传输超时）与
+ * [RelayError.TRANSPORT_UNKNOWN]（错误码本身就携带「已提交、结局无法证实」的事实）
+ * 仍按 UNKNOWN——那些路径没有后端在旁标注，超时/未知本身就是「可能已派发」的证据；
+ * 其余失败都发生在派发之前，答 [EffectState.NOT_STARTED]。
+ *
+ * 特权通路（`sys.shell.full`）完全由 [dispatched] 说话：命令串一旦提交（或提交与否
+ * 无法排除——GaveUp 时事务仍在队列、之后可能被执行），一律 UNKNOWN；提交之前的一切
+ * 失败如实答 NOT_STARTED，不把「没发出去」说成「可能已执行」——其中包括预算装不下时
+ * 那条 TRANSPORT_TIMEOUT（[dispatched] 为 false，reason 写明 nothing was sent）：
+ * 它的正确答案就是 NOT_STARTED，不落入「超时即未知」的旧表。
  */
-fun effectStateFor(ok: Boolean, error: RelayError?): EffectState = when {
+fun effectStateFor(
+    ok: Boolean,
+    error: RelayError? = null,
+    capability: CapabilityId? = null,
+    dispatched: Boolean = false,
+): EffectState = when {
     ok -> EffectState.VERIFIED
+    dispatched -> EffectState.UNKNOWN
+    capability == CapabilityId.SYS_SHELL_FULL -> EffectState.NOT_STARTED
     error == RelayError.TRANSPORT_TIMEOUT -> EffectState.UNKNOWN
+    error == RelayError.TRANSPORT_UNKNOWN -> EffectState.UNKNOWN
     error == RelayError.WAIT_TIMEOUT -> EffectState.UNKNOWN
     error == RelayError.GATE_APPROVAL_TIMEOUT -> EffectState.UNKNOWN
     else -> EffectState.NOT_STARTED

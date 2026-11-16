@@ -6,7 +6,6 @@ import interlock.relay.core.protocol.AccessTier
 import interlock.relay.core.protocol.RelayError
 import interlock.relay.core.protocol.ProbeResult
 import interlock.relay.core.protocol.SystemGrantState
-import interlock.relay.core.protocol.TierCeiling
 import interlock.relay.core.log.LogEvent
 import interlock.relay.core.log.LogSubsystem
 import interlock.relay.core.log.RunLog
@@ -46,6 +45,12 @@ class InterlockGate(
     private val broker: InterlockBroker,
     private val runLog: RunLog,
     private val now: () -> Long = ::monotonicNow,
+    /**
+     * 一次「本会话内不再询问」落账后的通知口。能力清单把会话授权状态铺给机器读者，
+     * 授权一变清单就该跟上；装配根借这条口子排一次重铺。到期失效没有事件可挂，
+     * 由清单的周期复查兜住。
+     */
+    private val onSessionGrant: () -> Unit = {},
 ) {
 
     /** 审批频率限速器：与执行配额同一张分档表，但单独实例、单独记账。 */
@@ -60,15 +65,18 @@ class InterlockGate(
     private val approvalSeen = java.util.LinkedHashMap<String, Long>()
 
     /**
+     * 一条能力此刻的档位读数。仅作**只读快照**用（调用侧的"禁止"档点名在闸门
+     * 一刀决策之前需要它 —— 用户拨了禁止，调用那侧先答档位语义，不该被机器侧的
+     * 拒绝标记盖过）；判定本身仍由 [authorize] 一处负责，这里不判"要不要审批"。
+     */
+    fun tierOf(id: CapabilityId): AccessTier = tiers.tierOf(id)
+
+    /**
      * [budgetMs] 为本次调用在通道里剩下的预算，用于给确认框窗口封顶，见 [InterlockBroker.request]。
      *
      * [system] 是调用方按本次裁决出的执行路线探测出的系统权限快照：同一能力在不同路线
      * 上需要的系统条件不同（坐标四条走可信屏就不需要无障碍），先定路线再探测才不会
      * 用「另一条路」的权限状态放行或挡下这一次调用。
-     *
-     * [consentScreen]：目标落在系统授权界面上（见 [ConsentSurfaces]）。这一条把会话授权
-     * 与「本会话内允许」那颗按钮一起关掉 —— 用户在别处答过一次"读通讯录"，不等于答过
-     * "替任意应用批准权限"。档位为「完全访问」时同样强制当场问。
      */
     suspend fun authorize(
         descriptor: CapabilityDescriptor,
@@ -77,7 +85,6 @@ class InterlockGate(
         argsIdentity: String,
         volatileTarget: Boolean,
         budgetMs: Long,
-        consentScreen: Boolean = false,
         system: ProbeResult,
         /**
          * 「把宿主自己带到前台」这一形状（`app.launch` 且参数只有本应用包名）。
@@ -99,10 +106,10 @@ class InterlockGate(
             return GateResult(true, false, null, systemState, tier, "host_bring_to_front")
         }
 
-        verdict(systemState, tier, descriptor.ceiling)?.let { return it }
+        verdict(systemState, tier)?.let { return it }
 
-        val sessionGranted = !consentScreen && tiers.sessionGranted(id, now())
-        val needsApproval = requiresApproval(tier, descriptor.ceiling, sessionGranted, consentScreen)
+        val sessionGranted = tiers.sessionGranted(id, now())
+        val needsApproval = requiresApproval(tier, sessionGranted)
         if (!needsApproval) {
             return GateResult(true, false, null, systemState, tier, "auto")
         }
@@ -127,7 +134,9 @@ class InterlockGate(
                 risk = riskOf(id),
                 callIndexInSession = index,
                 paramDetail = paramDetail,
-                allowsSessionGrant = descriptor.ceiling != TierCeiling.ASK_ONLY && !consentScreen,
+                // 会话授权对所有「询问审批」的调用开放。弹不弹框由档位唯一决定，
+                // 按钮给不给不再按能力或目标分级隐藏。
+                allowsSessionGrant = true,
             ),
             budgetMs = budgetMs,
         )
@@ -137,6 +146,7 @@ class InterlockGate(
 
             ApprovalOutcome.AllowedForSession -> {
                 tiers.grantForSession(id, now() + SESSION_GRANT_MS)
+                onSessionGrant()
                 GateResult(true, true, null, systemState, tier, "approved_session")
             }
 
@@ -231,9 +241,12 @@ class InterlockGate(
         }
 
         /**
-         * 双重校验的纯判定：给足三个输入就能出结论，不碰 Context、不碰系统状态、
+         * 双重校验的纯判定：给足两个输入就能出结论，不碰 Context、不碰系统状态、
          * 也不问限频器。放在伴生对象里是为了能在无设备环境下穷举验证。
          * 返回 null 表示放行。
+         *
+         * 档位只由用户的选择决定，描述符上保留的上限元数据不参与判定：
+         * 把元数据混进这张表，等于界面给了用户一档却由别处把它收回。
          *
          * 限流不在这张表里：入口防灌与执行配额都是调用方的账（见 RateLimiter 的两类
          * 阈值来源），把「量太大」与「权限/档位不够」混进同一张判定表，会让前者的
@@ -242,7 +255,6 @@ class InterlockGate(
         fun verdict(
             system: SystemGrantState,
             tier: AccessTier,
-            ceiling: TierCeiling,
         ): GateResult? = when {
             systemBlocks(system) -> when (system) {
                 SystemGrantState.UNAVAILABLE_ON_DEVICE -> GateResult(
@@ -274,31 +286,30 @@ class InterlockGate(
         }
 
         /**
-         * 一次调用是否需要弹确认框。三档上限各自的免弹语义：
-         * `ASK_ONLY` 永不免弹；`SESSION_ONLY` 的「始终允许」只在本会话内免弹；
-         * `ANY` 的「始终允许」长期免弹。缺了 `SESSION_ONLY` 就等于把截屏、
-         * 读通知这类升成永久免弹。
+         * 一次调用是否需要弹确认框。三档语义只由档位决定：
+         * 「完全访问」不弹，「询问审批」弹，「禁止」在纯判定表里就已挡下、走不到这里。
+         * 会话授权对所有「询问审批」的调用开放（见 [authorize] 里的 allowsSessionGrant），
+         * 不按能力或目标分级隐藏。
          *
          * 会话授权优先于档位判断：界面上那个「本会话内允许」按下去就是答了一次，
          * 若仍按 `tier == ASK` 弹框，那次答话等于白给——按钮成了装饰。
-         * `ASK_ONLY` 排在最前，因为它拿不到会话授权（`allowsSessionGrant` 为假），
-         * 顺序反过来就会把最高风险那一档也免掉。
          */
         fun requiresApproval(
             tier: AccessTier,
-            ceiling: TierCeiling,
             sessionGranted: Boolean,
-            /**
-             * 目标是系统授权界面（见 [ConsentSurfaces]）。命中即一律当场问：会话授权不认、
-             * 「完全访问」这一档也不放过 —— 那一档说的是用户信任这个助手替他操作他自己的
-             * 手机，不是信任它替任意应用向他要权限。
-             */
-            consentScreen: Boolean = false,
         ): Boolean = when {
-            consentScreen -> true
-            ceiling == TierCeiling.ASK_ONLY -> true
             sessionGranted -> false
-            else -> tier == AccessTier.ASK || ceiling == TierCeiling.SESSION_ONLY
+            else -> tier == AccessTier.ASK
+        }
+
+        /**
+         * 一条能力在某一档下的审批策略，给能力清单的机器读者看。
+         * 与 [requiresApproval] 同一张表派生：清单口径与真调用不分开。
+         */
+        fun approvalPolicy(tier: AccessTier): String = when (tier) {
+            AccessTier.DENIED -> "denied"
+            AccessTier.ASK -> "ask_each_call"
+            AccessTier.ALWAYS -> "none"
         }
 
         /**

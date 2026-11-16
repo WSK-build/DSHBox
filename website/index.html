@@ -32,7 +32,7 @@
        GitHub Pages 给静态资源设了 Cache-Control: max-age=600（10 分钟强缓存），
        查询串变化才会产生新 URL、强制浏览器重新取。否则用户可能拿到
        「新 HTML + 旧 JS/CSS」的组合。 -->
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.4">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.5.5">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -54,7 +54,7 @@
         "applicationCategory": "MobileApplication",
         "applicationSubCategory": "Local and remote AI / LLM assistant",
         "operatingSystem": "Android (ARM64, Android 10+)",
-        "softwareVersion": "1.5.4",
+        "softwareVersion": "1.5.5",
         "inLanguage": ["en", "zh-CN"],
         "description": "Run DeepSeek Harness locally on Android and connect to DSH remotely over LAN or the web, with an AI browser assistant, phone tools, shared folders and a terminal. Guided Debian and Node.js setup, no root or Termux required. 中文：在安卓手机与平板上本地运行 DSH，也可通过扫码或配对链接远程连接 DSH；集成 AI 浏览器助手、手机助手、系统文件共享区与终端，无需 Root 或单独安装 Termux。",
         "featureList": [
@@ -66,6 +66,7 @@
           "No Termux or other external software required",
           "Guided Debian and Node.js setup with bundled DSH and PRoot",
           "AI browser automation with element and area feedback",
+          "Phone assistant with approval tiers, protected apps and live virtual-display preview",
           "System shared folders and external file sharing",
           "UI localized in English, Chinese, Arabic, Spanish, French and Russian"
         ],
@@ -188,16 +189,20 @@
               <h2 class="whats-new-title" id="whats-new-hero-title">
                 <span class="lang-en">What's new</span><span class="lang-zh">最新版本变化</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.4</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.5</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>Atomic writer locks</strong> — full PID written before exclusive lock creation; kernel-lease recovery of orphaned empty locks.</span>
-                <span class="lang-zh"><strong>写者锁原子</strong> — 先写完整 PID 再排他创建锁；内核租约安全回收历史空锁。</span>
+                <span class="lang-en"><strong>Global tiers &amp; custom presets</strong> — switch all 40 regular phone capabilities between Default / Block all / Ask for all / Full access for all, or save a custom preset.</span>
+                <span class="lang-zh"><strong>全局档位与自定义预设</strong> — 40 项普通能力可在默认配置 / 全部禁止 / 全部询问审批 / 全部完全访问之间一键切换，也可保存常用预设。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Startup reliability</strong> — slow startups get the full 120 s window instead of being killed at 30 s.</span>
-                <span class="lang-zh"><strong>启动可靠性</strong> — 慢启动给满 120 秒窗口，不再 30 秒误杀。</span>
+                <span class="lang-en"><strong>Protected apps &amp; Full Shizuku</strong> — protect apps from launch, read and control by the assistant; an independent switch allows commands outside the built-in capability table.</span>
+                <span class="lang-zh"><strong>受保护应用与完全 Shizuku</strong> — 名单内应用不能被助手启动、读取或操作；独立开关可执行能力表之外的任意 shell 命令。</span>
+              </li>
+              <li>
+                <span class="lang-en"><strong>Live virtual-display preview</strong> — preview and control the virtual display from the DSH right sidebar; release closes only apps on that display and leaves the main display on DSHBox.</span>
+                <span class="lang-zh"><strong>虚拟屏实时预览</strong> — 在 DSH 右侧栏预览并操作虚拟屏；释放只关闭屏上应用，主屏保持 DSHBox。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -232,17 +237,17 @@
     <section class="stats" aria-label="Current release facts">
       <div class="container">
         <dl class="stats-strip reveal">
-          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.4</dd></div>
+          <div class="stat" style="--i:0"><dt><span class="lang-en">Version</span><span class="lang-zh">版本</span></dt><dd data-fact="version">v1.5.5</dd></div>
           <div class="stat" style="--i:1">
             <dt><span class="lang-en">APK size</span><span class="lang-zh">APK 大小</span></dt>
             <dd class="stat-apk-sizes">
-              <span><span class="stat-label lang-en">System</span><span class="stat-label lang-zh">系统</span><b data-fact="apkSizeSystem">154.6 MB</b></span>
-              <span><span class="stat-label">Gecko</span><b data-fact="apkSizeGecko">243.4 MB</b></span>
+              <span><span class="stat-label lang-en">System</span><span class="stat-label lang-zh">系统</span><b data-fact="apkSizeSystem">155.0 MB</b></span>
+              <span><span class="stat-label">Gecko</span><b data-fact="apkSizeGecko">244.0 MB</b></span>
             </dd>
           </div>
           <div class="stat" style="--i:2"><dt><span class="lang-en">Runtime setup</span><span class="lang-zh">环境准备</span></dt><dd><span class="lang-en">Guided setup</span><span class="lang-zh">分步安装</span></dd></div>
           <div class="stat" style="--i:3"><dt><span class="lang-en">Android</span><span class="lang-zh">系统要求</span></dt><dd>10+ (ARM64)</dd></div>
-          <div class="stat" style="--i:4"><dt><span class="lang-en">JVM tests</span><span class="lang-zh">JVM 测试项</span></dt><dd data-fact="testCount">1823</dd></div>
+          <div class="stat" style="--i:4"><dt><span class="lang-en">JVM tests</span><span class="lang-zh">JVM 测试项</span></dt><dd data-fact="testCount">4144</dd></div>
           <div class="stat" style="--i:5"><dt><span class="lang-en">DSH version</span><span class="lang-zh">DSH 版本</span></dt><dd data-fact="dshVersion">0.2.2-rc.2</dd></div>
         </dl>
       </div>
@@ -292,8 +297,8 @@
             </div>
             <h3><span class="lang-en">Pilot Phone Assistant</span><span class="lang-zh">手机助手 Pilot</span></h3>
             <p>
-              <span class="lang-en">Connect DSH to phone apps and system capabilities through foreground control, Shizuku and virtual displays, subject to your permissions and approvals.</span>
-              <span class="lang-zh">连接手机应用与系统能力，支持前台操作、Shizuku 与后台虚拟屏，按你设置的权限与审批执行。</span>
+              <span class="lang-en">Connect DSH to phone apps and system capabilities through foreground control, Shizuku and virtual displays; manage approvals with global tiers and protected apps, or enable the separate Full Shizuku capability.</span>
+              <span class="lang-zh">连接手机应用与系统能力，支持前台操作、Shizuku 与后台虚拟屏；可按全局档位与受保护应用控制审批，也可开启独立的完全 Shizuku 能力。</span>
             </p>
           </article>
 
@@ -503,7 +508,7 @@
           <div class="req-card reveal" style="--i:1">
             <h3><span class="lang-en">Storage &amp; Network</span><span class="lang-zh">存储与网络</span></h3>
             <ul>
-              <li><span class="lang-en"><span data-fact="apkSizeSystem">154.6 MB</span> for the System WebView version, <span data-fact="apkSizeGecko">243.4 MB</span> for the Embedded Gecko version</span><span class="lang-zh">系统 WebView 版约 <span data-fact="apkSizeSystem">154.6 MB</span>，内置 Gecko 版约 <span data-fact="apkSizeGecko">243.4 MB</span></span></li>
+              <li><span class="lang-en"><span data-fact="apkSizeSystem">155.0 MB</span> for the System WebView version, <span data-fact="apkSizeGecko">244.0 MB</span> for the Embedded Gecko version</span><span class="lang-zh">系统 WebView 版约 <span data-fact="apkSizeSystem">155.0 MB</span>，内置 Gecko 版约 <span data-fact="apkSizeGecko">244.0 MB</span></span></li>
               <li><span class="lang-en">Allow extra storage for Debian, Node.js and your workspace</span><span class="lang-zh">为 Debian、Node.js 与工作区预留充足存储</span></li>
               <li><span class="lang-en">Online mirror setup or offline runtime import</span><span class="lang-zh">支持在线多镜像源安装或离线导入运行环境</span></li>
             </ul>
@@ -571,7 +576,7 @@
                 <span class="lang-zh">内置完整 GeckoView 渲染内核，不依赖系统 WebView。体积较大。</span>
               </p>
               <ul class="download-option-meta">
-                <li><span data-fact="apkSizeGecko">243.4 MB</span> · ARM64</li>
+                <li><span data-fact="apkSizeGecko">244.0 MB</span> · ARM64</li>
               </ul>
               <div class="download-actions">
                 <a id="download-apk-gecko" class="button button-primary button-large" href="https://github.com/WSK-build/DSHBox/releases/latest">
@@ -601,25 +606,29 @@
                 <span class="lang-en">What's new in this version</span>
                 <span class="lang-zh">本次版本更新内容</span>
               </h2>
-              <span class="whats-new-badge" data-release-tag>v1.5.4</span>
-              <span class="whats-new-date" data-release-date>2026-11-14</span>
+              <span class="whats-new-badge" data-release-tag>v1.5.5</span>
+              <span class="whats-new-date" data-release-date>2026-11-16</span>
             </div>
             <ul class="whats-new-list" data-release-list>
               <li>
-                <span class="lang-en"><strong>Atomic writer locks</strong> — full PID written before exclusive lock creation via renameat2; kernel write lease confirms no live writer before recovering orphaned empty locks.</span>
-                <span class="lang-zh"><strong>写者锁原子</strong> — 先写完整 PID 再经 renameat2 排他创建锁；内核写租约确认无活写者后回收历史空锁。</span>
+                <span class="lang-en"><strong>Global tiers &amp; custom presets</strong> — switch all 40 regular phone capabilities between Default / Block all / Ask for all / Full access for all, or save a custom preset.</span>
+                <span class="lang-zh"><strong>全局档位与自定义预设</strong> — 40 项普通能力可在默认配置 / 全部禁止 / 全部询问审批 / 全部完全访问之间一键切换，也可保存常用预设。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Slow startups no longer killed at 30 s</strong> — a live process that is not yet ready gets the full 120 s startup window.</span>
-                <span class="lang-zh"><strong>慢启动不再被 30 秒误杀</strong> — 进程存活但尚未就绪时等待完整 120 秒启动窗口。</span>
+                <span class="lang-en"><strong>Protected apps</strong> — listed apps cannot be launched, read, or controlled by the assistant; the Full Shizuku / ADB / root channels are explicitly exempt.</span>
+                <span class="lang-zh"><strong>受保护应用</strong> — 名单内应用不能被助手启动、读取或操作；完全 Shizuku / ADB / root 通道明确豁免。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Orphaned empty locks auto-recover</strong> — historical empty locks no longer block startup permanently.</span>
-                <span class="lang-zh"><strong>强杀遗留空锁可自动恢复</strong> — 历史空锁不再永久阻塞启动。</span>
+                <span class="lang-en"><strong>Full Shizuku capability</strong> — an independent switch, off by default, allows commands outside the built-in capability table and shows the current execution identity.</span>
+                <span class="lang-zh"><strong>完全 Shizuku 能力</strong> — 独立开关，默认关闭；可执行能力表之外的任意 shell 命令，并显示当前执行身份。</span>
               </li>
               <li>
-                <span class="lang-en"><strong>Emergency guidance enhanced</strong> — warnings label .dsh / .dsh-emergency directories; foldable, copyable repair prompt template in 6 languages.</span>
-                <span class="lang-zh"><strong>应急引导增强</strong> — 警示标注 .dsh / .dsh-emergency 目录；新增可折叠、可复制修复提示词模板（六语）。</span>
+                <span class="lang-en"><strong>Device status &amp; media</strong> — read time, battery, screen, network, volume, brightness and device information; read images / video / audio in three categories, with microphone recording capped at 120 seconds per clip.</span>
+                <span class="lang-zh"><strong>设备状态与媒体</strong> — 可读取时间、电量、屏幕、网络、音量、亮度与设备信息；支持读取图片 / 视频 / 音频三类，麦克风录音单次上限 120 秒。</span>
+              </li>
+              <li>
+                <span class="lang-en"><strong>Live virtual-display preview</strong> — preview and control the virtual display from the DSH right sidebar; release closes only apps on that display and leaves the main display on DSHBox.</span>
+                <span class="lang-zh"><strong>虚拟屏实时预览</strong> — 在 DSH 右侧栏预览并操作虚拟屏；释放只关闭屏上应用，主屏保持 DSHBox。</span>
               </li>
             </ul>
             <a class="whats-new-more" data-release-link
@@ -837,6 +846,6 @@
     </div>
   </footer>
 
-  <script src="./assets/js/main.js?v=1.5.4" defer></script>
+  <script src="./assets/js/main.js?v=1.5.5" defer></script>
 </body>
 </html>

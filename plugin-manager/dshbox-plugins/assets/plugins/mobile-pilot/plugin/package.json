@@ -2,7 +2,7 @@
   "name": "@local/mobile-pilot",
   "license": "GPL-3.0-only",
   "version": "1.5.0",
-  "description": "deepseek0.1.5-rc.2,DSHBox1.4.0手机助手插件：把宿主应用绑进沙盒的 /opt/pilot 那组东西收成一个固定入口（mobile-pilot CLI），并把它注册成 DSH 原生工具（phone_status / phone_observe / phone_click / phone_setValue / phone_scroll / phone_node / phone_waitFor / phone_key / phone_launch / phone_capture / phone_intent / phone_surface / phone_call / phone_ask）",
+  "description": "deepseek0.2.2-rc.2,DSHBox1.5.2手机助手插件：把宿主应用绑进沙盒的 /opt/pilot 那组东西收成一个固定入口（mobile-pilot CLI），并把它注册成 DSH 原生工具（phone_status / phone_observe / phone_click / phone_setValue / phone_scroll / phone_node / phone_waitFor / phone_key / phone_launch / phone_capture / phone_intent / phone_surface / phone_call / phone_ask）；浏览器半边注册 DSH 右侧栏「虚拟屏」入口与静态面板（缺侧栏服务的旧 runtime 上入口不出现，由客户端半边自探测降级，不设包级版本门槛）",
   "private": true,
   "type": "commonjs",
   "main": "lib/index.js",
@@ -11,7 +11,9 @@
   },
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./mount": "./lib/mount.js",
+    "./stream": "./lib/stream.js",
     "./pilot": "./lib/pilot.js",
     "./tools": "./lib/tools.js",
     "./package.json": "./package.json"
@@ -19,6 +21,12 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
     }
   }
 }
