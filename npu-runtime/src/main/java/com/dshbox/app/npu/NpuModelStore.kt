@@ -186,12 +186,18 @@ object NpuRuntimeInfo {
 
     const val UNKNOWN_ARCH = "unknown"
 
-    /** QNN 的 SoC 模型号（与 QNN_SOC_MODEL_* 枚举一致）。 */
+    /**
+     * QNN 的 SoC 模型号（与 `QNN_SOC_MODEL_*` 枚举一致）。
+     *
+     * 取自 QnnTypes.h 的实际枚举值，**不要按 SoC 型号的数字后缀猜**：
+     * 枚举是历史累积的，例如 69 = SM8750、75 = SXR2330P、79 = IPQ9574，
+     * 而不是「8 Elite=75 / 8 Elite Gen 5=87」这种直觉顺序。
+     */
     private val SOC_NAME_TO_MODEL = mapOf(
-        "SM8550" to 69,
-        "SM8650" to 75,
-        "SM8750" to 79,
-        "SM8850" to 87,
+        "SM8550" to 43,   // QNN_SOC_MODEL_SM8550
+        "SM8650" to 57,   // QNN_SOC_MODEL_SM8650
+        "SM8750" to 69,   // QNN_SOC_MODEL_SM8750
+        "SM8850" to 87,   // QNN_SOC_MODEL_SM8850（本机实测验证）
     )
 
     val socName: String = Build.SOC_MODEL ?: Build.HARDWARE ?: ""
