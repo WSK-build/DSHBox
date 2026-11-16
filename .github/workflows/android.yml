@@ -33,6 +33,9 @@ jobs:
           sdkmanager --update >/dev/null 2>&1 || true
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platforms;android-36" "platforms;android-37.2" "build-tools;36.0.0" "platform-tools"
+          # NDK：:terminal-emulator 与 :npu-runtime 用 ndkBuild 构建原生库。
+          # 版本必须与根 build.gradle.kts 的 pinnedNdkVersion 一致。
+          sdkmanager "ndk;27.0.12077973"
 
       - name: Set up Node for DSH compatibility tests
         uses: actions/setup-node@v4

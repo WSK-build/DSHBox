@@ -9,7 +9,9 @@ val pinnedNdkVersion = "27.0.12077973"
 
 subprojects {
     plugins.withId("com.android.library") {
-        if (project.path == ":terminal-emulator") {
+        // 需要 native 构建的库统一绑定同一个 NDK 版本，避免各模块各自解析
+        // 默认版本导致 CI 上出现不同的工具链。
+        if (project.path == ":terminal-emulator" || project.path == ":npu-runtime") {
             extensions.configure<com.android.build.api.dsl.LibraryExtension> {
                 ndkVersion = pinnedNdkVersion
             }

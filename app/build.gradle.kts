@@ -130,6 +130,9 @@ dependencies {
     implementation(project(":terminal-session"))
     implementation(project(":terminal-view"))
     implementation(project(":plugin-manager"))
+    // 端侧 NPU 推理（Hexagon HTP / QNN / Genie）。推理跑在 :npu 独立进程里，
+    // 以免 DSP 会话独占 + create 卡死拖垮主进程。
+    implementation(project(":npu-runtime"))
     // 实例注册表：应急实例槽位与 home 目录操作。
     implementation(project(":instance-manager"))
     // 手机助手适配层。核心层（interlock-relay-core）由它 api 传递，故此处不必再写一行。

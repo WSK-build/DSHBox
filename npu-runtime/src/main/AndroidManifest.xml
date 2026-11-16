@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      NPU 推理服务：跑在**独立进程**（:npu）。
+
+      为什么必须独立进程：Genie/QNN 在 DSP（Hexagon HTP）上的会话是独占资源。
+      实测 GenieDialog_create（建图 + 加载数 GB ctx-bin）存在永久卡死，
+      唯一恢复手段是杀掉持有会话的进程（内核关闭 fastrpc fd → DSP 回收 User PD）。
+      若推理在主进程，卡死一次就等于整个 App 报废。
+    -->
+    <application>
+        <service
+            android:name=".NpuInferenceService"
+            android:exported="false"
+            android:process=":npu" />
+    </application>
+</manifest>

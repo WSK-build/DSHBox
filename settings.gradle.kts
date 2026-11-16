@@ -29,6 +29,8 @@ include(":terminal-emulator")
 include(":terminal-view")
 include(":terminal-session")
 include(":plugin-manager")
+// 端侧 NPU 推理（Hexagon HTP / QNN / Genie）：native 层 + 独立进程 Service + 看门狗。
+include(":npu-runtime")
 // 实例注册：DSH 主/应急实例的槽位持有、持久化与 home 目录操作。
 include(":instance-manager")
 include(":pilot")
