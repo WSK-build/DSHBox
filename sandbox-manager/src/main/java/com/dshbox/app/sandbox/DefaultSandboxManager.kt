@@ -214,6 +214,9 @@ class DefaultSandboxManager(
                 shareBinds = shareAreaBinds(),
             )
             val prootEnv = buildProotEnv(runtimeDir, "sandbox")
+            // proot 之外记录一次本地加速可达性：guest 内看不到硬件时，
+            // 这行日志能区分「没有驱动」/「未绑定」/「被厂商策略挡住」。
+            NativeAccelerationProbe.log()
             Log.i(TAG, "starting sandbox proot")
             sandboxProcess = processRunner.start(command, tag = "sandbox", env = prootEnv)
             Log.i(TAG, "sandbox proot process started")
