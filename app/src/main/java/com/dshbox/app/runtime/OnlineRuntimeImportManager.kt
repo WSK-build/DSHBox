@@ -319,6 +319,14 @@ class OnlineRuntimeImportManager(
                     userMessage = UiText.Res(R.string.online_err_manifest)))
             }
             appendLog(_debianState, "· manifest ${manifest.suite}/${manifest.arch}: ${manifest.packages.size} packages")
+            // android-side 层只有两个来源：已安装运行树，或随包 assets/runtime/android-side.tar.*。
+            // 两者都缺时（典型场景：CI 只 clone 源码、未生成 runtime/android-assets），
+            // 要在下载完全部软件包后才会在 prepareAndroidSide 处失败，界面表现为"反复下载、始终装不上"。
+            // 这里提前判掉：几秒内失败，错误码与文案与末段检查完全一致。
+            if (!hasAndroidSideSource()) {
+                return@withContext AppResult.Failure(AppError("ONLINE_ASIDE", "cannot prepare android-side layer",
+                    userMessage = UiText.Res(R.string.online_err_verify, listOf("android-side"))))
+            }
 
             val staging = File(appContext.filesDir, "online-runtime-staging")
             val debCache = File(cacheDir, "online-deb-cache").apply { mkdirs() }
@@ -781,6 +789,13 @@ class OnlineRuntimeImportManager(
         } finally {
             out.delete()
         }
+    }
+
+    /** android-side 层是否还有可用来源：已安装运行树，或随包 `assets/runtime/android-side.tar.*`。 */
+    private fun hasAndroidSideSource(): Boolean {
+        if (File(config.runtimeDir, "runtime-current/android-side").isDirectory) return true
+        val names = appContext.assets.list("runtime") ?: return false
+        return names.any { it.startsWith("android-side.tar.") }
     }
 
     private suspend fun prepareAndroidSide(staging: File): Boolean = withContext(Dispatchers.IO) {
