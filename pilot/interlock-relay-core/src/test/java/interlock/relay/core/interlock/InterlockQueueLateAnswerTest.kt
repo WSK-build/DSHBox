@@ -26,7 +26,6 @@ class InterlockQueueLateAnswerTest {
         detail: String? = null,
         identity: String? = null,
         volatile: Boolean = false,
-        session: Boolean = false,
     ) = ApprovalPrompt(
         capability = capability,
         // 身份默认与显示文字无关：真要比的是参数。各用例里凡按「对象/明细不同」
@@ -39,7 +38,7 @@ class InterlockQueueLateAnswerTest {
         risk = RiskLevel.MEDIUM,
         callIndexInSession = 1,
         paramDetail = detail,
-        allowsSessionGrant = session,
+        allowsSessionGrant = true,
         deadlineAtMs = 61_000L,
     )
 
@@ -102,70 +101,26 @@ class InterlockQueueLateAnswerTest {
         assertEquals(InterlockChoice.UNABLE_TO_SHOW, q.present(asked))
     }
 
-    @Test
-    fun aSessionGrantCannotBeSpentOnACallThatMustAskEveryTime() = runBlocking {
-        val q = queue()
-        val asked = prompt(session = true)
-        q.recordLateAnswer(asked, InterlockChoice.ALLOW_SESSION)
-        // 落在系统授权界面上的调用没有会话档，也不该吃到别人给的那一份
-        assertEquals(InterlockChoice.UNABLE_TO_SHOW, q.present(prompt(session = false)))
-        assertEquals(InterlockChoice.ALLOW_SESSION, q.present(asked))
-    }
-
-    @Test
-    fun aSessionGrantStoredForAnAskOnlyTargetIsDowngradedOnTheSpot() = runBlocking {
-        val q = queue()
-        val asked = prompt(session = false)
-        q.recordLateAnswer(asked, InterlockChoice.ALLOW_SESSION)
-        assertEquals("呈现侧漏判时，落缓冲这一步也要降级", InterlockChoice.ALLOW_ONCE, q.present(asked))
-    }
-
     /**
      * 目标换一次屏就指别人的那种调用，迟到那一答不进缓冲。
      *
-     * `nodeId` 是快照里的前序下标，下一次调用时它可能已经是别的控件。
-     * 但这一条**有会话档**可退（用户点「本会话内允许」就不会再被问），所以丢掉那一答之后
-     * 下一次仍然按"重新问一张"走 —— 把它落成终态会让一次正常的慢抬手变成硬失败。
+     * `nodeId` 是快照里的前序下标，下一次调用时它可能已经是别的控件，缓冲里的一答不能替
+     * 下一次调用认账。丢掉那一答之后下一次仍按"重新问一张"走：把缓冲落成终态会让一次
+     * 正常的慢抬手变成硬失败，而不缓冲则保持原来的可重试语义不变。
      */
     @Test
     fun anAnswerAboutANodeIdTargetIsNotBufferedButCanStillBeAskedAgain() = runBlocking {
         val q = queue()
-        val asked = prompt(target = "nodeId=8", volatile = true, session = true)
+        val asked = prompt(target = "nodeId=8", volatile = true)
         q.recordLateAnswer(asked, InterlockChoice.ALLOW_ONCE)
         assertEquals(InterlockChoice.UNABLE_TO_SHOW, q.present(asked))
     }
 
-    /**
-     * 既不认迟到答案、又没有会话档可退的那几条（`clip.read`/`loc.read`/`audio.capture`/
-     * `media.write`/`app.install` 与落在系统授权界面上的调用）：丢掉那一答之后，下一次重试
-     * 要拿到**终态**，而不是重新问一张。
-     *
-     * 不这么做就会形成一个没有上界的问环：抬手慢的人每一轮都答了、每一轮都不算数，而助手
-     * 看到 `E_AWAITING_CONSENT` 是"可重试"，会一直重试下去。
-     */
+    /** 到点自己收的那张卡没有抬手，不该留下任何答案。 */
     @Test
-    fun aDiscardedAnswerOnAnAskOnlyVolatileTargetEndsTheQuestion() = runBlocking {
+    fun anUnansweredExpiryLeavesNoVerdict() = runBlocking {
         val q = queue()
-        val asked = prompt(volatile = true, session = false)
-        q.recordLateAnswer(asked, InterlockChoice.ALLOW_ONCE)
-        assertEquals("这一问要到此为止，交回用户重新发起", InterlockChoice.EXPIRED, q.present(asked))
-        assertEquals("终态只花一次：再往后的调用该正常重新问", InterlockChoice.UNABLE_TO_SHOW, q.present(asked))
-    }
-
-    /** 用户答的是「拒绝」也一样：这一问结束，不能靠重试把它绕成第二次询问。 */
-    @Test
-    fun aDiscardedDenyEndsTheQuestionToo() = runBlocking {
-        val q = queue()
-        val asked = prompt(volatile = true, session = false)
-        q.recordLateAnswer(asked, InterlockChoice.DENY)
-        assertEquals(InterlockChoice.EXPIRED, q.present(asked))
-    }
-
-    /** 到点自己收的那张卡没有抬手，不该留下任何判决。 */
-    @Test
-    fun anUnansweredExpiryLeavesNoTerminalVerdict() = runBlocking {
-        val q = queue()
-        val asked = prompt(volatile = true, session = false)
+        val asked = prompt(volatile = true)
         q.recordLateAnswer(asked, InterlockChoice.EXPIRED)
         assertEquals(InterlockChoice.UNABLE_TO_SHOW, q.present(asked))
     }

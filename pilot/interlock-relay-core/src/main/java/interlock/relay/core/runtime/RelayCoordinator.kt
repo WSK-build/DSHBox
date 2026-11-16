@@ -4,6 +4,7 @@ import android.content.Context
 import interlock.relay.core.protocol.CapabilityArgsSpec
 import interlock.relay.core.protocol.CapabilityDescriptor
 import interlock.relay.core.protocol.CapabilityId
+import interlock.relay.core.protocol.CapabilityRegistry
 import interlock.relay.core.spi.RelayCapabilities
 import interlock.relay.core.spi.RelayText
 import interlock.relay.core.protocol.AccessTier
@@ -17,13 +18,13 @@ import interlock.relay.core.protocol.effectStateFor
 import interlock.relay.core.protocol.retryPolicyOf
 import interlock.relay.core.exec.BackendCall
 import interlock.relay.core.exec.BackendResult
-import interlock.relay.core.exec.a11y.NodeSelector
 import interlock.relay.core.interlock.ApprovalOutcome
 import interlock.relay.core.interlock.InterlockTargets
-import interlock.relay.core.interlock.ConsentSurfaces
 import interlock.relay.core.interlock.GateResult
 import interlock.relay.core.interlock.InterlockGate
+import interlock.relay.core.interlock.ProtectedAppsStore
 import interlock.relay.core.interlock.RateLimiter
+import interlock.relay.core.interlock.protectedTarget
 import interlock.relay.core.interlock.SystemStateProbe
 import interlock.relay.core.log.AuditEntry
 import interlock.relay.core.log.AuditLog
@@ -33,8 +34,16 @@ import interlock.relay.core.log.RunLog
 import interlock.relay.core.runtime.monotonicNow
 import interlock.relay.core.storage.RelayPaths
 import interlock.relay.core.surface.BackendDispatcher
+import interlock.relay.core.surface.LaunchFailureClass
 import interlock.relay.core.surface.SurfaceDecision
 import interlock.relay.core.surface.SurfacePolicy
+import interlock.relay.core.surface.SurfacePreference
+import interlock.relay.core.surface.TargetLanding
+import interlock.relay.core.surface.TargetLandingTable
+import interlock.relay.core.surface.TargetRoute
+import interlock.relay.core.surface.resolveLandingTarget
+import interlock.relay.core.surface.routeForTarget
+import interlock.relay.core.surface.settleLaunchResult
 import interlock.relay.core.transport.HandlerResult
 import interlock.relay.core.transport.ParkedRequest
 import interlock.relay.core.transport.ParkedRequestBridge
@@ -75,8 +84,6 @@ class RelayCoordinator(
      * 先定路线再探测，权限快照才与真实执行同口径。
      */
     private val probe: SystemStateProbe,
-    /** 按编号回查节点归属，用于闸门判「目标是不是系统授权界面」。答不出就回 null。 */
-    private val nodeOwner: (Int) -> interlock.relay.core.exec.RelayBackend.TargetOwner? = { null },
     private val paths: RelayPaths,
     private val runLog: RunLog,
     private val auditLog: AuditLog,
@@ -97,6 +104,12 @@ class RelayCoordinator(
     private val parkBridge: ParkedRequestBridge? = null,
     /** 挂起等待环的运行作用域；取不到（未启动/已停止）时同样走内联等待。 */
     private val parkScope: (() -> CoroutineScope?)? = null,
+    /**
+     * 特权通路（`sys.shell.full`）此刻的执行身份 uid，由装配根供 Shizuku 快照值；
+     * 授权记录的 `uid` 字段按它署名（shell / root / uid / unknown）。读不到时如实
+     * unknown，不冒充本应用身份。
+     */
+    private val fullShellUid: () -> Int = { -1 },
     /** v2 取消意愿查询：等待环每轮开跑前问一次，答 true 即以「已取消、未执行」收场。 */
     private val isCancelRequested: ((String) -> Boolean)? = null,
     /**
@@ -106,6 +119,49 @@ class RelayCoordinator(
      * 「自己在后台模式里跑」，而这两种的处置完全相反（一个去系统里开通知，一个退出后台模式）。
      */
     private val approvalDeadEnd: () -> String? = { null },
+    /**
+     * 这台机器是否**拒绝过** trusted 建屏（装配根从 Shizuku 后端读实时标记）。
+     *
+     * 调用侧的裁决在清单之前跑：用户被拒后切了前台，`surface.virtual` 的 requiresMode
+     * 分支会先答「需要后台模式」——插件便按它把人送回后台再撞一次拒绝，绕成循环。
+     * 被拒是这台机器上的固定结论，必须在 requiresMode 分支**之前**分派并优先回答
+     * （回 E_SURFACE_TRUSTED_DENIED，reason 写明改前台）。null/缺省 = 未接装配，
+     * 这条旁路不生效（单测装配不含它时行为与无标记一致）。
+     */
+    private val trustedDisplayDenied: () -> Boolean = { false },
+    /**
+     * 这台设备建可信屏被运行时自检判过「破坏主屏」（装配根从 Shizuku 后端读实时
+     * 标记）。它**不进调用侧 fail-fast**（earlyVerdict）：unsafe 只封自动后台路由——
+     * 就是下面那段「替用户先建屏再启动」的准备，以及后端 supports 的后台落点真值表；
+     * 显式的 surface.virtual create/release/query 不受它拦，标记的解除依赖那条通路。
+     */
+    private val trustedDisplayUnsafe: () -> Boolean = { false },
+    /**
+     * 目标落点层（独立于执行偏好裁决的派发前路由）。接上后：
+     * - `app.launch` 的核验落点写进登记簿，后续 `ui.*` / `screen.*` 按目标沿用；
+     * - 后台面缺失且 `surface.virtual` 为「完全访问」时，先按现有建屏逻辑准备再后台启动；
+     * - 后台启动失败按确定性/暂时性/未知分类，只有确定性失败允许一次目标级前台兜底；
+     * - 结果未知的启动以参数摘要记幂等标记，相同的重发先去核实；
+     * 同一目标被成功核实（pkg.query / ui.snapshot / 核验过的启动）后标记即摘。
+     * null/缺省 = 未接路由层：落点沿用、备屏与幂等标记全部不生效，调用按执行偏好
+     * 裁决；唯"未核验的启动不是成功"这条与装配无关，无登记簿时同样成立。
+     */
+    private val landingTable: TargetLandingTable? = null,
+    /** 落点重校验用：记录指向的那块可信屏此刻还在不在。 */
+    private val trustedDisplayAlive: () -> Boolean = { false },
+    /**
+     * 落点沿用前的"目标还在不在最前面"核对：按屏号回当前顶层包名，读不到回 null
+     * （null 表示核验不了，调用侧不沿用旧落点）。
+     */
+    private val topPackageOn: suspend (Int) -> String? = { null },
+    /** 用户当前的执行偏好读数：落点记录按它判失效。 */
+    private val surfacePreference: () -> SurfacePreference = { SurfacePreference.FOREGROUND },
+    /**
+     * 「受保护应用」名单。null/缺省 = 未接装配，这条旁路不生效（行为与没有名单时
+     * 完全一致）。名单优先级高于能力档位：判定发生在进审批之前与派发之前，
+     * 不读档位——完全访问也不放行。
+     */
+    private val protectedApps: ProtectedAppsStore? = null,
 ) : RelayRequestHandler {
 
     private val appContext = context.applicationContext
@@ -200,20 +256,135 @@ class RelayCoordinator(
             )
         }
 
+        // 受保护应用（入口层）：参数里明确点名了目标包名、且该包此刻在名单里时，
+        // 在进闸门/审批之前直接拒绝——不入审批队列、不弹确认框，也不占一次用户确认。
+        // 名单优先级高于能力档位：判定在这里与档位无关，完全访问同样被拒；名单为空时
+        // protectedTarget 的读数是空集，blocks 恒 false，行为与没有名单时完全一致。
+        // 完全 Shizuku/ADB/root 不在此列：sys.shell / sys.shell.full 不解析命令，原样放行。
+        val namedTargetPackage = protectedTarget(descriptor.id, request.args)
+        if (namedTargetPackage != null && protectedApps?.blocks(namedTargetPackage) == true) {
+            logProtectedBlock(descriptor.id, namedTargetPackage, BLOCKED_AT_ENTRY)
+            return HandlerResult.Done(
+                rejected(
+                    request.id,
+                    RelayError.PACKAGE_PROTECTED,
+                    "package $namedTargetPackage is on the user's protected-apps list: the assistant " +
+                        "can neither operate it nor read it; it can run only after the user removes " +
+                        "that package from the protected-apps page",
+                    descriptor,
+                    elapsed(),
+                ),
+            )
+        }
+
         val (targetLabel, paramDetail) = InterlockTargets.of(descriptor, request.args) { count ->
             String.format(text.string(interlock.relay.core.R.string.relay_approval_char_count), count)
         }
-        val decision = if (bringToFront) {
+        // 结果未知的启动的幂等缝：同一份参数的上一次启动还没核实结局时，相同的重发先被
+        // 挡下去核实。标记带寿命，核实动作本身不受限；没有路由层装配时此缝不存在。
+        val launchDigest = if (descriptor.id == CapabilityId.APP_LAUNCH && !bringToFront) {
+            auditLog.argsDigestOf(request.args.toString())
+        } else {
+            null
+        }
+        if (launchDigest != null && landingTable?.hasUnknownLaunch(launchDigest) == true) {
+            return HandlerResult.Done(
+                rejected(
+                    request.id,
+                    RelayError.TRANSPORT_UNKNOWN,
+                    "an identical launch earlier ended with an unverified outcome: check where the " +
+                        "target actually is with pkg.query or ui.snapshot before launching the same " +
+                        "target again",
+                    descriptor,
+                    elapsed(),
+                ),
+            )
+        }
+        // 派发前的独立路由层：有目标落点记录时沿用，没有时退回执行偏好裁决。
+        // [followedTarget] 非空表示这份裁决来自落点记录，派发前要重新校验。
+        var followedTarget: String? = null
+        var decision: SurfaceDecision = if (bringToFront) {
             // 收尾回宿主这一形状必须落在用户眼前的屏上：后台优先模式下它会被派去可信虚拟屏，
             // 应用起在那块屏上、用户根本看不到——而这恰恰是这条命令要修的事。
             SurfaceDecision(SurfaceKind.FOREGROUND)
         } else {
-            policy.decide(descriptor)
+            when (val route = routeCall(descriptor, request.args)) {
+                is TargetRoute.Follow -> {
+                    followedTarget = route.target
+                    route.decision
+                }
+                is TargetRoute.Reject -> return HandlerResult.Done(
+                    rejected(
+                        request.id,
+                        route.error,
+                        route.reason,
+                        descriptor,
+                        elapsed(),
+                    ),
+                )
+                TargetRoute.None -> policy.decide(descriptor)
+            }
         }
         // 单一执行面的能力被偏好链卡死时（用户选了前台，而它只认可信屏）在这里点名
         // 「需要哪个模式」：不进闸门、不进后端——伪造的前台落点只会把一次注定失败的
         // 调用先送过用户确认，再换成一条泛化的「够不着」。
-        decision.requiresMode?.let { mode ->
+        // 顺序里有行为：**用户的 DENIED 档先于机器的拒绝**——档位是用户自己的决定，
+        // 把能力拨到禁止时回 GATE_HOST_DENIED（档位语义），不被 ROM 的拒绝标记盖过
+        // 说成"这台机器拒绝"；其后被拒（trustedDisplayDenied）才在 requiresMode 解析
+        // 之前分派（[earlyVerdict]，id 限 surface.virtual）。用户被拒后切了前台，surface.virtual 的
+        // 裁决会先给出 requiresMode——若先答 modeRequired，插件就按"切回后台/建屏"建议，
+        // 用户又切回后台再撞一次拒绝，绕成循环。被拒是这台机器上的固定结论，永远优先，
+        // 回包 reason 写明改前台。
+        // **顺序在这里成一段单一判定**（[earlyVerdict]）：用户的 DENIED 档先于机器的拒绝
+        // ——档位是用户自己的决定，被拨禁止时回 GATE_HOST_DENIED（下一步"去档位页解禁"），
+        // 不被 ROM 的拒绝标记盖过说成"这台机器拒绝"；其后 surface.virtual 被拒才按
+        // E_SURFACE_TRUSTED_DENIED 回（reason 写明改前台）。两项都是在 requiresMode 解析
+        // **之前**：如果先答 modeRequired，插件按"切回后台/建屏"建议把人送回后台再撞一次
+        // 拒绝，绕成循环。tierDenied 从闸门只读档位、surfaceDenied 从装配根对后端收实时
+        // 标记，两读都进同一个纯函数——生产路径就是这里，测试穷举的就是同一份判据。
+        // 「把宿主带回前台」这一形状不进这道判定：它不读数据、不改状态，三档的语义都是
+        // 同一次 bring-to-front，禁止档也拦下就断了任务链的收尾；机器的 trusted 拒绝
+        // 标记只对 surface.virtual 有意义，本就轮不到这条形状。
+        when (val verdict = if (bringToFront) {
+            null
+        } else {
+            earlyVerdict(
+                id = descriptor.id,
+                tierDenied = gatekeeper.tierOf(descriptor.id) == AccessTier.DENIED,
+                surfaceDenied = trustedDisplayDenied(),
+            )
+        }) {
+            RelayError.GATE_HOST_DENIED -> return HandlerResult.Done(
+                rejected(
+                    request.id,
+                    verdict,
+                    "capability ${descriptor.id.wire} is set to denied by the user's tier; " +
+                        "asking the user to lift the tier is the only way through",
+                    descriptor,
+                    elapsed(),
+                ),
+            )
+            RelayError.SURFACE_TRUSTED_DENIED -> return HandlerResult.Done(
+                rejected(
+                    request.id,
+                    verdict,
+                    "this system has refused the trusted-display create for this app; switch the " +
+                        "involved operations to foreground mode instead of retrying surface.virtual",
+                    descriptor,
+                    elapsed(),
+                    surface = decision.surface,
+                    degradedFrom = decision.degradedFrom,
+                ),
+            )
+            else -> Unit
+        }
+        // 「单面能力被偏好链卡死」在进闸门前打回（[decision.requiresMode]）。
+        // `surface.virtual` 的 create/release/query 是**管理动作**——用户在
+        // 前台偏好下被回「切后台再重试」是绕圈：显式 create/release 是 unsafe 与残留屏
+        // 的解除通路，恰恰要在前台偏好下可达。判据收在纯函数 [modeRequiredFor]
+        // （与 RelayContainer.capabilityRow 共用同一张表）；DENIED 档、系统拒绝的既有
+        // 优先级不变（earlyVerdict 在这一问之前分派）。
+        modeRequiredFor(descriptor.id, decision.requiresMode)?.let { mode ->
             return HandlerResult.Done(
                 rejected(
                     request.id,
@@ -224,6 +395,61 @@ class RelayCoordinator(
                     elapsed(),
                     surface = decision.surface,
                     degradedFrom = decision.degradedFrom,
+                ),
+            )
+        }
+        // 建屏档位「询问审批」下的后台启动：这次调用**不建屏、不弹卡**，直接回一条
+        // 结构化错误，让助手先显式调 `surface.virtual {"action":"create"}`，建好屏再
+        // 重试这条启动。
+        //
+        // 为什么不在这一次调用里等那张建屏卡：等卡要占着这次调用的执行槽，助手拿不到
+        // 回包只能干等；而 app.launch 自己还要再问一次——同一次调用里挤两张卡，
+        // 用户先点哪张都会让另一张的答复落空。改成显式两步之后，建屏那张卡走既有的
+        // 挂起审批（不占执行槽），启动那次重试再问它自己那一张。
+        //
+        // 判据八条全真才走这一支：启动类能力、非「带回宿主」、用户要的是「优先后台」、
+        // 此刻没有可信屏，且建屏档位正是「询问审批」，**并且那块屏此刻建得出来**
+        // （[SurfacePolicy.trustedSurfaceReachable]：系统版本与 shell 通路够，且这台
+        // 机器没拒绝过建屏），且路由层接上了。
+        //
+        // 后三条是这一支的**前提**，缺一条就不该提「先建屏再重试」：
+        // - 建不出来时（Android 10–12、Shizuku 未授权/掉线、ROM 拒绝过建屏）那条建议
+        // 指向一个用户此刻做不到的动作，助手只会白弹一张建不出来的屏的审批卡；此时
+        // 落回 [SurfacePolicy] 的前台降级，回包带准确原因（E_SURFACE_API_LEVEL /
+        // E_SURFACE_NO_SHELL），与「后台跑不了就退前台并报 degraded」的承诺一致。
+        // - 路由层没接时没有「建屏→重试」这套回程，按构造器 KDoc「未接路由层 = 行为
+        // 不变」照旧走执行偏好裁决。
+        // 屏已存在时后台路由照旧，建屏档位是「完全访问」时由既有备屏路径自动建。
+        if (descriptor.id == CapabilityId.APP_LAUNCH &&
+            !bringToFront &&
+            surfacePreference() == SurfacePreference.BACKGROUND_PREFERRED &&
+            !trustedDisplayAlive() &&
+            gatekeeper.tierOf(CapabilityId.SURFACE_VIRTUAL) == AccessTier.ASK &&
+            // 此刻那块屏建不建得出来：建不出来就别叫助手去建（那张卡弹了也不会成）。
+            policy.trustedSurfaceReachable() &&
+            // 这台机器拒绝过建屏：再建议建屏是让助手撞同一堵墙。
+            !trustedDisplayDenied() &&
+            // 未接路由层 = 行为不变：没有落点层就没有「建屏→重试」这套回程。
+            landingTable != null
+        ) {
+            runLog.warn(
+                LogSubsystem.GATE,
+                LogEvent.SURFACE_PREPARE_SKIPPED,
+                "cap" to descriptor.id.wire,
+                "cause" to "tier_ask",
+            )
+            return HandlerResult.Done(
+                rejected(
+                    request.id,
+                    RelayError.SURFACE_UNAVAILABLE,
+                    "the trusted display is not created; call surface.virtual " +
+                        "{\"action\":\"create\"} first (it may ask for approval), then retry this " +
+                        "launch — the background intent is kept",
+                    descriptor,
+                    elapsed(),
+                    // 本该后台、屏未就绪：回包按既有 rejected 形状说清这一层。
+                    surface = SurfaceKind.FOREGROUND,
+                    degradedFrom = SurfaceKind.BACKEND_TRUSTED,
                 ),
             )
         }
@@ -265,9 +491,6 @@ class RelayCoordinator(
         // 目标钉不钉得住同一颗控件（nodeId、或只给 package+class+index 的选择器）
         // 由呈现层同一处规则判，缓冲与重试接框都照它。
         val volatileTarget = InterlockTargets.isVolatileTarget(descriptor, request.args)
-        // 目标是系统授权界面时不认会话授权、也不给「本会话内允许」：AI 点掉别人的
-        // 授权框等于替用户答应任意权限申请，这道判据在两层闸门里都排最前。
-        val consentScreen = consentTarget(request.args)
         val gateStartedAt = now()
         val gate = gatekeeper.authorize(
             descriptor = descriptor,
@@ -277,7 +500,6 @@ class RelayCoordinator(
             // 同源，事后能从记录里对回是同一次调用。
             argsIdentity = argsIdentity,
             volatileTarget = volatileTarget,
-            consentScreen = consentScreen,
             // 确认框只花得起这笔预算的一部分：剩下的要留给回写响应，
             // 否则「用户刚点完允许」正好撞上「宿主放弃这条请求」。
             budgetMs = budgetMs - APPROVAL_REPLY_MARGIN_MS,
@@ -303,13 +525,15 @@ class RelayCoordinator(
                 paramDetail = paramDetail,
                 argsIdentity = argsIdentity,
                 volatileTarget = volatileTarget,
-                consentScreen = consentScreen,
                 system = system,
                 decision = decision,
+                followedTarget = followedTarget,
+                bringToFront = bringToFront,
                 budgetMs = budgetMs,
                 startedAt = startedAt,
                 gateStartedAt = gateStartedAt,
                 gate = gate,
+                namedTargetPackage = namedTargetPackage,
             )
         }
         // 没走挂起面的那一支同样要记：内联窗口到期后这一问还在等用户，而这一次调用
@@ -320,8 +544,10 @@ class RelayCoordinator(
                 request = request,
                 descriptor = descriptor,
                 targetLabel = targetLabel,
-                gate = gate,
-                decision = decision,
+                plannedGate = gate,
+                plannedDecision = decision,
+                followedTarget = followedTarget,
+                bringToFront = bringToFront,
                 budgetMs = budgetMs,
                 startedAt = startedAt,
             ),
@@ -337,11 +563,17 @@ class RelayCoordinator(
         request: RelayRequest,
         descriptor: CapabilityDescriptor,
         targetLabel: String?,
-        gate: GateResult,
-        decision: SurfaceDecision,
+        plannedGate: GateResult,
+        plannedDecision: SurfaceDecision,
+        followedTarget: String?,
+        bringToFront: Boolean,
         budgetMs: Long,
         startedAt: Long,
     ): RelayResponse {
+        // 挂起续行、备屏都可能改写执行面与系统条件：裁决与闸门快照都是可变的，
+        // 入参只是当时的快照。
+        var decision = plannedDecision
+        var gate = plannedGate
         if (!gate.allowed) {
             val error = gate.error ?: RelayError.GATE_HOST_DENIED
             val deniedElapsed = now() - startedAt
@@ -384,6 +616,65 @@ class RelayCoordinator(
             )
         }
         logApprovalVerdict(request.id, gate)
+        // 硬边界：批准不等于放行。审批期间（内联等待或挂起续行都一样）用户可能刚把
+        // 目标包加进受保护名单——批准回填与真正派发之间必须再查一次名单。内联路径与
+        // 挂起续行共用本函数，这一处就是两条通路的共同关口。
+        val preDispatchProtected = protectedTarget(descriptor.id, request.args)
+            ?.takeIf { protectedApps?.blocks(it) == true }
+        if (preDispatchProtected != null) {
+            logProtectedBlock(descriptor.id, preDispatchProtected, BLOCKED_AT_PRE_DISPATCH)
+            return rejected(
+                request.id,
+                RelayError.PACKAGE_PROTECTED,
+                "package $preDispatchProtected was added to the user's protected-apps list while " +
+                    "this call was pending: the approval no longer carries it and nothing was " +
+                    "dispatched",
+                descriptor,
+                now() - startedAt,
+                logRejection = false,
+            )
+        }
+        // 派发前重新校验落点：等人的那段时间里屏可能被收掉、目标可能被停、偏好可能被改。
+        // 旧裁决不硬发 —— 落点没了就以结构化错误收场，重试会重新路由，绝不静默改道前台。
+        if (followedTarget != null && landingTable != null) {
+            val stillThere = landingTable.get(followedTarget)
+            if (stillThere == null ||
+                (decision.surface == SurfaceKind.BACKEND_TRUSTED && !trustedDisplayAlive())
+            ) {
+                return rejected(
+                    request.id,
+                    RelayError.SURFACE_UNAVAILABLE,
+                    "the recorded landing for this target was invalidated while the call was pending " +
+                        "(display reclaimed, target stopped, or the preference changed): launch the " +
+                        "target again or recreate the display, then retry",
+                    descriptor,
+                    now() - startedAt,
+                    logRejection = false,
+                    surface = decision.surface,
+                    degradedFrom = decision.degradedFrom,
+                )
+            }
+        }
+        // 挂起续行的场景可能已经变了（屏被收、偏好被改、目标被停）：派发前按当前事实
+        // 重裁 app.launch 的执行面，不拿旧裁决硬发。屏被收是暂时性失败 —— 保持后台意图
+        // 回可复查错误，不静默改前台；偏好被用户改了则跟随当前选择（裁决层就是偏好链）。
+        if (descriptor.id == CapabilityId.APP_LAUNCH && !bringToFront && landingTable != null) {
+            if (decision.surface == SurfaceKind.BACKEND_TRUSTED && !trustedDisplayAlive()) {
+                return rejected(
+                    request.id,
+                    RelayError.BACKEND_UNAVAILABLE,
+                    "the trusted display was reclaimed while the call was pending: the background " +
+                        "intent is kept - retry rather than switching to foreground",
+                    descriptor,
+                    now() - startedAt,
+                    logRejection = false,
+                    surface = decision.surface,
+                    degradedFrom = decision.degradedFrom,
+                )
+            }
+            val refreshedDecision = policy.decide(descriptor)
+            if (refreshedDecision.surface != decision.surface) decision = refreshedDecision
+        }
         // 执行限流在授权之后、派发之前：只对真正执行的调用记账。走审批通路的调用
         // 不占执行配额——它的频率已在闸门里按「同一件事」合并计入，这里再记一次
         // 等于同一次调用记两笔；没人答的确认框也就吃不到执行额度。
@@ -425,8 +716,10 @@ class RelayCoordinator(
                 request = request,
                 descriptor = descriptor,
                 targetLabel = targetLabel,
-                gate = cancelledGate(gate),
-                decision = decision,
+                plannedGate = cancelledGate(gate),
+                plannedDecision = decision,
+                followedTarget = followedTarget,
+                bringToFront = bringToFront,
                 budgetMs = budgetMs,
                 startedAt = startedAt,
             )
@@ -462,6 +755,129 @@ class RelayCoordinator(
         // 连起来，就是一次审批的完整来回；断在这里说明是守卫把动作拦下了。
         runLog.info(LogSubsystem.GATE, LogEvent.REQUEST_DISPATCH_ARMED, "id" to request.id)
 
+        // 路由层的建屏准备：闸门放行、守卫边界落盘之后才动 —— 调用还被用户挡着时先建
+        // 一面屏，等于替一次可能不发生的启动花了系统资源。走真实闸门与派发（探测、限流、
+        // 运行日志与普通调用同一套），并按当前偏好重算 —— 挂起续行的场景里偏好可能已变。
+        // 派发前置守卫按请求粒度在上方落盘，本请求的全部派发（含备屏）都在它的覆盖之下。
+        // **自动建屏只走「完全访问」一档**：那一档不需要用户点头，问一次就建。
+        // 「询问审批」与「禁止」两档都不在这里建屏——前者要占着执行槽等一张卡（助手拿不到
+        // 回包，而 app.launch 自己还要再问一次，两张卡挤在同一次调用里走不下去），后者是
+        // 用户明说不许建。两档都不静默：各留一条点名原因的日志，降级原因随回包。
+        if (landingTable != null && !bringToFront &&
+            descriptor.id == CapabilityId.APP_LAUNCH &&
+            SurfaceKind.BACKEND_TRUSTED in descriptor.surfaces &&
+            surfacePreference() == SurfacePreference.BACKGROUND_PREFERRED &&
+            // 复核：unsafe 只封**自动**建屏这条路由——设备被自检判过"建屏破坏主屏"时，
+            // 替用户自动再建一面就是把同一破坏再演一遍。显式的 surface.virtual 不受此限
+            // （它是复检与解除标记的通路）。探测侧的 trustedDisplayAvailable 同样把 unsafe
+            // 算进去，两处口径一致。
+            !trustedDisplayUnsafe() &&
+            decision.surface == SurfaceKind.FOREGROUND
+        ) {
+            when (gatekeeper.tierOf(CapabilityId.SURFACE_VIRTUAL)) {
+                AccessTier.DENIED -> {
+                    // 建屏拨在「禁止」：不建屏、也不弹卡。但「优先后台」没备屏不能静默——
+                    // 否则用户会把「自己拨了禁止」读成「设置没生效」。点名原因，启动照
+                    // 偏好链回前台，并把降级如实写进回包（本该后台、实际前台）。
+                    runLog.warn(
+                        LogSubsystem.GATE,
+                        LogEvent.SURFACE_PREPARE_SKIPPED,
+                        "cap" to descriptor.id.wire,
+                        "cause" to "tier_denied",
+                    )
+                    decision = SurfaceDecision(
+                        SurfaceKind.FOREGROUND,
+                        degradedFrom = SurfaceKind.BACKEND_TRUSTED,
+                        // 降级原因是档位不许建屏，不是「屏此刻够不着」：那一句由日志的
+                        // tier_denied 与这一条码一起说清。
+                        //
+                        // **插件侧的文案可能指向错能力（只记录，不改消费端）**：这一条码
+                        // 的通用文案是「你未允许助手使用该能力」，挂在 app.launch 这一行
+                        // 上读起来像「app.launch 被禁」，而真正被禁的是 surface.virtual。
+                        // 场景可判：这一支只在「优先后台 + 此刻没有可信屏 + 路由层已接」
+                        // 时出现——「前台偏好」进不来（不进备屏块），「屏还在」也进不来
+                        // （裁决会直接选后台面）。该分支沿用通用错误码，未单独细分。
+                        reason = RelayError.GATE_HOST_DENIED.code,
+                    )
+                }
+                AccessTier.ASK -> {
+                    // 建屏拨在「询问审批」：这一档不在这里替用户点头，也不在这儿等第二张卡。
+                    // 助手要建屏就自己显式调 surface.virtual（那一条自己会弹一张审批卡，
+                    // 走既有挂起审批，不占执行槽），建好屏再重试这条启动。
+                    // 走到这里说明入口那道 ASK 拒绝没生效：偏好是在审批期间变的，或那块屏
+                    // 此刻根本建不出来（SDK 不够、shell 不在、这台机器拒绝过建屏——那一支
+                    // 入口处已经不给「先建屏」的提示了）。照旧降级回前台并留一条点名原因的
+                    // 日志，不静默。
+                    runLog.warn(
+                        LogSubsystem.GATE,
+                        LogEvent.SURFACE_PREPARE_SKIPPED,
+                        "cap" to descriptor.id.wire,
+                        "cause" to "tier_ask",
+                    )
+                    decision = SurfaceDecision(
+                        SurfaceKind.FOREGROUND,
+                        degradedFrom = SurfaceKind.BACKEND_TRUSTED,
+                        // 降级原因取更具体的那条：裁决层已经给出「屏建不出来」的准确理由
+                        // （E_SURFACE_API_LEVEL / E_SURFACE_NO_SHELL）时，不把它抹成一句
+                        // 泛化的「屏不可用」——用户要能分清「这台机器太旧」与「Shizuku 没开」。
+                        reason = decision.reason ?: RelayError.SURFACE_UNAVAILABLE.code,
+                    )
+                }
+                AccessTier.ALWAYS -> if (!trustedDisplayAlive()) {
+                    when (val prepared = prepareBackgroundSurface(request, budgetMs, startedAt)) {
+                        PreparedSurface.Ready -> {
+                            decision = policy.decide(descriptor)
+                            // 备屏把执行面换了：系统权限快照按新路线重取，闸门快照同源替换 ——
+                            // 后续的授权记录与回包写的是新路线上的事实，不是备屏前的旧读数。
+                            val refreshed = probe.probe(descriptor, decision.surface)
+                            if (InterlockGate.systemBlocks(refreshed.state)) {
+                                return rejected(
+                                    request.id,
+                                    RelayError.GATE_SYSTEM_MISSING,
+                                    "the background surface is ready but this call's system conditions do " +
+                                        "not hold on it: resolve the missing condition, then retry",
+                                    descriptor,
+                                    now() - startedAt,
+                                    logRejection = false,
+                                    surface = decision.surface,
+                                    degradedFrom = decision.degradedFrom,
+                                )
+                            }
+                            gate = gate.copy(systemState = refreshed.state)
+                            onSurfaceChanged()
+                        }
+                        is PreparedSurface.Degraded -> decision = SurfaceDecision(
+                            SurfaceKind.FOREGROUND,
+                            degradedFrom = SurfaceKind.BACKEND_TRUSTED,
+                            reason = prepared.code,
+                        )
+                        PreparedSurface.Transient -> {
+                            // 备屏暂时送不到：留一条运行日志点名因果，再以可复查错误收场。
+                            runLog.warn(
+                                LogSubsystem.GATE,
+                                LogEvent.CALL_FAILED,
+                                "id" to request.id,
+                                "type" to RelayError.BACKEND_UNAVAILABLE.code,
+                                "cause" to "surface-virtual prepare failed transiently",
+                            )
+                            return rejected(
+                                request.id,
+                                RelayError.BACKEND_UNAVAILABLE,
+                                "the background surface could not be prepared just now (the shell side is " +
+                                    "temporarily unreachable): the background intent is kept - retry rather " +
+                                    "than switching to foreground",
+                                descriptor,
+                                now() - startedAt,
+                                logRejection = false,
+                                surface = decision.surface,
+                                degradedFrom = decision.degradedFrom,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         val dispatched = dispatcher.dispatch(
             descriptor = descriptor,
             decision = decision,
@@ -483,44 +899,397 @@ class RelayCoordinator(
         // 「只有 usable=true 能调」收工走人——门开了却没人知道。内容没变时这一问是免费的，
         // 见 [onSurfaceChanged] 那一侧的「变了才重铺」。
         if (descriptor.id == CapabilityId.SURFACE_VIRTUAL) onSurfaceChanged()
-        return when (val result = dispatched.result) {
-            is BackendResult.Ok -> respond(
-                request = request,
-                descriptor = descriptor,
-                target = targetLabel,
-                gate = gate,
-                decision = dispatched.decision,
-                outcome = "success",
-                data = result.data,
-                artifacts = result.artifacts,
-                bytes = result.artifactBytes,
-                // 降级说明与后端诊断各占一个键：让前者顶掉后者，会在"优先后台"落到前台时
-                // 把唯一那条现场信息（此刻哪个包停在最前面）丢掉，调用方只剩一个裸错误码，
-                // 处置建议也就无从给出。
-                detail = result.reason,
-                degradeReason = dispatched.decision.reason,
-                error = null,
-                startedAt = startedAt,
-            )
+        // 目标落点层的落账与降级处置只对 `app.launch` 生效：它是落点的建立点。
+        // 未核验的 Ok 不是成功：这一条与路由层无关，只要是一次 app.launch 就成立。
+        val launchTarget = request.args.optString("package").takeIf { it.isNotEmpty() }
+            ?.takeIf { descriptor.id == CapabilityId.APP_LAUNCH && !bringToFront }
+        val settling = launchTarget?.let { target ->
+            when (val result = dispatched.result) {
+                is BackendResult.Ok -> settleLaunchResult(
+                    dispatched.decision.surface, dispatched.decision.degradedFrom, null, result.data,
+                    target, now(), TargetLandingTable.DEFAULT_LANDING_TTL_MS, surfacePreference(),
+                )
+                is BackendResult.Failed -> settleLaunchResult(
+                    dispatched.decision.surface, dispatched.decision.degradedFrom, result.error, result.data,
+                    target, now(), TargetLandingTable.DEFAULT_LANDING_TTL_MS, surfacePreference(),
+                    dispatched = result.dispatched,
+                )
+            }
+        }
+        // 只有带实际证据的落点才落账（settle 已按 verified/grabbed 过滤，这里照单收）。
+        settling?.record?.let { landingTable?.record(it) }
+        when {
+            // 目标被停止：它的落点随停失效，下一次调用重新裁决。
+            descriptor.id == CapabilityId.APP_STOP && dispatched.result is BackendResult.Ok ->
+                landingTable?.invalidate(request.args.optString("package"))
 
-            is BackendResult.Failed -> respond(
-                request = request,
-                descriptor = descriptor,
-                target = targetLabel,
-                gate = gate,
-                decision = dispatched.decision,
-                outcome = "failed",
-                data = JSONObject(),
-                artifacts = emptyList(),
-                bytes = 0L,
-                detail = result.reason,
-                degradeReason = dispatched.decision.reason,
-                error = result.error,
-                startedAt = startedAt,
-                // 执行面在自己的失败出口标注的许可种类（如系统采集弹框）优先：
-                // 已经走到系统许可那一步，说明本模块的许可已经过了。
-                backendConsentKind = result.consentKind,
-            )
+            // 助手成功读回了一次场景（快照 / 查询）："结果未知"的启动标记就此摘除 ——
+            // 标记等的正是这一步核实，读到了就不该再挡同参重发。
+            (descriptor.id == CapabilityId.UI_SNAPSHOT || descriptor.id == CapabilityId.PKG_QUERY) &&
+                dispatched.result is BackendResult.Ok ->
+                landingTable?.clearAllUnknownLaunches()
+
+            // 后台屏被动过（建/收）：所有落点一并作废重算。
+            descriptor.id == CapabilityId.SURFACE_VIRTUAL && dispatched.result is BackendResult.Ok ->
+                landingTable?.clear()
+        }
+
+        return when (val result = dispatched.result) {
+            is BackendResult.Ok -> if (settling?.syntheticError != null) {
+                // 命令被接受但落点未确认：不是成功。成因可查（observed 在）按确定性回，
+                // 不挡重发；观察缺席才是结果未知，记幂等标记 —— 核实（pkg.query /
+                // ui.snapshot 成功）即摘，标记另有寿命。
+                if (settling.failureClass == LaunchFailureClass.UNKNOWN) {
+                    landingTable?.rememberUnknownLaunch(
+                        auditLog.argsDigestOf(request.args.toString()),
+                        launchTarget ?: "",
+                    )
+                }
+                respond(
+                    request = request,
+                    descriptor = descriptor,
+                    target = targetLabel,
+                    gate = gate,
+                    decision = dispatched.decision,
+                    outcome = "failed",
+                    data = result.data,
+                    artifacts = emptyList(),
+                    bytes = 0L,
+                    detail = result.reason ?: "accepted but the landing was not confirmed within " +
+                        "this call's budget: re-check with pkg.query or ui.snapshot before " +
+                        "launching the same target again",
+                    degradeReason = dispatched.decision.reason,
+                    error = settling.syntheticError,
+                    startedAt = startedAt,
+                )
+            } else {
+                respond(
+                    request = request,
+                    descriptor = descriptor,
+                    target = targetLabel,
+                    gate = gate,
+                    decision = dispatched.decision,
+                    outcome = "success",
+                    data = result.data,
+                    artifacts = result.artifacts,
+                    bytes = result.artifactBytes,
+                    // 降级说明与后端诊断各占一个键：让前者顶掉后者，会在"优先后台"落到前台时
+                    // 把唯一那条场景信息（此刻哪个包停在最前面）丢掉，调用方只剩一个裸错误码，
+                    // 处置建议也就无从给出。
+                    detail = result.reason,
+                    degradeReason = dispatched.decision.reason,
+                    error = null,
+                    startedAt = startedAt,
+                )
+            }
+
+            is BackendResult.Failed -> when {
+                // 后台启动把 App 直接起在了用户真屏：目标已经在眼前，不再重发一次前台启动，
+                // 按证据把落点记成前台并如实回成功 —— 回包里保留"起在了真屏"的事实。
+                settling?.rewriteToOk == true -> respond(
+                    request = request,
+                    descriptor = descriptor,
+                    target = targetLabel,
+                    gate = gate,
+                    decision = SurfaceDecision(
+                        SurfaceKind.FOREGROUND,
+                        degradedFrom = dispatched.decision.surface.takeIf { it != SurfaceKind.FOREGROUND }
+                            ?: dispatched.decision.degradedFrom,
+                        reason = result.error.code,
+                    ),
+                    outcome = "success",
+                    data = result.data,
+                    artifacts = emptyList(),
+                    bytes = 0L,
+                    detail = result.reason,
+                    degradeReason = result.error.code,
+                    error = null,
+                    startedAt = startedAt,
+                )
+
+                // 确定性失败才允许这一次目标级前台兜底；兜底结果就是终局，不再二次兜底。
+                // 兜底与主派发同账同守卫：执行限流在此再记一笔（限不住就原样回后台失败，
+                // 不绕账），派发前置守卫已在上方按请求落盘并覆盖本请求的全部派发。
+                settling?.fallbackToForeground == true -> {
+                    if (!execRate.accepted(descriptor.id)) {
+                        respond(
+                            request = request,
+                            descriptor = descriptor,
+                            target = targetLabel,
+                            gate = gate,
+                            decision = dispatched.decision,
+                            outcome = "failed",
+                            data = result.data,
+                            artifacts = emptyList(),
+                            bytes = 0L,
+                            detail = result.reason,
+                            degradeReason = dispatched.decision.reason,
+                            error = result.error,
+                            startedAt = startedAt,
+                            backendConsentKind = result.consentKind,
+                            backendDispatched = result.dispatched,
+                        )
+                    } else {
+                    val fallbackDecision = SurfaceDecision(
+                        SurfaceKind.FOREGROUND,
+                        degradedFrom = dispatched.decision.surface.takeIf { it != SurfaceKind.FOREGROUND }
+                            ?: dispatched.decision.degradedFrom,
+                        reason = result.error.code,
+                    )
+                    val retried = dispatcher.dispatch(
+                        descriptor = descriptor,
+                        decision = fallbackDecision,
+                        call = BackendCall(
+                            requestId = request.id,
+                            descriptor = descriptor,
+                            args = request.args,
+                            surface = fallbackDecision.surface,
+                            paths = paths,
+                            budgetMs = (budgetMs - (now() - startedAt)).coerceAtLeast(1_000L),
+                        ),
+                    )
+                    // 兜底与主派发同一把尺子：核验过了才记前台落点，未核验不是成功
+                    // （成因可查按确定性回，观察缺席按未知记幂等标记），都不再二次兜底。
+                    val fallbackSettling = launchTarget?.let { target ->
+                        when (val r = retried.result) {
+                            is BackendResult.Ok -> settleLaunchResult(
+                                fallbackDecision.surface, fallbackDecision.degradedFrom, null,
+                                r.data, target, now(), TargetLandingTable.DEFAULT_LANDING_TTL_MS,
+                                surfacePreference(),
+                            )
+                            is BackendResult.Failed -> settleLaunchResult(
+                                fallbackDecision.surface, fallbackDecision.degradedFrom, r.error,
+                                r.data, target, now(), TargetLandingTable.DEFAULT_LANDING_TTL_MS,
+                                surfacePreference(), dispatched = r.dispatched,
+                            )
+                        }
+                    }
+                    fallbackSettling?.record?.let { landingTable?.record(it) }
+                    when (val fallback = retried.result) {
+                        is BackendResult.Ok -> if (fallbackSettling?.syntheticError != null) {
+                            if (fallbackSettling.failureClass == LaunchFailureClass.UNKNOWN) {
+                                landingTable?.rememberUnknownLaunch(
+                                    auditLog.argsDigestOf(request.args.toString()),
+                                    launchTarget ?: "",
+                                )
+                            }
+                            respond(
+                                request = request,
+                                descriptor = descriptor,
+                                target = targetLabel,
+                                gate = gate,
+                                decision = fallbackDecision,
+                                outcome = "failed",
+                                data = fallback.data,
+                                artifacts = emptyList(),
+                                bytes = 0L,
+                                detail = fallback.reason ?: "accepted but the landing was not " +
+                                    "confirmed within this call's budget: re-check with pkg.query " +
+                                    "or ui.snapshot before launching the same target again",
+                                degradeReason = fallbackDecision.reason,
+                                error = fallbackSettling.syntheticError,
+                                startedAt = startedAt,
+                            )
+                        } else {
+                            respond(
+                                request = request,
+                                descriptor = descriptor,
+                                target = targetLabel,
+                                gate = gate,
+                                decision = fallbackDecision,
+                                outcome = "success",
+                                data = fallback.data,
+                                artifacts = fallback.artifacts,
+                                bytes = fallback.artifactBytes,
+                                detail = fallback.reason,
+                                degradeReason = fallbackDecision.reason,
+                                error = null,
+                                startedAt = startedAt,
+                            )
+                        }
+
+                        is BackendResult.Failed -> respond(
+                            request = request,
+                            descriptor = descriptor,
+                            target = targetLabel,
+                            gate = gate,
+                            decision = fallbackDecision,
+                            outcome = "failed",
+                            data = fallback.data,
+                            artifacts = emptyList(),
+                            bytes = 0L,
+                            detail = fallback.reason,
+                            degradeReason = fallbackDecision.reason,
+                            error = fallback.error,
+                            startedAt = startedAt,
+                            backendConsentKind = fallback.consentKind,
+                            backendDispatched = fallback.dispatched,
+                        )
+                    }
+                    }
+                }
+
+                // 结果未知：不自动重放，也不兜底。幂等标记按参数摘要挡住紧随其后的同参重发。
+                settling?.failureClass == LaunchFailureClass.UNKNOWN -> {
+                    landingTable?.rememberUnknownLaunch(
+                        auditLog.argsDigestOf(request.args.toString()),
+                        launchTarget ?: "",
+                    )
+                    respond(
+                        request = request,
+                        descriptor = descriptor,
+                        target = targetLabel,
+                        gate = gate,
+                        decision = dispatched.decision,
+                        outcome = "failed",
+                        data = result.data,
+                        artifacts = emptyList(),
+                        bytes = 0L,
+                        detail = result.reason,
+                        degradeReason = dispatched.decision.reason,
+                        error = result.error,
+                        startedAt = startedAt,
+                        backendConsentKind = result.consentKind,
+                        backendDispatched = result.dispatched,
+                    )
+                }
+
+                else -> respond(
+                    request = request,
+                    descriptor = descriptor,
+                    target = targetLabel,
+                    gate = gate,
+                    decision = dispatched.decision,
+                    outcome = "failed",
+                    // 失败出口自带的结构化事实（如通知发送的字段口径）原样随回包：机器判读读字段。
+                    data = result.data,
+                    artifacts = emptyList(),
+                    bytes = 0L,
+                    detail = result.reason,
+                    degradeReason = dispatched.decision.reason,
+                    error = result.error,
+                    startedAt = startedAt,
+                    // 执行面在自己的失败出口标注的许可种类（如系统采集弹框）优先：
+                    // 已经走到系统许可那一步，说明本模块的许可已经过了。
+                    backendConsentKind = result.consentKind,
+                    // 「外部动作有没有真的提交出去」由后端失败出口标注，副作用状态按它判定。
+                    backendDispatched = result.dispatched,
+                )
+            }
+        }
+    }
+
+    /**
+     * 派发前的独立路由层：目标落点记录 → 沿用；没有记录 → 交回执行偏好裁决。
+     * 建屏本身与 `app.launch`（落点的建立点）不按记录跟随。
+     */
+    private suspend fun routeCall(descriptor: CapabilityDescriptor, args: JSONObject): TargetRoute {
+        val table = landingTable ?: return TargetRoute.None
+        // 建屏与启动是落点的建立点，不按记录跟随；全屏采集/录制按屏级事实与执行偏好
+        // 处理，不被"最近一次启动的目标"带走 —— 它们的落点是"这块屏"，不是某个 App。
+        if (descriptor.id == CapabilityId.SURFACE_VIRTUAL ||
+            descriptor.id == CapabilityId.APP_LAUNCH ||
+            descriptor.id == CapabilityId.SCREEN_CAPTURE ||
+            descriptor.id == CapabilityId.SCREEN_RECORD
+        ) {
+            return TargetRoute.None
+        }
+        if (SurfaceKind.BACKEND_TRUSTED !in descriptor.surfaces) return TargetRoute.None
+        val explicitPackage = args.optString("package").takeIf { it.isNotEmpty() }
+            ?: args.optJSONObject("selector")?.optString("package")?.takeIf { it.isNotEmpty() }
+        val target = explicitPackage
+            ?: table.lastTarget()
+            ?: return TargetRoute.None
+        val record = table.get(target) ?: return TargetRoute.None
+        // 沿用前核对目标仍是记录那块面上的当前顶层：用户手动切走后旧落点不作数。
+        val topNow = topPackageOn(
+            if (record.surface == SurfaceKind.BACKEND_TRUSTED) record.displayId else 0,
+        )
+        return routeForTarget(
+            descriptor.surfaces, target, record, trustedDisplayAlive(), topNow,
+            explicitPackage != null, now(), surfacePreference(),
+        )
+    }
+
+    /** 建屏准备的三种结局。 */
+    private sealed interface PreparedSurface {
+        /** 屏已建出：按执行偏好重裁，应得后台面。 */
+        data object Ready : PreparedSurface
+
+        /** 建不了是重试也改不了的结论：按 degraded 原因回退前台。 */
+        data class Degraded(val code: String) : PreparedSurface
+
+        /** 暂时性失败：保持后台意图，返回可复查错误。 */
+        data object Transient : PreparedSurface
+    }
+
+    /**
+     * 按现有建屏逻辑准备后台面。真实边界：走真实闸门与派发（探测、运行日志与普通调用
+     * 同一套），建屏派发单独过 [execRate] 的 `surface.virtual` 配额、参数过同一张预校验表；
+     * 派发前置守卫按**请求**粒度在调用方落盘，本请求的全部派发都在它覆盖之下，备屏
+     * 不再单独落一遍。调用方已把 `surface.virtual` 档位钉在「完全访问」才到这里。
+     *
+     * 档位是「完全访问」意味着这一问不需要用户点头：[InterlockGate.authorize] 直接放行，
+     * 这里一次就问完。**不在这里等用户**：询问审批档的建屏不在这条调用里发生（见
+     * [handle] 里 ASK 档的入口拒绝）——那要占着执行槽等一张卡，助手拿不到回包，
+     * 而建屏卡之外 app.launch 自己还要再问一次，两张卡挤在同一次调用里谁也走不下去。
+     */
+    private suspend fun prepareBackgroundSurface(
+        request: RelayRequest,
+        budgetMs: Long,
+        startedAt: Long,
+    ): PreparedSurface {
+        val virtual = CapabilityRegistry.find(CapabilityId.SURFACE_VIRTUAL)
+            ?: return PreparedSurface.Degraded(RelayError.SURFACE_UNAVAILABLE.code)
+        // 建屏参数与普通调用同一张预校验表：合成参数写错在这里被打回，而不是进了后端。
+        val createArgs = JSONObject().put("action", "create")
+        CapabilityArgsSpec.validate(virtual.id, createArgs)?.let {
+            return PreparedSurface.Degraded(RelayError.TRANSPORT_MALFORMED.code)
+        }
+        if (!execRate.accepted(CapabilityId.SURFACE_VIRTUAL)) {
+            return PreparedSurface.Degraded(RelayError.RATE_LIMITED.code)
+        }
+        val remaining = (budgetMs - (now() - startedAt) - APPROVAL_REPLY_MARGIN_MS).coerceAtLeast(1_000L)
+        val gate = gatekeeper.authorize(
+            descriptor = virtual,
+            targetLabel = null,
+            paramDetail = null,
+            argsIdentity = "surface-virtual-prepare",
+            volatileTarget = false,
+            budgetMs = remaining,
+            system = probe.probe(virtual, SurfaceKind.BACKEND_TRUSTED),
+        )
+        if (!gate.allowed) {
+            // 档位刚被用户改掉、或系统条件不再满足：都不是暂时性抖动，按降级回前台。
+            return PreparedSurface.Degraded((gate.error ?: RelayError.GATE_HOST_DENIED).code)
+        }
+        val dispatched = dispatcher.dispatch(
+            descriptor = virtual,
+            decision = SurfaceDecision(SurfaceKind.BACKEND_TRUSTED),
+            call = BackendCall(
+                requestId = request.id,
+                descriptor = virtual,
+                args = createArgs,
+                surface = SurfaceKind.BACKEND_TRUSTED,
+                paths = paths,
+                budgetMs = remaining,
+            ),
+        )
+        return when (val result = dispatched.result) {
+            is BackendResult.Ok -> PreparedSurface.Ready
+            is BackendResult.Failed -> when (result.error) {
+                // 断连、建屏请求暂时送不到、结局未知：保持后台意图，让调用方退避重试，
+                // 而不是替它降级前台。
+                RelayError.BACKEND_SHIZUKU_DEAD,
+                RelayError.BACKEND_UNAVAILABLE,
+                RelayError.TRANSPORT_TIMEOUT,
+                RelayError.TRANSPORT_UNKNOWN,
+                -> PreparedSurface.Transient
+
+                // 建不了是重试也改不了的结论（无安全尺寸、ROM 拒绝、API 不够）：
+                // 按降级原因回前台。
+                else -> PreparedSurface.Degraded(result.error.code)
+            }
         }
     }
 
@@ -566,13 +1335,15 @@ class RelayCoordinator(
         paramDetail: String?,
         argsIdentity: String,
         volatileTarget: Boolean,
-        consentScreen: Boolean,
         system: ProbeResult,
         decision: SurfaceDecision,
+        followedTarget: String?,
+        bringToFront: Boolean,
         budgetMs: Long,
         startedAt: Long,
         gateStartedAt: Long,
         gate: GateResult,
+        namedTargetPackage: String?,
     ): HandlerResult {
         val bridge = parkBridge
         val deadlineAtMs = gateStartedAt + approvalWindowMs(budgetMs)
@@ -596,8 +1367,10 @@ class RelayCoordinator(
                     request = request,
                     descriptor = descriptor,
                     targetLabel = targetLabel,
-                    gate = outcomeGate,
-                    decision = decision,
+                    plannedGate = outcomeGate,
+                    plannedDecision = decision,
+                    followedTarget = followedTarget,
+                    bringToFront = bringToFront,
                     budgetMs = budgetMs,
                     startedAt = startedAt,
                 )
@@ -651,13 +1424,13 @@ class RelayCoordinator(
                 paramDetail = paramDetail,
                 argsIdentity = argsIdentity,
                 volatileTarget = volatileTarget,
-                consentScreen = consentScreen,
                 system = system,
                 gate = gate,
                 deadlineAtMs = deadlineAtMs,
                 gateDeferred = gateDeferred,
                 key = key,
                 waitEntry = waitEntry,
+                namedTargetPackage = namedTargetPackage,
             )
         }
         return HandlerResult.Parked(park)
@@ -679,13 +1452,13 @@ class RelayCoordinator(
         paramDetail: String?,
         argsIdentity: String,
         volatileTarget: Boolean,
-        consentScreen: Boolean,
         system: ProbeResult,
         gate: GateResult,
         deadlineAtMs: Long,
         gateDeferred: CompletableDeferred<GateResult>,
         key: String,
         waitEntry: ParkedWaitTable.Entry,
+        namedTargetPackage: String?,
     ) {
         try {
             var outcome = gate
@@ -705,6 +1478,14 @@ class RelayCoordinator(
                     outcome = cancelledGate(gate)
                     break
                 }
+                // 等待期间用户可能刚把目标包加进名单。每一轮先问一次名单，命中即按
+                // 受保护拒绝收场——这一问不能再拿到执行机会，等在屏上的那张卡也就此作废
+                // （卡片本体由队列按截止时刻收走；执行侧的硬边界在 finishAfterGate 的
+                // 派发前复查再兜一道，两条通路都过不去）。
+                if (namedTargetPackage != null && protectedApps?.blocks(namedTargetPackage) == true) {
+                    outcome = protectedGate(gate)
+                    break
+                }
                 // authorize 前再查一次作用域：stop 在别的线程上，可以落在轮首检查之后。
                 // 通道已停就退场，不让这一轮把审批卡重新挂到一个不再接活的通道上。
                 if (parkScope?.invoke() == null) return
@@ -714,7 +1495,6 @@ class RelayCoordinator(
                     paramDetail = paramDetail,
                     argsIdentity = argsIdentity,
                     volatileTarget = volatileTarget,
-                    consentScreen = consentScreen,
                     budgetMs = remaining,
                     system = system,
                 )
@@ -754,6 +1534,31 @@ class RelayCoordinator(
         tier = template.tier,
         decisionLabel = "cancelled_before_execution",
     )
+
+    /**
+     * 挂起期间目标包被加进了受保护名单：等待环以这一档收场，续行体拿到的是拒绝，
+     * 执行不会再发生。decisionLabel 与 [logApprovalVerdict] 的映射约定一致：
+     * 不在已知清单里的标签按 "deny" 记判决。
+     */
+    private fun protectedGate(template: GateResult) = GateResult(
+        allowed = false,
+        requiresApproval = true,
+        error = RelayError.PACKAGE_PROTECTED,
+        systemState = template.systemState,
+        tier = template.tier,
+        decisionLabel = "package_protected",
+    )
+
+    /** 拒绝事件的一条运行日志：能力、目标包与拒绝层级，完整名单不进日志。 */
+    private fun logProtectedBlock(capability: CapabilityId, targetPackage: String, where: String) {
+        runLog.warn(
+            LogSubsystem.GATE,
+            LogEvent.PACKAGE_PROTECTED_BLOCKED,
+            "cap" to capability.wire,
+            "target" to targetPackage,
+            "where" to where,
+        )
+    }
 
     /**
      * 这一问进入「等人答」时记一行。
@@ -829,6 +1634,8 @@ class RelayCoordinator(
         startedAt: Long,
         /** 执行面在自己的失败出口标注的许可种类；两处都可能给值时以它优先。 */
         backendConsentKind: String? = null,
+        /** 后端失败出口标注的「外部动作是否已提交」；副作用状态按它判定，不猜 reason。 */
+        backendDispatched: Boolean = false,
     ): RelayResponse {
         // 一次调用只取一次当前时刻：授权记录、运行日志与响应里的耗时必须同源，
         // 分别取会让同一件事出现三个对不上的数字。
@@ -860,9 +1667,10 @@ class RelayCoordinator(
             error = error,
             elapsedMs = elapsedMs,
             // 重放语义两键与回包同源：按能力查重放表、按结论查副作用状态。
-            // `retryable` 只是错误码属性，不能据此自动重放非幂等动作。
+            // `retryable` 只是错误码属性，不能据此自动重放非幂等动作；
+            // 副作用状态以后端标注的「是否已提交」为准，不拿 reason 字符串猜。
             retryPolicy = retryPolicyOf(descriptor.id),
-            effectState = effectStateFor(error == null, error),
+            effectState = effectStateFor(error == null, error, descriptor.id, backendDispatched),
             // 这次卡住的是哪一种许可：本模块的审批与系统的采集同意互不代替，
             // 执行面已经标注的（系统弹框那一步）优先于按错误码推出的归类。
             consentKind = backendConsentKind ?: consentKindFor(error),
@@ -936,7 +1744,9 @@ class RelayCoordinator(
                 tier = tier.name,
                 decision = decision,
                 grantSource = if (system == SystemGrantState.GRANTED) "system_granted" else system.name,
-                uidRole = "app",
+                // 特权通路以 Shizuku 给的身份执行，记录里必须能和「以本应用身份跑」的
+                // 普通调用分开——事后问责问的是"当时是谁在跑"。
+                uidRole = if (descriptor.id == CapabilityId.SYS_SHELL_FULL) uidRoleOf(fullShellUid()) else "app",
                 outcome = outcome,
                 surface = surface?.wire,
                 degradedFrom = degradedFrom?.wire,
@@ -967,21 +1777,6 @@ class RelayCoordinator(
         }
     }
 
-    /**
-     * 目标是不是系统授权界面。两道判据：
-     *
-     * 1. 看调用方递来的选择器条件 —— 带 `package` / 权限字样的目标一眼可辨；
-     * 2. 只给 `nodeId` 时按当前控件树回查归属 —— 参数里什么线索都没有，只有回查才知道
-     *    要点的那颗按钮属于谁。回查不到（服务没连上、节点已换人）按"认不出来"处理：
-     *    少一道判据，而不是据此放行或据此拒绝。
-     */
-    private fun consentTarget(args: JSONObject): Boolean {
-        if (ConsentSurfaces.looksLikeConsentFromArgs(args)) return true
-        if (!args.has(NodeSelector.KEY_NODE_ID)) return false
-        val owner = nodeOwner(args.optInt(NodeSelector.KEY_NODE_ID)) ?: return false
-        return ConsentSurfaces.looksLikeConsentNode(owner.packageName, owner.viewId)
-    }
-
     /** 参数里任一层的字符串值等于本机包名，即视为「以宿主自己为目标」。 */
     /**
      * 「把宿主带到前台」是自身目标规则的唯一例外：只认 app.launch，且参数只有本机包名。
@@ -991,11 +1786,66 @@ class RelayCoordinator(
      * 「操作宿主界面」仍然禁止（无障碍那条路自己挡下宿主的窗口），所以这里放开的不是操作权。
      */
     private fun isHostBringToFront(request: RelayRequest): Boolean =
-        request.capability == CapabilityId.APP_LAUNCH.wire &&
-            request.args.length() == 1 &&
-            request.args.optString("package") == selfPackage
+        isHostBringToFront(request, selfPackage)
 
-    private companion object {
+    companion object {
+        /**
+         * 特权通路执行身份在授权记录里的署名。0 = root、2000 = shell（ADB/无线调试启动
+         * Shizuku 的常规身份）、其余正数按 uid 报数；读不到（未连接、快照未就绪）如实
+         * unknown——冒充任何一个具体身份都会让问责读错场景。
+         */
+        internal fun uidRoleOf(uid: Int): String = when {
+            uid == 0 -> "root"
+            uid == 2000 -> "shell"
+            uid > 0 -> "uid_$uid"
+            else -> "unknown"
+        }
+
+        /**
+         * 调用侧拒绝分派的判据，纯函数供 JVM 单测：**surface.virtual 被拒 →
+         * E_SURFACE_TRUSTED_DENIED，且它排在 requiresMode 解析之前**。顺序写反
+         * 让插件按"切回后台/建屏"给建议，用户切回后台再撞一次拒绝，绕成循环；
+         * 被拒是这台机器上的固定结论，回包 reason 恒写"改前台"。
+         * 其余能力与未被拒的 surface.virtual 回 null（后半边照常决议）。
+         */
+        /**
+         * 调用侧 fail-fast 的完整顺序（纯判据供 JVM 单测穷举两口径的先后）：
+         * ①用户把能力拨到**禁止** → GATE_HOST_DENIED（档位语义：下一步是"去档位页解禁"，
+         * 用户自己的决定，不被机器侧的拒绝标记盖过说成"这台机器拒绝"）；档位对
+         * **任意能力**生效，不看 id。唯一例外是调用方先行识别的"宿主带回前台"形状
+         * ——它绕过本判定直接派发（见 handle），本判定不负责那条豁免；
+         * ②否则 **只对 surface.virtual**（[id] 必须是它）且这台机器**拒绝过 trusted 建屏**
+         * → E_SURFACE_TRUSTED_DENIED（reason 写"改前台"）。少带 id 的判定会把清单里
+         * 其它几条后台能力也一起卷进拒绝，"screen 建屏被拒"说成"这台机器对全部能力
+         * 都拒绝"——见 BLOCKER 场景；
+         * ③其余 → null（照常进 requiresMode/实现/闸门那一套）。
+         *
+         * **unsafe 不进这道判定**（复核）：「自检判过破坏主屏」只封**自动后台
+         * 路由**（见 handle 的建屏准备与后端 supports 的真值表），不封显式的
+         * surface.virtual create/release/query——create 是复检与解除标记的唯一活通路，
+         * release 是清残留屏的通路；在这里拦下它们，标记就成了不可解除的死锁。
+         * unsafe 的失败由后端自检出口自己按 E_SURFACE_TRUSTED_UNSAFE 回。
+         * 真装配的 tier 读数经 [InterlockGate.tierOf]，denied 读数经装配根注入后端标记，
+         * id 由 handle 的 descriptor 给；判定本体（要不要审批、要不要登场）仍在闸门一处。
+         */
+        internal fun earlyVerdict(id: CapabilityId, tierDenied: Boolean, surfaceDenied: Boolean): RelayError? =
+            when {
+                tierDenied -> RelayError.GATE_HOST_DENIED
+                surfaceDenied && id == CapabilityId.SURFACE_VIRTUAL -> RelayError.SURFACE_TRUSTED_DENIED
+                else -> null
+            }
+
+        /**
+         * `requiresMode` 分支的执行面映射（纯判据供 JVM 单测；调用侧
+         * [RelayCoordinator.handle] 与清单侧 [RelayContainer.capabilityRow] 共用同一张表）：
+         * `surface.virtual` 的 create/release/query 是管理动作，不落执行面——仅声明
+         * trusted 面的它在「优先后台」缺失时被偏好链卡死，照常回「需要后台模式」就会
+         * 让恢复通路在前台偏好下不可达（显式 create/release 正是 unsafe 与残留屏的
+         * 解除通路）。对它豁免；其余单一面能力照旧映射。
+         */
+        internal fun modeRequiredFor(id: CapabilityId, requiresMode: SurfaceKind?): SurfaceKind? =
+            if (id == CapabilityId.SURFACE_VIRTUAL) null else requiresMode
+
         /**
          * 「在等人答」这件事的来源标记。写死成 relay 而不是留空：日志里要能一眼分出
          * 「等审批的人」与「等别的什么事的人」，两类等待的处置完全不同。
@@ -1029,6 +1879,12 @@ class RelayCoordinator(
          * 截止判定会错开。
          */
         const val APPROVAL_WINDOW_CAP_MS = 60_000L
+
+        /** 拒绝事件的层级标记：调用入口（进审批之前）。 */
+        internal const val BLOCKED_AT_ENTRY = "entry"
+
+        /** 拒绝事件的层级标记：批准之后、真正派发之前。 */
+        internal const val BLOCKED_AT_PRE_DISPATCH = "pre_dispatch"
     }
 }
 
@@ -1120,6 +1976,18 @@ internal fun selfTargetArg(value: Any?, selfPackage: String, path: String = ""):
 
     else -> null
 }
+
+/**
+ * 「把宿主带到前台」的形状判定：只认 `app.launch`，且参数恰好只有本机包名一个键。
+ *
+ * 形状之外的任何组合（多带一个参数、换了能力、写了别的包名）都不算：这条豁免的
+ * 理由只覆盖"任务收尾把用户带回宿主"这一件事，放宽到别的形状等于放开宿主操作权。
+ * 放在类外、显式收 `selfPackage`，是为了让这条安全判据能被单测直接驱动。
+ */
+internal fun isHostBringToFront(request: RelayRequest, selfPackage: String): Boolean =
+    request.capability == CapabilityId.APP_LAUNCH.wire &&
+        request.args.length() == 1 &&
+        request.args.optString("package") == selfPackage
 
 /**
  * 拼一层键路径。空键名要换成占位写法：交回 `arg ""` 时，调用方看不出撞的是哪一个参数，

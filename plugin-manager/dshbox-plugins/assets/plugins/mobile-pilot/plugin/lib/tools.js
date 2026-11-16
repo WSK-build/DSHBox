@@ -204,6 +204,32 @@ function resultSchema (extra = {}) {
 
 const renderText = (_args, value) => [{ type: 'text', text: value.text }]
 
+/**
+ * 虚拟屏的“用户可预览”语义：宿主建屏成功后，用户能在 DSHBox 右侧栏看到它。
+ * 这是给 agent 的行为提示，不是新的控制面；真正是否在播由面板/宿主决定，
+ * 这里只在 create/query 成功且屏号有效时声明“可预览”。
+ */
+function surfacePreviewFields (r, action) {
+  const data = r && r.data && typeof r.data === 'object' ? r.data : {}
+  const rawId = data.displayId != null ? data.displayId : data.display
+  // 宿主可能回数字或数字字符串；0 是主屏，不是虚拟屏。
+  const displayId = Number(rawId)
+  const active = action !== 'release' && !!r && r.ok === true &&
+    Number.isFinite(displayId) && displayId > 0
+  return {
+    previewAvailable: active,
+    previewSurface: active ? 'dshbox-right-sidebar' : '',
+    // 只要虚拟屏还活着，就不应为“让用户看到”而搬主屏/拉宿主前台；这与面板是否
+    // 真的可用解耦，避免旧 runtime 没有侧栏时把 agent 推向盲操作。
+    doNotMoveToMain: active,
+    agentHint: active
+      ? '虚拟屏已建立。不要为了让用户看到而把屏上任务移到主屏或把宿主拉到前台，除非用户明确要求；用户可通过 DSHBox 右侧栏的虚拟屏预览查看（若该入口在当前 DSH 版本不可用，按用户看不到处理并询问用户）。'
+      : (action === 'release'
+          ? '虚拟屏已释放；屏上应用不会被搬到主屏。'
+          : '当前没有可预览的虚拟屏。'),
+  }
+}
+
 /** nodeId / selector 二选一的目标参数。 */
 function targetParams () {
   return {
@@ -306,10 +332,11 @@ function buildTools ({ defineTool, channel, outDirOption }) {
       'probe=true 时执行一次 pkg.query 以验证通道可用（清单仅证明文件存在）：probe 失败则本工具整体失败，通道只有 probe 成功才算证实可用。' +
       '挂载点在而清单缺失或无法解析时报 E_WRAPPER_BAD_MANIFEST（ok=false），不再以空清单继续。' +
       'list=true 时逐条列出能力清单（可用 filter 收窄）：设备侧不必再自己 cat 那份 JSON 才知道有哪些能力。' +
-      '开始手机任务前应先调用本工具：清单中的 usable / assistantTier / 拒绝状态决定可用路径。',
+      '开始手机任务前应先调用本工具：清单中的 usable / assistantTier / 拒绝状态决定可用路径。' +
+      '虚拟屏是否可让用户预览，用 phone_surface query 读 previewAvailable / previewSurface；为 false 或入口不可用时按用户看不到处理。',
     parameters: {
       probe: { type: 'boolean', description: '是否执行一次 pkg.query 验证通道。默认 false。' },
-      list: { type: 'boolean', description: '为 true 时附逐条能力清单（id | 类别 | 档位 | 上限 | usable | implemented | 可用面 | 需系统权限），取自挂载点里那份 capabilities.json。默认 false。' },
+      list: { type: 'boolean', description: '为 true 时附逐条能力清单（id | 类别 | 档位 | 审批策略 | 此刻需审批 | 会话授权在效 | 可授权会话 | usable | implemented | 可用面 | 需系统权限 | 降级原因），取自挂载点里那份 capabilities.json。默认 false。' },
       filter: { type: 'string', description: '配合 list 使用：按 id 或类别的子串收窄，不区分大小写，例如 "ui." 或 "calendar"。' }
     },
     output: {
@@ -356,16 +383,22 @@ function buildTools ({ defineTool, channel, outDirOption }) {
       if (args && args.list === true) {
         // 清单本身没有对应的能力 id（宿主只把它铺成文件），所以列举走这里：
         // 读的就是挂载点里那份 capabilities.json，字段口径与文件一致，不另算一套。
+        // 档位说了算之后清单里不再有有效「上限」：审批口径以 assistantTier /
+        // approvalPolicy / requiresApproval / sessionGranted / sessionGrantable 给出，
+        // 旧 ceiling 字段即使出现也不展示——把它当限制读会让助手反复请求审批。
         const needle = typeof args.filter === 'string' ? args.filter.toLowerCase() : ''
         const rows = caps.filter((c) => !needle ||
           `${c.id || ''} ${c.category || ''}`.toLowerCase().includes(needle))
         lines.push(`清单 ${rows.length}/${caps.length} 条（来源 ${resolved.info.manifest}${needle ? `，filter="${args.filter}"` : ''}）`)
-        lines.push('id | 类别 | 档位 | 上限 | usable | implemented | 可用面 | 需系统权限')
+        lines.push('id | 类别 | 档位 | 审批策略 | 此刻需审批 | 会话授权在效 | 可授权会话 | usable | implemented | 可用面 | 需系统权限 | 降级原因')
         for (const c of rows) {
           lines.push([
-            c.id || '', c.category || '', c.assistantTier || '', c.ceiling || '',
+            c.id || '', c.category || '', c.assistantTier || '', c.approvalPolicy || '',
+            String(c.requiresApproval === true), String(c.sessionGranted === true),
+            String(c.sessionGrantable === true),
             String(c.usable === true), String(c.implemented === true),
             Array.isArray(c.surfaces) ? c.surfaces.join('+') : '', c.systemPermission || '-',
+            c.degradeReason || '-',
           ].join(' | '))
         }
         const blocked = caps.filter((c) => c.usable !== true && c.implemented === true)
@@ -408,14 +441,32 @@ function manifestTime (manifest, file) {
   }
 }
 
+/**
+ * 清单里 backend.shizuku.trustedDisplay.denied 的读数（phone_surface 的混合场景对账用）。
+ * 返回三态：`true` 明说拒绝（覆盖"需要后台模式"的建议）、`false` 明说未拒、
+ * `null` 清单缺失或字段不给——字段不给按"未知"处理，不把未知读成任何一个结论。
+ */
+function readManifestDenied (manifestFile) {
+  const manifest = readManifest(manifestFile)
+  const trusted = manifest && manifest.backend && manifest.backend.shizuku
+    ? manifest.backend.shizuku.trustedDisplay : null
+  if (!trusted || typeof trusted.denied !== 'boolean') return null
+  return trusted.denied
+}
+
   // ── 1. 通用入口 ───────────────────────────────────────────────────────
   push({
     name: 'phone_call',
     description:
       '调用任意一条 pilot 能力（通用入口）。参数原样透传，返回保留 surface / degraded / retryable / exitCode / elapsedMs 等结构化字段（机器判读读字段，不解析 text）。' +
-      '应优先使用专用 phone_* 工具；仅当所需能力未被覆盖（contact.read、cal.read、loc.read、media.*、audio.capture、appops.set 等）时使用本工具。' +
-      '危险与低频通路只在这里点名：sys.shell 是用户逐条开关的危险能力，坐标注入（ui.tap / ui.swipe / ui.text）也没有专用工具，' +
-      '两者都要求调用方明确写出能力 id 与参数，不给一键包装。' +
+      '应优先使用专用 phone_* 工具；仅当所需能力未被覆盖（contact.read、cal.read、loc.read、media.read、audio.capture、device.status、appops.set 等）时使用本工具。' +
+      'media.read 是一条能力覆盖三类媒体：调用时用 args.kind 选类型（image|video|audio），权限按所选类型各自校验，不要按旧的分条去找；' +
+      'device.status 一次返回一组只读设备状态（时间/电量/屏幕/网络/音量/亮度/设备信息），不接受参数。' +
+      '发通知（notify.post）后宿主会核实本应用的通知是否真的可见：没核实到按失败/结果未知回，不谎报已发送。' +
+      '危险与低频通路只在这里点名：sys.shell 是用户逐条开关的危险能力；表外命令（脚本、管道、重定向）走 sys.shell.full，' +
+      '它是特权模式页里那个独立开关（默认禁止），被拒时去让用户开开关，不要重试也不要试图回落到 sys.shell；' +
+      '坐标注入（ui.tap / ui.swipe / ui.text）也没有专用工具。' +
+      '这些通路都要求调用方明确写出能力 id 与参数，不给一键包装。' +
       '返回 E_AWAITING_CONSENT 指的是 Pilot 审批在等答复 —— 这是本模块自己的许可，与 Android 系统弹框无关：' +
       '可在三处任一处答复，且同一时刻只呈现一处：助手页内的那张卡（该页在前台时）、悬浮卡、通知栏的「允许/拒绝」；' +
       '宿主界面位于最前面时悬浮卡不出现，请到通知栏或助手页答复，随后以完全相同的参数重试即可接上同一张框。' +
@@ -424,7 +475,7 @@ function manifestTime (manifest, file) {
     parameters: {
       capability: { type: 'string', required: true, description: '能力 id，例如 pkg.query / contact.read / sys.shell。' },
       args: { type: 'object', additionalProperties: true, description: '该能力的参数对象。' },
-      timeoutMs: { type: 'integer', description: '覆盖本层超时（毫秒）；需要用户确认的能力建议 60000 以上。入口只接受 1000..120000，本层按该区间夹紧并在摘要里说明。' },
+      timeoutMs: { type: 'integer', description: '覆盖本层超时（毫秒）；需要用户确认的能力建议 60000 以上。入口只接受 1000..130000，本层按该区间夹紧并在摘要里说明。' },
       out: { type: 'string', description: '产物落盘路径（对应 --out，如 screen.capture）。' }
     },
     output: { schema: resultSchema(), render: renderText },
@@ -515,7 +566,8 @@ function manifestTime (manifest, file) {
       '将文本写入输入控件（ui.setValue，无需预先聚焦）。' +
       '部分应用的输入控件不处理该动作：返回 dispatched 成功但界面不变化。' +
       '回包的 requested / readBack 是信息不是判据（控件会重写输入：掩码、自动补全、maxLength）。' +
-      '虚拟屏没有输入法通路；遇到不处理该动作的控件，应改为主屏（用户正在看的屏幕）输入或系统快捷入口，并以截图确认结果。',
+      '虚拟屏没有输入法通路；遇到不处理该动作的控件，可按用户明确要求改为主屏输入或系统快捷入口，并以截图确认结果；' +
+      '不要仅因为“想让用户看到”而把虚拟屏任务移到主屏（phone_surface 的 previewAvailable 为 true 时用户可直接看右侧栏预览）。',
     parameters: {
       ...targetParams(),
       text: { type: 'string', required: true, description: '要写入的文本（支持中文）。' }
@@ -654,6 +706,7 @@ function manifestTime (manifest, file) {
     description:
       '按包名启动应用（app.launch）。返回 verified / landedOn：verified=false 表示命令已发出但未确认落地，不应视为成功。' +
       '向虚拟屏投送应用时，仅当 landedOn 等于 surface.virtual 返回的 displayId 才算落地；grabbedUserScreen=true 才说明它落到了主屏（用户正在看的屏幕）上，值得告知用户。' +
+      '如果 surface.virtual 回包说 previewAvailable=true，且当前 DSH 版本加载了右侧栏入口，用户可以在 DSHBox 右侧栏预览这块虚拟屏；入口不可用时按用户看不到处理。不要为了让用户看到而把屏上任务移到主屏或把宿主拉到前台，除非用户明确要求。' +
       'landedOn=0 且没有该标记只表示用户本来就在这个应用上，说明不了这次启动去了哪里；' +
       'topOnTarget / targetDisplayMoved 用于分辨"换了个包名落地"与"真的没起来"，读完这两项再判定失败。',
     parameters: {
@@ -758,10 +811,22 @@ function manifestTime (manifest, file) {
     name: 'phone_surface',
     description:
       '管理后台虚拟屏（surface.virtual）：create 创建（返回 displayId）/ query 查询 / release 释放。' +
-      '后台操作前先创建；随后 phone_launch 必须确认 landedOn 等于该 displayId；操作完成后释放，并让宿主回到前台（app.launch 的 package 填宿主自身包名，本机为 com.dshbox.app，也可先用 phone_call pkg.query 取；宿主对「以宿主自身为目标」的显式放行仅限 app.launch 只带宿主包名这一种形状，其余带宿主包名的调用仍会被拒）。' +
-      '这个形状不受档位拦阻（不弹确认框）：它的常用时机正是用户看不到确认框的时候。回到前台落在宿主自己的主界面（DSHBox 首页），用户从这里重新进入对话；宿主已经在前台时它什么都不启动，回 verified:true + alreadyInFront:true，属成功。' +
+      '后台操作前先创建；随后 phone_launch 必须确认 landedOn 等于该 displayId。' +
+      'create/query 成功会返回 previewAvailable / previewSurface / doNotMoveToMain：previewAvailable=true 表示虚拟屏已建立且本版本提供右侧栏预览入口；若当前 DSH 版本未加载该入口，按用户看不到处理。' +
+      '不要为了让用户看到而把虚拟屏任务移到主屏，也不要在操作过程中把宿主拉到前台；只有用户明确要求回到 DSHBox 时才按用户指令处理。' +
+      'release 会关闭屏上应用、不把任务搬回主屏；要保留某个应用，先让用户用面板“移到主屏”。' +
       '虚拟屏的存活条件是"上面有应用在跑 + 持续有调用"：release、通道停止或五分钟无调用都会收回，query 回 display=-1 即为已收回。' +
-      '虚拟屏上的文本写入仍受输入法限制（虚拟屏没有输入法通路）；宿主界面位于最前面时写操作会被暂停。' +
+      '大屏/平板时宿主按物理屏自动选安全建屏尺寸（宽截到 2560、高取短边）并覆盖传入的 width/height，一般无需传尺寸；' +
+      '物理屏两边都超过 2560 时宿主不建屏，create 回 E_SURFACE_UNAVAILABLE，data 带 sizePolicy:"none_safe"' +
+      '（配 physicalShortSide/physicalLongSide，按短/长边命名不随横竖交换），reason 点名 no safe trusted-display size：' +
+      '这不是 ROM 拒绝、清单仍可用（denied 不置位），但不要反复重试，改用前台模式。' +
+      'release 成功（服务端回话）的回包带 inputStateRestored："unknown"（字符串）表示屏已收回但系统手势是否恢复无法证实，' +
+      '不要宣称已恢复；用户仍手势异常时重启设备一次即可恢复，' +
+      'release 失败时同一字段为布尔 false（屏还在，输入未被释放；可重试 release 本身），' +
+      '本地放弃等待时（E_TRANSPORT_TIMEOUT 失败回包）也是 "unknown"（结局未知）：事务未被取消、' +
+      '屏可能还在也可能稍后才被收掉——先 surface.virtual query 复核，不要按"已释放/未执行"任何一个读。' +
+      '个别 ROM 会直接拒绝建 trusted 屏：create 回 E_SURFACE_TRUSTED_DENIED 时不要反复重试，改用前台模式；' +
+      '清单里该能力此时标记为 unusable（backend.shizuku.trustedDisplay.denied=true），建屏成功或重连后对账屏活着即自动解除。' +
       '虚拟屏的控件树能否读到由 backend.shizuku.trustedDisplay.nodeTree 说明，alive 不等于读得到。',
     parameters: {
       action: { type: 'string', required: true, enum: ['create', 'query', 'release'], description: '动作。' },
@@ -769,13 +834,53 @@ function manifestTime (manifest, file) {
       height: { type: 'integer', description: '可选，320..2560。' },
       dpi: { type: 'integer', description: '可选，显示密度。' }
     },
-    output: { schema: resultSchema(), render: renderText },
+    output: {
+      schema: resultSchema({
+        previewAvailable: { type: 'boolean', required: true, description: '虚拟屏是否活跃且本版本提供右侧栏预览入口；create/query 成功且屏号有效时为 true，release 或失败时为 false。入口在当前 DSH 版本不可用时按看不到处理。' },
+        previewSurface: { type: 'string', required: true, description: '预览承载面；可用时为 dshbox-right-sidebar，否则为空串。' },
+        doNotMoveToMain: { type: 'boolean', required: true, description: '为 true 时，不要为了让用户看到而把屏上任务移到主屏或把宿主拉到前台；用户可通过右侧栏预览查看（入口不可用时询问用户）。' },
+        agentHint: { type: 'string', required: true, description: '给 agent 的预览行为提示；失败/释放时说明当前没有可预览的屏。' },
+      }),
+      render: renderText
+    },
     execute: async (args) => {
       const payload = { action: args.action }
       for (const key of ['width', 'height', 'dpi']) if (args[key] != null) payload[key] = args[key]
-      const r = await channel.call('surface.virtual', payload)
-      const text = r.ok ? `虚拟屏 ${payload.action}: ${compact(r.data)}` : summary(r)
-      return { ok: r.ok, code: r.code || '', text, path: '', ...channelFields(r) }
+      let r = await channel.call('surface.virtual', payload)
+      // 混合场景对账：调用回"需要后台模式"，而清单说这台机器**拒绝建屏**时，前者的
+      // 建议（切优先后台/建屏）会把人送回后台再撞一次拒绝。清单是这台机器的固定结论，
+      // 覆盖它：回包按拒绝回，摘要与建议随之按拒绝场景出（前台方向）。清单不给字段时
+      // 按"未知"处理，不猜，modeRequired 原样通过。
+      if (!r.ok && r.code === 'E_SURFACE_MODE_REQUIRED') {
+        const resolved = channel.resolve()
+        const denied = resolved && resolved.info && resolved.info.manifest
+          ? readManifestDenied(resolved.info.manifest)
+          : null
+        if (denied === true) {
+          // 连 reason 一起换：modeRequired 的 reason 说的是"switch the surface preference"，
+          // 只换码不换 reason 的摘要会把两条建议都留在同一段 text 里——机器按字段读没问题，
+          // 按文本读就会拿到"前台"与"切偏好"两个彼此相反的方向。
+          r = {
+            ...r,
+            code: 'E_SURFACE_TRUSTED_DENIED',
+            reason: 'this system has refused the trusted-display create for this app; run the involved operations in foreground mode instead of retrying surface.virtual',
+            retryable: false,
+          }
+        }
+      }
+      // 建议只落一处：失败路径的 summary（→ describe）已经拼过 hintFor，
+      // 这里再拼一次会让同一段文本出现两行"处置建议"；成功路径才由这里拼
+      // （release 的回包带 inputStateRestored="unknown" 时，"不宣称已恢复 / 手势
+      // 异常重启"的提示在成功档同样可达，不能只留给失败档）。
+      const outcomeText = r.ok
+        ? `虚拟屏 ${payload.action}: ${compact(r.data)}${r.data && typeof r.data.note === 'string' ? `\n${r.data.note}` : ''}`
+        : summary(r)
+      const hint = r.ok ? hintFor(r) : null
+      const preview = surfacePreviewFields(r, payload.action)
+      const previewLine = preview.previewAvailable ? `预览提示: ${preview.agentHint}` : ''
+      const text = [outcomeText, hint ? `处置建议: ${hint}` : '', previewLine]
+        .filter(Boolean).join('\n')
+      return { ok: r.ok, code: r.code || '', text, path: '', ...channelFields(r), ...preview }
     }
   })
 

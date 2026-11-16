@@ -71,6 +71,9 @@
     <string name="pilot_perm_notification_listener">مراقبة الإشعارات</string>
     <string name="pilot_cap_missing_perm">·%1$s غير مُمنح</string>
     <string name="pilot_cap_missing_service">·%1$s متوقف</string>
+    <string name="pilot_cap_missing_grant">لم يمنح Shizuku صلاحية لهذا التطبيق</string>
+    <string name="pilot_cap_missing_service_shizuku">Shizuku ليس قيد التشغيل؛ شغّله من الصفحة المميزة</string>
+    <string name="pilot_cap_missing_bound">خدمة مستخدم Shizuku غير متصلة</string>
     <string name="pilot_a11y_notice_title">خدمة إمكانية الوصول غير متصلة</string>
     <string name="pilot_a11y_notice_not_bound">‏%1$s يحتاج إلى خدمة إمكانية الوصول. القائمة في النظام ما زالت تتضمن هذا التطبيق، إذن لم يُسحب الإذن: أُغلق التطبيق في الخلفية. يكفي إعادة فتحه، ولا يلزم تغيير أي إعداد.</string>
     <string name="pilot_a11y_notice_revoked">‏%1$s يحتاج إلى خدمة إمكانية الوصول، لكن لم يعد النظام يدرج هذا التطبيق ضمن الخدمات المفعّلة: لقد أُوقف الإذن. أعد تفعيله.</string>
@@ -112,9 +115,47 @@
     <string name="pilot_tier_choice_ask">السؤال عند كل استدعاء</string>
     <string name="pilot_tier_choice_always">وصول كامل</string>
 
-    <string name="pilot_ceiling_any">يمكن منح الوصول الكامل بشكل دائم.</string>
-    <string name="pilot_ceiling_session">الوصول الدائم مقصور على جلسة المساعد الحالية.</string>
-    <string name="pilot_ceiling_ask_only">متطلبات الأمان تفرض التأكيد في كل مرة. ولا يتجاوز «وصول كامل» هذا الشرط.</string>
+    <string name="pilot_tier_note">تعمل المستويات الثلاثة كما تختار. «وصول كامل» يعني فقط أن المساعد لا يسأل؛ تظل أذونات النظام ونوافذ النظام وحدود المعدل سارية.</string>
+
+    <!-- 能力页右上角的全局档位选择器：批量设置，不是批量授权，不弹确认框。 -->
+    <string name="pilot_tier_all_denied">حظر الكل</string>
+    <string name="pilot_tier_all_ask">السؤال عن الكل</string>
+    <string name="pilot_tier_all_always">وصول كامل للكل</string>
+
+    <!-- الإعداد العام بخمسة بنود: الإعداد الافتراضي، تحرير الإعداد المخصص وتطبيقه. -->
+    <string name="pilot_config_default">الإعداد الافتراضي</string>
+    <string name="pilot_config_custom">الإعداد المخصص المحفوظ</string>
+    <string name="pilot_config_unsaved">مختلط</string>
+    <string name="pilot_config_action_edit">إعداد</string>
+    <string name="pilot_config_action_apply">تطبيق</string>
+    <string name="pilot_config_page_title">الإعداد المخصص المحفوظ</string>
+    <string name="pilot_config_save">حفظ</string>
+    <string name="pilot_config_note">التحرير يغيّر المسودة فقط. الحفظ (أعلى اليمين) يجعله الإعداد المخصص المحفوظ؛ التطبيق خطوة منفصلة ولا يسري تلقائيًا.</string>
+    <string name="pilot_config_scope_note">هذه هي القدرات العادية الأربعون. مفتاح Shizuku الكامل وتفضيل وضع التنفيذ ليسا جزءًا من أي إعداد عام.</string>
+    <string name="pilot_config_missing_hint">لا يوجد إعداد مخصص محفوظ بعد: أنشئه واحفظه من «إعداد» أولًا ثم طبّقه من هنا.</string>
+    <string name="pilot_config_save_failed">لم ينجح الحفظ وبقيت المسودة في هذه الصفحة: راجعها ثم أعد المحاولة.</string>
+
+    <!-- التطبيقات المحمية: قائمة يختارها المستخدم، والمدخل في قسم ضبط الوصول. -->
+    <string name="pilot_page_protected_apps">التطبيقات المحمية</string>
+    <string name="pilot_protected_status_unset">غير محدد</string>
+    <string name="pilot_protected_status_count">%1$d محمية</string>
+    <string name="pilot_protected_apps_note">التطبيقات في هذه القائمة لا يمكن للمساعد تشغيلها أو قراءتها أو التحكم بها. شيزوكو الكامل (الأوامر العشوائية) وقناتا ADB وroot لا تخضعان لهذه القائمة.</string>
+    <string name="pilot_protected_apps_search_hint">بحث بالاسم أو باسم الحزمة</string>
+    <string name="pilot_protected_apps_empty">لا توجد تطبيقات محمية بعد</string>
+    <string name="pilot_protected_apps_save_failed">فشل حفظ القائمة فأُعيدت حالة التحديد إلى ما كانت عليه: حاول مجددًا.</string>
+    <string name="pilot_protected_apps_add_by_package">إضافة باسم الحزمة</string>
+    <string name="pilot_protected_apps_package_placeholder">com.example.app</string>
+    <string name="pilot_protected_apps_add">إضافة</string>
+    <string name="pilot_protected_apps_invalid_package">اسم الحزمة غير صالح: يجب أن يبدأ بحرف وأن يحتوي فقط على أحرف وأرقام وشرطات سفلية ونقاط.</string>
+    <string name="pilot_protected_apps_unlisted">غير مدرج في قائمة التطبيقات</string>
+
+    <!-- 档位说明页：由用户主动点开，区分助手审批与系统弹框。 -->
+    <string name="pilot_page_capability_help">حول المستويات</string>
+    <string name="pilot_help_tier_only">«وصول كامل» يعني فقط أن المساعد يتوقف عن السؤال. لا يمنح أذونات أندرويد، ولا يتجاوز نوافذ النظام، ولا يعني Shizuku أو root.</string>
+    <string name="pilot_help_capture">تسجيل الشاشة ولقطاتها في المقدمة يمران بتأكيد التقاط الشاشة الخاص بأندرويد؛ مسار الشاشة الافتراضية في الخلفية وحده لا يُظهر نافذة نظام.</string>
+    <string name="pilot_help_install">تثبيت تطبيق ما يُظهر تأكيد تثبيت النظام كما هو.</string>
+    <string name="pilot_help_runtime">أذونات التشغيل وإذن الاستماع إلى الإشعارات وشرط المقدمة للحافظة كلها تبقى كما هي.</string>
+    <string name="pilot_help_shell">يبقى غلاف النظام مقيّدًا بجدول الأفعال المغلق ومفاتيحه لكل فعل؛ الأوامر خارج الجدول تحتاج مفتاح Shizuku الكامل المنفصل.</string>
 
     <string name="pilot_category_observe">المعاينة</string>
     <string name="pilot_category_control">التحكم</string>
@@ -132,6 +173,8 @@
     <string name="pilot_surface_bg_reason_shizuku_missing">Shizuku غير مثبّت على هذا الجهاز.</string>
     <string name="pilot_surface_bg_reason_shizuku_offline">Shizuku لا يعمل.</string>
     <string name="pilot_surface_bg_reason_not_granted">Shizuku يعمل لكنه لم يمنح هذا التطبيق الإذن.</string>
+    <string name="pilot_surface_bg_reason_display_refused">رفض هذا الجهاز إنشاء شاشة موثوقة؛ شاشة الخلفية الموثوقة غير متاحة هنا. انتقل إلى الوضع الأمامي لهذه المهام.</string>
+    <string name="pilot_surface_bg_reason_display_unsafe">عطّلت الشاشة الموثوقة الشاشة الرئيسية على هذا الجهاز، لذا تم تحريرها. انتقل إلى الوضع الأمامي لهذه المهام.</string>
     <string name="pilot_surface_bg_reason_display_missing">لم يُنشأ شاشة الخلفية بعد؛ على المساعد إنشاءها.</string>
 
     <string name="pilot_surface_kind_foreground">المقدمة</string>
@@ -146,6 +189,17 @@
     <string name="pilot_guide_accessibility_limit">الإيماءات تعمل على الشاشة الرئيسية فقط، والتقاط لقطة شاشة دون طلب من النظام يتطلب Android 11 أو أحدث.</string>
     <string name="pilot_guide_shizuku_steps">ثبّت Shizuku، ثم شغّله عبر التصحيح اللاسلكي أو من حاسوب، وبعدها عد إلى هنا وامنح هذا التطبيق الوصول. تُنفَّذ العمليات ذات الامتيازات بهوية shell، وهو يتطلب ذلك.</string>
     <string name="pilot_guide_shizuku_offline">لا يعمل Shizuku. تبقى القدرات ذات الامتيازات محظورة حتى تُكتشف خدمته.</string>
+    <string name="pilot_fullshell_section">"قدرة Shizuku الكاملة"</string>
+    <string name="pilot_fullshell_switch">"السماح للمساعد بتنفيذ أي أمر shell"</string>
+    <string name="pilot_fullshell_identity">"هوية التنفيذ الحالية"</string>
+    <string name="pilot_fullshell_identity_shell">"shell (uid 2000)"</string>
+    <string name="pilot_fullshell_identity_root">"root (uid 0)"</string>
+    <string name="pilot_fullshell_identity_uid">"uid %1$d"</string>
+    <string name="pilot_fullshell_identity_unknown">"غير معروفة (لا يمكن قراءة هوية التنفيذ حالياً)"</string>
+    <string name="pilot_fullshell_need_running">"Shizuku لا يعمل: شغّل Shizuku أولاً قبل تفعيل هذا المفتاح."</string>
+    <string name="pilot_fullshell_need_granted">"لم يُمنح هذا التطبيق إذناً من Shizuku: امنحه الإذن هناك أولاً، ثم فعّل هذا المفتاح."</string>
+    <string name="pilot_fullshell_need_bound">"خدمة المستخدم في Shizuku غير متصلة: انتظر إعادة الاتصال أو اضغط «إعادة الاتصال» أعلاه، ثم فعّل هذا المفتاح."</string>
+    <string name="pilot_fullshell_risk_note">"عند تفعيل هذا المفتاح يستطيع المساعد تنفيذ أي أمر shell: دون جدول الأفعال المغلق أو قائمة الوسائط المسموحة أو موافقة المساعد، وبدون تأكيد ثانٍ. تُنفَّذ الأوامر بهوية Shizuku (shell عند تشغيل Shizuku عبر ADB أو التصحيح اللاسلكي، وroot فقط عندما يعمل Shizuku نفسه بصلاحيات root) — وهذا ليس root تلقائياً ولا يتجاوز أذونات Android أو نوافذ النظام. تبقى حدود لحجم المخرجات ومدة التنفيذ قائمة، وهي حدود استقرار وليست موافقات. يستغرق الأمر الطويل قناة shell الوحيدة ويحجزها حتى ينتهي فيبقى ما يعتمد على Shizuku في الانتظار، ولا تسري مرشحات حماية التطبيق المضيف على نفسه أمام أي أمر عشوائي."</string>
 
     <string name="pilot_perm_contacts">جهات الاتصال</string>
     <string name="pilot_perm_calendar">التقويم</string>
@@ -230,6 +284,8 @@
     <string name="pilot_overlay_asking">هل تسمح بـ%1$s؟</string>
     <string name="pilot_overlay_allow">سماح</string>
     <string name="pilot_page_overlay">تأكيد فوق النوافذ</string>
+    <string name="pilot_page_developer_mode">وضع المطوّر</string>
+    <string name="pilot_devmode_unavailable">وضع المطوّر غير مهيأ</string>
     <string name="pilot_overlay_note">للطلب ثلاثة مواضع ممكنة، بهذا الترتيب: داخل شاشة المساعد عندما تكون في المقدمة؛ فوق كل النوافذ عندما لا تكون في المقدمة وهذا الإذن ممنوح؛ ولوحة الإشعارات (اسحبها لأسفل ثم اضغط «سماح») عندما لا يكون ممنوحا. وإذا كانت الإشعارات متوقفة أيضا فلا يبقى ما يمكن الضغط عليه.</string>
     <string name="pilot_action_shizuku_request">طلب الوصول من Shizuku</string>
     <string name="pilot_section_artifacts">ملفات المساعد الناتجة (يُجمع كل منها وفق مدته الخاصة)</string>
@@ -274,15 +330,15 @@
     <string name="relay_a11y_description">يتيح للمساعد قراءة الشاشة الحالية وتنفيذ الإيماءات وإدخال النص نيابةً عنك (اللمس، اللمس المطوّل، السحب، التمرير، الكتابة وضبط القيم، وإرسال المفاتيح). يمنح النظام هذه الخدمة مرة واحدة؛ ثم يطلب المساعد إذنك لكل قدرة على حدة، ولا يتحكم في هذا التطبيق مطلقًا.</string>
     <string name="relay_a11y_label">مساعد الهاتف DSHBox</string>
     <string name="relay_approval_char_count">%1$d حرفًا</string>
-    <string name="relay_cap_app_install_summary">تُثبّت عبر Shizuku، وقد لا يزال التثبيت يتطلب تأكيد المستخدم. تطلب التأكيد دائمًا.</string>
+    <string name="relay_cap_app_install_summary">تُثبّت عبر Shizuku. لا يزال تأكيد تثبيت النظام يظهر.</string>
     <string name="relay_cap_app_install_title">تثبيت تطبيق</string>
     <string name="relay_cap_app_launch_summary">تُشغّل تطبيقًا آخر على الشاشة الحالية.</string>
     <string name="relay_cap_app_launch_title">تشغيل تطبيق</string>
     <string name="relay_cap_app_stop_summary">تُوقف تطبيقًا آخر إيقافًا قسرًا. يؤثر في الجهاز بالكامل.</string>
     <string name="relay_cap_app_stop_title">إيقاف تطبيق</string>
-    <string name="relay_cap_appops_set_summary">تضبط أذونات العمليات لكل تطبيق عبر Shizuku. تطلب التأكيد دائمًا.</string>
+    <string name="relay_cap_appops_set_summary">تضبط أذونات العمليات لكل تطبيق عبر Shizuku.</string>
     <string name="relay_cap_appops_set_title">تغيير عمليات التطبيقات</string>
-    <string name="relay_cap_audio_capture_summary">يسجّل الصوت الذي يلتقطه الميكروفون، حتى 30 ثانية لكل استدعاء.</string>
+    <string name="relay_cap_audio_capture_summary">يسجّل الصوت الذي يلتقطه الميكروفون، حتى 120 ثانية لكل استدعاء.</string>
     <string name="relay_cap_audio_capture_title">التسجيل بالميكروفون</string>
     <string name="relay_cap_cal_read_summary">تقرأ أحداث التقويم.</string>
     <string name="relay_cap_cal_read_title">قراءة التقويم</string>
@@ -296,10 +352,12 @@
     <string name="relay_cap_contact_read_title">قراءة جهات الاتصال</string>
     <string name="relay_cap_contact_write_summary">تضيف جهات اتصال أو تعدّلها.</string>
     <string name="relay_cap_contact_write_title">الكتابة في جهات الاتصال</string>
+    <string name="relay_cap_device_status_summary">تقرأ مجموعة حالة أساسية للجهاز للقراءة فقط: الوقت والمنطقة الزمنية، البطارية والشحن، حالة الشاشة والقفل، نوع الشبكة وحالة الاتصال، مستويات صوت الوسائط/الرنين/الإشعارات/المنبه، السطوع، والشركة المصنعة/الطراز/إصدار Android/دقة الشاشة/لغة النظام. لا تحتاج Shizuku ولا تعرض مطالبة إذن.</string>
+    <string name="relay_cap_device_status_title">حالة الجهاز</string>
     <string name="relay_cap_loc_read_summary">تقرأ آخر موقع معروف؛ لا تدعم التتبع في الخلفية.</string>
     <string name="relay_cap_loc_read_title">قراءة الموقع</string>
-    <string name="relay_cap_media_read_summary">تسرُد الصور ومقاطع الفيديو من الوسائط المشتركة.</string>
-    <string name="relay_cap_media_read_title">قراءة الصور ومقاطع الفيديو</string>
+    <string name="relay_cap_media_read_summary">تسرُد الصور أو مقاطع الفيديو أو الصوت من مكتبة وسائط النظام، نوع واحد لكل استدعاء. كل نوع يتطلب إذن الوسائط الخاص به فقط.</string>
+    <string name="relay_cap_media_read_title">قراءة الوسائط</string>
     <string name="relay_cap_media_write_summary">تكتب الملفات في مجموعات الوسائط المشتركة.</string>
     <string name="relay_cap_media_write_title">الحفظ في الصور</string>
     <string name="relay_cap_notify_post_summary">ترسل إشعارات من هذا التطبيق.</string>
@@ -318,7 +376,7 @@
     <string name="relay_cap_surface_virtual_title">شاشة افتراضية في الخلفية</string>
     <string name="relay_cap_sys_intent_summary">"يرسل مفتاحاً نظامياً ثابتاً: ضبط منبه أو مؤقّت، أو فتح شاشة المنبهات أو المؤقّتات، أو صفحة من إعدادات النظام، أو تفاصيل تطبيق، أو لوحة الطلب (لا يطلب الرقم تلقائياً)، أو صفحة في المتصفح. لا يحتاج إلى إمكانية الوصول ولا Shizuku. تُقبل القوالب الواردة في الجدول فقط، وترفض القيم الخارجة عن المدى، ولا يوجد مدخل لحذف منبه أو إلغائه، ولا يُرسل شيء ما دام التطبيق في الخلفية بدون إذن التراكب."</string>
     <string name="relay_cap_sys_intent_title">مفتاح النظام</string>
-    <string name="relay_cap_sys_settings_write_summary">تكتب الإعدادات المحمية عبر Shizuku. تطلب التأكيد دائمًا.</string>
+    <string name="relay_cap_sys_settings_write_summary">تكتب الإعدادات المحمية عبر Shizuku.</string>
     <string name="relay_cap_sys_settings_write_title">تغيير إعدادات النظام</string>
     <string name="relay_cap_sys_shell_summary">"يتحكّم بالهاتف بأذونات على مستوى النظام. يتضمّن افتراضياً أوامر للقراءة فقط وبعض الوظائف الأساسية."</string>
     <string name="relay_cap_sys_shell_title">"قدرة الصدفة في النظام"</string>
@@ -363,12 +421,13 @@
     <string name="relay_err_gate_system_missing">لا يزال إذن النظام المطلوب لهذه القدرة غير ممنوح.</string>
     <string name="relay_err_gate_timeout">انتهت مهلة نافذة التأكيد دون رد، وتُعامل الحالة كرفض.</string>
     <string name="relay_err_gate_waiting_turn">هناك تأكيدات أخرى بانتظار ردّ ولم يحصل هذا على مكان. انتظر قليلاً ثم اسأل مجددًا.</string>
+    <string name="relay_err_command_failed">النُفّذ الأمر وخرج برمز غير صفري (data.exit): هذا فشل الأمر نفسه وليس خطأً في المضيف. المخرجات القياسية والخطأ في data.output و data.stderr - اقرأهما قبل أن تقرر إعادة المحاولة.</string>
+    <string name="relay_err_command_not_permitted">نُفّذ الأمر لكنه رُفض من جهة خدمة أندرويد (Permission Denial أو SecurityException، انظر data.stderr): هوية Shizuku الحالية لا تستطيع ذلك، وإعادة الإرسال كما هي سترفض مرة أخرى.</string>
     <string name="relay_err_internal">حدث خطأ غير متوقع أثناء معالجة الطلب.</string>
     <string name="relay_err_launch_not_landed">"قبل النظام طلب التشغيل، لكن التطبيق لم يصبح النافذة الأمامية للشاشة الرئيسية أو الشاشة الافتراضية."</string>
     <string name="relay_err_malformed">لم يطابق الطلب صيغة القناة، وتم رفضه.</string>
     <string name="relay_err_no_editable_target">لا يوجد حقل نص في التركيز؛ انقر الحقل أولاً ثم أعد المحاولة.</string>
     <string name="relay_err_node_ambiguous">طابق المحدد عدة عناصر؛ أضف index أو حدّد الهدف</string>
-    <string name="relay_err_node_consent_target">هذا العنصر ينتمي إلى مربع تأكيد النظام ويرفضه المضيف مباشرةً: المستخدم وحده يمكنه الإجابة عن طلب الإذن، ولا يفيد حذف package ولا استخدام nodeId ولا إضافة view id.</string>
     <string name="relay_err_node_no_ime_action">"لا يحتوي هذا العنصر على أي إجراء لوسيلة إدخال يمكن تشغيله: فهو ليس حقراً قابلاً للتحرير."</string>
     <string name="relay_err_node_not_actionable">هذا العنصر لا يقبل هذا الإجراء؛ غيّر الهدف أو استخدم الإحداثيات</string>
     <string name="relay_err_node_not_found">لا يوجد عنصر مطابق؛ أعد قراءة الواجهة ثم حدّد الهدف من جديد</string>
@@ -382,7 +441,7 @@
     <string name="relay_err_surface_mode_required">تعمل هذه القدرة على الشاشة الموثوقة في الخلفية فقط؛ بدّل تفضيل التنفيذ إلى «الخلفية أولاً» وتأكد من أن الشاشة قائمة.</string>
     <string name="relay_err_surface_no_shell">لا يعمل Shizuku، لذلك التشغيل في الخلفية غير متاح.</string>
     <string name="relay_err_surface_secure">هذه النافذة مصنَّفة كمحمية، لذلك لا يمكن التقاط محتواها.</string>
-    <string name="relay_err_surface_trusted_denied">رفض النظام إنشاء شاشة موثوقة.</string>
+    <string name="relay_err_surface_trusted_denied">رفض هذا النظام إنشاء شاشة موثوقة لهذا التطبيق. لا تُعِد المحاولة مرارًا؛ انتقل إلى الوضع الأمامي.</string>
     <string name="relay_err_surface_unavailable">لا يوجد نمط تنفيذ يخدم هذه القدرة في الوقت الحالي.</string>
     <string name="relay_err_suspended_by_host">نافذة المساعد في المقدمة؛ اتركها ثم أعد المحاولة.</string>
     <string name="relay_err_timeout">لم يرد المضيف خلال المدة المطلوبة.</string>

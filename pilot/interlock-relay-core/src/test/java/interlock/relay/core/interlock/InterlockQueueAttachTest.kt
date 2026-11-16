@@ -32,7 +32,7 @@ class InterlockQueueAttachTest {
         risk = RiskLevel.LOW,
         callIndexInSession = 1,
         paramDetail = detail,
-        allowsSessionGrant = false,
+        allowsSessionGrant = true,
         deadlineAtMs = 60_000L,
     )
 

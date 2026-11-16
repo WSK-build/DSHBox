@@ -53,6 +53,13 @@ const EXIT_NOT_FOUND = 4;
 const EXIT_RETRY_LATER = 5;
 
 const DEFAULT_TTL_MS = 90000;
+
+// call 的等待区间。上限比录音的内容上限（120 秒）多 10 秒收尾余量：预算与内容同值，
+// 满时长录音会在编码落盘、回执回写还没走完时先被本进程掐断。三处同表——插件本层
+// （pilot.js 的 ENTRY_TIMEOUT_MAX_MS）与宿主有效期（EnvelopeCodec 的 MAX_TTL_MS）都是 130000；
+// ask 通路自己的 120000 上限与此无关。
+const CALL_MIN_TTL_MS = 1000;
+const CALL_MAX_TTL_MS = 130000;
 const MIN_DELAY_MS = 5;
 const MAX_DELAY_MS = 200;
 
@@ -108,7 +115,7 @@ function usage(stream) {
       '  --out FILE    deliver the first returned artifact to FILE; must be an absolute path',
       `                (omit --out and it lands under ${OUT_ROOT}/<kind>/ with a generated`,
       '                 name, which the reply reports back)',
-      '  --timeout MS  how long this process waits, 1000..120000 (default 90000)',
+      '  --timeout MS  how long this process waits, 1000..130000 (default 90000)',
       '',
       'options for ask:',
       '  --json J      {"question":"...","options":["A","B"],"timeoutMs":60000}',
@@ -116,7 +123,8 @@ function usage(stream) {
       '                 timeoutMs: 5000..120000, default 60000)',
       '',
       'exit codes: 0 ok, 1 usage, 2 denied, 3 timeout, 4 user must act on the phone,',
-      '            5 retry later, 6 internal',
+      '            5 retry later, 6 internal, 7 the command ran and failed',
+      '            (7: read data.output / data.stderr / data.exit in the reply)',
       '            status/cancel: 4 also means no such request; cancel: 5 also means the',
       '            cancellation was only requested, not confirmed by the host',
       '',
@@ -611,7 +619,7 @@ function callCommand(parsed) {
     );
   }
 
-  const ttl = Math.min(Math.max(Number(parsed.timeout) || DEFAULT_TTL_MS, 1000), 120000);
+  const ttl = Math.min(Math.max(Number(parsed.timeout) || DEFAULT_TTL_MS, CALL_MIN_TTL_MS), CALL_MAX_TTL_MS);
   // 本进程等待预算的起点只从单调钟取时：系统对时不能再拉长或压短这一次等待。
   const deadline = performance.now() + ttl;
 

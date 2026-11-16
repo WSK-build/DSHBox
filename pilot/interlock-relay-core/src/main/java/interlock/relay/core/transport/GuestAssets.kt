@@ -220,11 +220,26 @@ class GuestAssets(
 
                 cat {{CAPS}}
 
-            Every entry has: id, category, systemPermission, assistantTier, ceiling,
-            usable, implemented, minSdk, surfaces, guide; usable entries also carry the
-            surface a call would run on, and an entry carries degradeReason when the mode
-            the user asked for is not one this call can serve. Only usable=true can be
-            called today.
+            Every entry has: id, category, systemPermission, assistantTier,
+            approvalPolicy, requiresApproval, sessionGranted, sessionGrantable,
+            usable, implemented, minSdk, surfaces, guide; usable
+            entries also carry the surface a call would run on, and an entry carries
+            degradeReason when the mode the user asked for is not one this call can serve.
+            Only usable=true can be called today.
+            The approval fields are the effective gating, not a ceiling: approvalPolicy is
+            "denied" | "ask_each_call" | "none" from the user's tier, and the tier is the
+            only switch for the host's approval. requiresApproval is the ordinary-call
+            answer: whether a call would raise the host's confirmation right now. When
+            the tier is denied the capability is not callable at all (approvalPolicy
+            "denied"), so requiresApproval is false there too - read approvalPolicy, not
+            requiresApproval, to tell "will not ask" from "cannot run". sessionGranted
+            says a "allow for this session" answer is already in effect - with it,
+            ask-tier capabilities do not ask again until the session ends.
+            sessionGrantable is true only on the ask tier: full access has nothing to
+            grant a session for, denied is not askable at all.
+            The top-level core object carries the version and build of the host package
+            that owns the gating, so a mismatch between what you read here and how calls
+            behave can be pinned to a build instead of guessed at.
             The list has no timestamp field of its own. The file's modification time only says
             when the last successful write landed - it does not prove the content still matches
             the device. The host re-lays the file the moment a gate or the virtual display
@@ -243,16 +258,56 @@ class GuestAssets(
             batches, and the CLI does not read the marker - a call started inside that window
             may run against a mixed set for a moment.
             The file also carries a top-level backend.shizuku object: running, authorized,
-            bound, shellUid, version and trustedDisplay {alive, displayId, nodeTree}. When a
-            shell capability reports E_BACKEND_UNAVAILABLE, read that object first - it says
-            which of the four links is broken, instead of leaving you to guess between "Shizuku
-            is not running", "the user never granted us", "the user service is not bound" and
-            "there is no virtual display yet".
+            bound, shellUid, version and trustedDisplay {alive, denied, unsafe, displayId, nodeTree}.
+            denied is true after this system refused the trusted-display create outright:
+            treat it as the stable answer on this device (retrying surface.virtual will not
+            change it) and switch to foreground mode. unsafe is a different finding: a display
+            was created but the post-create main-screen self-check observed the trusted display
+            disrupting the user's own screen (launcher moved onto the virtual display, the main
+            top task changed, focus cleared, or the IME pulled onto the main screen), so the
+            display was released at once. unsafe only takes the background surface away - run
+            the involved operations in foreground mode while it stands. surface.virtual itself
+            stays available on purpose: a later create re-checks the screen and clears the mark
+            when the check passes, and an explicit {"action":"release"} clears a leftover
+            display and clears the mark too.
+            When a shell capability reports
+            E_BACKEND_UNAVAILABLE, read that object first - it says which of the four links is
+            broken, instead of leaving you to guess between "Shizuku is not running", "the user
+            never granted us", "the user service is not bound" and "there is no virtual display
+            yet".
             trustedDisplay.nodeTree is the one field that is measured, not asserted: it says
             what the last real attempt to take that display's node tree found - "last-seen",
             "last-empty", or "untested" when nothing has asked since that display came to be.
             Read it before you plan a node-level flow onto the background surface: an alive
             display is not by itself a display whose controls you can read.
+
+            Where your calls actually run: the host keeps a per-target landing record with a
+            lifetime of its own. After app.launch is verified on a surface (landed on the
+            trusted display, or the app came up on the user's own screen), the following
+            ui.* / screen.* calls for that target follow the recorded surface, and a launch
+            you re-send for the same target re-checks before it runs. If the recorded display
+            is gone or the target was stopped, the call comes back with
+            E_SURFACE_UNAVAILABLE naming it - recreate the display or launch the target
+            again instead of retrying blind. Under background-preferred, a launch whose
+            background attempt failed deterministically (the app will not go to a second
+            display, or it grabbed the user's own screen) is answered from the foreground;
+            a transient failure (Shizuku dropped, the display was reclaimed, the cold start
+            was never confirmed) is returned as a retryable error without switching to
+            foreground, and an unverified outcome is never replayed automatically. What the
+            reply says decides the next move: an unverified launch whose cause is visible
+            (a chooser or a clone container holding the front) answers E_LAUNCH_NOT_LANDED
+            as a repairable error - answer the box, then send the same launch again, it is
+            not blocked. A launch whose landing could not be observed at all answers the
+            same code but carries a short idempotency window: an identical re-launch inside
+            it is refused with E_TRANSPORT_UNKNOWN, and the window is lifted as soon as you
+            actually look - one successful pkg.query or ui.snapshot clears it (or it ages
+            out on its own).
+            Follow scope, exactly: ui.* calls without a package argument follow the most
+            recent verified app.launch target, and only while that target is still on top
+            of its recorded surface - if you switched apps yourself, say so with a package
+            argument or re-check with ui.snapshot. screen.capture and screen.record are
+            never carried by a per-app landing: they run on whatever surface the execution
+            preference and the display facts give them.
 
             ## Call
 
@@ -341,7 +396,7 @@ class GuestAssets(
             naming what tripped, never a silent default. --timeout is THIS process's
             wait budget, measured on a monotonic clock and covering both the v2
             acceptance round trip and the polling after it; it is clamped into
-            1000..120000 (default 90000).
+            1000..130000 (default 90000).
 
             Where this lives: {{ENTRY_DIR}} is not a directory inside the Debian guest - it is
             the host app's own files dir, reached through a PRoot path translation. So
@@ -357,7 +412,11 @@ class GuestAssets(
             is silently ignored, because a call you believed was a swipe must not run as a tap.
             Required keys are marked *. Coordinates are pixels in the space reported by
             ui.snapshot's data.screen; out-of-range and non-numeric values are refused rather
-            than accepted and doing nothing.
+            than accepted and doing nothing. One read outranks any arg shape (even unknown-to-
+            the-host keys): when backend.shizuku.trustedDisplay.denied is true in the manifest,
+            a surface.virtual call answers the refusal (E_SURFACE_TRUSTED_DENIED) regardless of
+            its arguments - switch to foreground mode; the build is not retryable, and the
+            denial is not cleared by changing arguments.
 
             No argument may name this app's own package, under any key and at any depth: a call
             that carries it answers {{GATE_DENIED_CODE}} (exit 2, not retryable) and names the
@@ -368,7 +427,8 @@ class GuestAssets(
             screen forward so a finished task can be handed back to the user.
 
             - {}, no arguments: pkg.query, clip.read, loc.read, screen.capture,
-              screen.observe, ui.snapshot. Sending any key to these is an argument error.
+              screen.observe, ui.snapshot, device.status. Sending any key to these is an
+              argument error.
             - app.launch: {"package"*} — a package name from pkg.query; a display name is a
               bad argument, not a missing permission. The reply says where it actually came up:
               verified is confirmation, and a launch that was accepted but not realised answers
@@ -383,7 +443,13 @@ class GuestAssets(
               verified and, when it could not confirm, observed (the package it did see). Never
               read a bare "accepted" as success.
             - contact.read, cal.read, media.read, notify.read: {"limit"}; notify.read also
-              takes {"package","includeOngoing"}, media.read takes {"kind":"image|video"}
+              takes {"package","includeOngoing"}, media.read takes {"kind":"image|video|audio"}
+              and reads the system media library only (no shared/public directories): one
+              capability covers all three kinds, permission is checked **per kind** - images
+              and videos need their own media permission (on Android 14 "selected photos"
+              counts as granted), audio needs the audio one, and a call for one kind never
+              fails because another kind's permission is missing. Rows carry uri, name and
+              date.
               The notify.read window is at most the last 30 minutes and 200 rows: everything
               posted since the service connected, plus whatever was already in the shade at that
               moment **whose own posting time is inside those 30 minutes** - a notification that
@@ -394,9 +460,33 @@ class GuestAssets(
             - contact.write: {"name"*,"number"}
             - cal.write: {"title"*,"startMs","endMs"}
             - media.write: {"file"*,"kind"}
-            - notify.post: {"title"*,"text","id"}
-            - audio.capture, screen.record: {"seconds"} - clamped to 1..30 by the host, so
-              asking for 60 records 30 and reports that, it does not fail
+            - notify.post: {"title"*,"text","id"} - the reply carries id, posted, verified,
+              notificationsEnabled and channelEnabled (on failures too), and verified is only
+              true when an active notification of this app carries that id posted no earlier
+              than this call - a stale notification reusing the same id does not count
+              (reading this app's own notifications needs no listener access). With the
+              notification permission or the channel off, the call fails with
+              E_GATE_SYSTEM_MISSING before anything is sent; when the system accepted the
+              post but no active notification of this app shows the id inside a short verify
+              window, the call answers E_TRANSPORT_UNKNOWN (outcome unknown, effectState
+              unknown, dispatched) with the same fields and verified=false - it never reports
+              sent without being seen, and reposting with the same id risks a duplicate.
+            - device.status: {} - one call returns a bundle of read-only device facts: time
+              and timezone; battery level, charging state (status-based, not merely plugged
+              in) and charging method; screen on and lock state; network type (wifi / mobile /
+              ethernet / offline) and whether the network is truly connected; media / ring /
+              notification / alarm volumes; brightness and auto-brightness; manufacturer,
+              model, Android version, resolution and system language. Fields degrade
+              independently: a single unreadable field answers null or "unknown" and never
+              fails the call. No runtime permission and no Shizuku: the network state reads a
+              normal install-time permission.
+            - audio.capture: {"seconds"} - clamped to 1..120 by the host, so asking for 200
+              records 120 and reports that, it does not fail; keep the calling budget at
+              130000ms - 120 seconds of content plus the margin for encoding, the reply and
+              the write-back, or a full-length recording is cut short by the caller, not by
+              the host
+            - screen.record: {"seconds"} - clamped to 1..30 by the host, so asking for 60
+              records 30 and reports that, it does not fail
             - clip.write: {"text"*}
             - clip.read and clip.write run only while this app holds input focus: Android 10 up
               refuses clipboard access to background apps, so this is the capability's range,
@@ -521,11 +611,54 @@ class GuestAssets(
               artifact file - the frame comes back over a descriptor, not through the text
               channel a PNG would be eaten by. Text replies echo the exact "command" that
               ran, which is also the line the confirm card shows. This capability is denied
-              until the user turns it on, and every call asks again. The shell verbs run as
+              until the user turns it on. Once it is allowed, whether the host asks before a
+              call follows the tier the user chose (read approvalPolicy / requiresApproval
+              from this manifest) - and full access only skips the host's question: the
+              closed verb table and the per-verb switches still decide which commands can
+              run, and out-of-table commands need the separate full-Shizuku switch. The
+              shell verbs run as
               remote transactions: when this call's local budget runs out while one is
               submitted, the timeout reply's reason says the transaction was not cancelled
               and its outcome is unknown - that is never a claim that nothing ran (see the
               timeout section below).
+            - sys.shell.full: {"command"*,"timeoutMs"} runs the given command line verbatim
+              through the same shell user service under /system/bin/sh -c - pipes,
+              redirections and out-of-table binaries included. It is governed only by its own
+              switch at the bottom of the privileged-access page: off (the default) answers
+              {{GATE_DENIED_CODE}} and never falls back to sys.shell's closed verb table; on
+              means the call runs with no assistant approval at all. "command" is capped at
+              4096 characters and "timeoutMs" must be a whole number within 1000..120000 ms
+              (out-of-range or fractional values are refused before the gate, not clamped);
+              output follows
+              the same length cap as every shell call. The audit record keeps only the
+              command word of the line - variable assignments (including quoted values) and
+              redirection operators with their targets are skipped - plus the args digest;
+              the whole line is never kept there. It is not
+              automatic root: the identity is Shizuku's (shell over ADB or wireless
+              debugging, root only when Shizuku itself runs as root), and Android's own
+              permissions and system dialogs still apply. Two stability facts to plan
+              around: a long command occupies the single shell channel until it finishes
+              (other shell-backed calls queue behind it), and the host's self-protection
+              filters do not apply to an arbitrary command line - the command text is the
+              caller's responsibility. The reply's effectState tracks what was actually
+              submitted: a non-zero exit after dispatch (127 = the inner command was not
+              found) means the shell ran the line and it failed - it answers
+              E_COMMAND_FAILED (exit 7), NOT an internal error: the reply data carries
+              output (stdout, including whatever a closed pipe like "dumpsys | grep -m1"
+              already produced), stderr and the raw exit, and effectState is "unknown" -
+              read the output and check the device state instead of re-running blindly.
+              When stderr carries Permission Denial / SecurityException the code is
+              E_COMMAND_NOT_PERMITTED instead: the Shizuku identity was refused by the
+              Android service side, and retrying as-is will be refused again (cmd -l
+              listing a service never means this identity may call it). A successful run
+              (exit 0) also carries stderr in the reply - warnings are not dropped - and
+              the reply adds no verified / readBack claim of its own: this path is raw.
+              "settings put" exiting 0 says nothing about whether the value landed - do
+              not treat rc=0 as success; verify with "settings get" yourself or use
+              sys.settings.write, whose reply carries readBack / verified. Failures before
+              anything was submitted (the switch is off, the user service is unreachable,
+              the budget cannot cover one round trip, the dispatch guard refused) answer
+              "not started" and are safe to re-issue once the cause is fixed.
             - ui.setValue: target shape plus {"text"*}. Writes into the control without needing
               focus. The result carries "requested" and "readBack". The read-back re-reads that
               same node by its number rather than resolving the selector again - a selector
@@ -599,13 +732,44 @@ class GuestAssets(
               E_WAIT_TIMEOUT (exit 3) is about the screen, not the channel.
             - surface.virtual: {"action","width","height","dpi"} - all four optional, an empty
               object means action=create. action is one of create|release|query; anything else
-              is an argument error. width/height are clamped to 320..2560 by the display host,
+              is an argument error. Usually omit width/height: on large screens the host picks
+              a safe build size from the physical display itself - width capped at 2560, height
+              taken from the short side (a 3200x2136 tablet builds 2560x2136) - and that choice
+              overrides the width/height you passed. The display host still clamps to 320..2560,
               so the reply reports the size the display actually got rather than the one asked
               for. The reply's "state" field, not "action", says what happened: "kept" means an
               alive display was reused instead of building a second one, while "create" means
               this call went through the create step - the host asks for a new display whenever
               its own cache says there is none, so "create" does not prove none existed. query
-              is how to re-read the id after the session restarted.
+              is how to re-read the id after the session restarted. A create that the system
+              refused outright answers E_SURFACE_TRUSTED_DENIED on this device - not
+              retryable, read backend.shizuku.trustedDisplay.denied in the manifest and switch
+              to foreground mode; other create failures stay retryable and do not write that
+              denial. Two create failures both mean "foreground mode, do not resend the create",
+              and neither is the ROM denial - the manifest row stays usable:
+              ① the physical display exceeds 2560 on BOTH sides (for example 3000x3000): the
+              host refuses locally and answers E_SURFACE_UNAVAILABLE carrying
+              "sizePolicy":"none_safe" with "physicalShortSide"/"physicalLongSide" in data
+              (named by length: the SHORT side is the smaller of the two physical sides and the
+              LONG side the larger, so portrait and landscape readings keep the two fields in the
+              same roles) - read those structured fields first and treat the reason's own "no safe
+              trusted-display size" phrase as the human-readable restatement, never the other
+              way round;
+              ② the system refused the create outright (E_SURFACE_TRUSTED_DENIED; in that one
+              case the manifest row IS marked unusable, which is how the two differ).
+              A release that finished answers "released" plus "inputStateRestored":"unknown":
+              the display is gone, but the reply cannot prove the system gestures came back on
+              the user's own screen, so treat it as unconfirmed, never as restored - if gestures
+              still misbehave, one reboot of the device settles it. The same field on failed
+              releases is the boolean false (the display is still up and still holds the input
+              focus - confirmed not restored), and on a release whose local wait was given up
+              it is "unknown" again - that one is a FAILED reply, E_TRANSPORT_TIMEOUT with the
+              give-up reason preserved, and the transaction was never cancelled: the display may
+              still be up, or may be torn down later, so re-read surface.virtual query (or
+              backend.shizuku.trustedDisplay.alive in the manifest) before deciding whether to
+              release again or switch to foreground mode, and treat it as neither "released" nor
+              "not executed". Boolean false means confirmed, "unknown" means no verdict, and no
+              path ever claims true.
             - app.stop: {"package"*}
             - appops.set: {"package"*,"op"*,"mode"*} where op is one of
               android:system_alert_window, android:camera, android:record_audio,
@@ -792,7 +956,18 @@ class GuestAssets(
               same code. The fix is on the user's side - switch the execution mode to
               background-preferred and confirm the screen has been created
               (backend.shizuku.trustedDisplay and the four-link read above say which piece is
-              missing) - retrying does not build the screen.
+              missing) - retrying does not build the screen. Unknown-to-you combinations are
+              covered by the denial read first: when
+              backend.shizuku.trustedDisplay.denied is true, a create that answers
+              E_SURFACE_MODE_REQUIRED is the same refusal surfacing at the call site, and the
+              treatment below applies - switch to foreground mode, do not retry the build.
+              Some ROMs refuse trusted-display creation outright. When
+              backend.shizuku.trustedDisplay.denied is true the manifest marks this capability
+              unusable with degradeReason=E_SURFACE_TRUSTED_DENIED and a create call answers the
+              same code: this device will not build the trusted display, so do not retry
+              repeatedly. The switch is on the user's side - foreground mode; the denial clears
+              only when a later create succeeds or the reconnected service reports the display
+              alive (query refreshes that answer).
               Read the surface field before claiming you worked off-screen: with no such screen
               the same calls run on the real one. On that screen coordinates are in its own
               width and height (from create/query), not the device's.
@@ -983,23 +1158,11 @@ class GuestAssets(
               asked again:
               - capabilities that offer "allow for this session": the retry raises a fresh
                 dialog. If the user says they already tapped Allow, that is what happened -
-                ask them to tap the new one.
-              - capabilities that must ask every time (app.install, audio.capture, clip.read,
-                loc.read, media.write, and anything aimed at a system consent screen): the
-                "system consent screen" test looks at **who owns the window** - a permission
-                component family (permissioncontroller, packageinstaller, SystemUI, a vendor
-                permission manager) or a package the platform runs as system uid. Where Settings
-                itself is system-owned that covers its ordinary pages too, so a node there asks
-                even under always-allow; E_AWAITING_CONSENT there is not proof the tier was ignored.
-                Once the node an action lands on is resolved, the execution-time guard applies to
-                that node: a consent control is refused outright with E_NODE_SYSTEM_CONSENT_TARGET
-                (exit 4) instead of being dispatched, and naming it by nodeId or by view id does not
-                get around it. Scope, exactly: that guard covers calls that **act on** a node. A call
-                that only **reads** one (ui.node, ui.snapshot) is judged from the arguments instead -
-                a selector that names no package is not tested against the node's owner, and a nodeId
-                is tested against whichever tree is cached at that moment, so an index taken before
-                the dialog came up can resolve to the wrong owner. So: do not rely on a read being
-                blocked, and do not answer a permission dialog by machine - that is the user's job.
+                ask them to tap the new one. Every ask-tier capability offers it now: the
+                tier the user chose decides whether a dialog appears at all, so no capability
+                "must ask every time" by itself, and no target shape asks outside the tier.
+                Android's own permission and install dialogs still appear and are still the
+                user's to answer; the host does not add an approval of its own on top of them.
                 The retry on a card nobody answered returns E_GATE_APPROVAL_TIMEOUT instead of asking a second time, because
                 the user did answer and a fresh dialog would just be answered late again. Do
                 not retry that one on your own; start it over with the user.

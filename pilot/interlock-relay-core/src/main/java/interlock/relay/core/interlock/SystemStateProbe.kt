@@ -14,6 +14,7 @@ import interlock.relay.core.protocol.ProbeResult
 import interlock.relay.core.protocol.SurfaceKind
 import interlock.relay.core.protocol.SystemGrantState
 import interlock.relay.core.exec.a11y.RelayAccessibilityService
+import interlock.relay.core.exec.direct.MediaKinds
 import interlock.relay.core.exec.direct.RelayNotificationListener
 
 /**
@@ -39,8 +40,18 @@ enum class AccessibilityGap {
  */
 class SystemStateProbe(
     context: Context,
-    private val shellAvailable: () -> Boolean = { false },
+    /**
+     * 同一份 Shizuku 快照的拆开读数：在跑（[available]，binder 存活）、已授权
+     * （[grantedVerified]）、执行侧用户服务绑上（[userBound]）。三者**合起来**才是
+     * shell 身份真执行的前提（[shizukuProbe] 三环齐 → GRANTED，缺哪环按环缺口点名），
+     * 不再需要"合成后的一句"——单独的合成参数是死入口（不参与任何判定，删去）。
+     * SurfacePolicy 那一侧的合成判据由装配根另行提供，不经本探测。
+     */
+    private val available: () -> Boolean = { false },
+    private val grantedVerified: () -> Boolean = { false },
     private val trustedDisplayAvailable: () -> Boolean = { false },
+    /** 执行侧用户服务此刻是否绑上（装配根从 Shizuku 后端读，缺省按未绑）。 */
+    private val userBound: () -> Boolean = { false },
     private val sdkInt: Int = Build.VERSION.SDK_INT,
 ) {
 
@@ -125,15 +136,22 @@ class SystemStateProbe(
     }
 
     private fun probeAllRoutes(descriptor: CapabilityDescriptor): ProbeResult = when (descriptor.id) {
-        // 依赖 shell 身份：Shizuku 不在即「需用户手动处理」，不是本机不支持。
+        // 依赖 shell 身份：**三环齐备就是 GRANTED**（在跑+已授权+用户服务绑上=shell 那几条
+        // 此刻真能跑），缺哪一环才回落 MANUAL_ONLY 并按环缺口点名——服务没在跑、在跑
+        // 但没授权、授权齐了但用户服务没绑上，三者的下一步完全不同（启动它 / 在管理器里
+        // 放行 / 点重连）；合成一句"服务没开"会把没授权的场景说成缺启动，让人去找一个
+        // 不存在的开关。少了第一问（就绪就放行），三环齐的机器上 shell 族六条会被闸门
+        // 一律挡在 MANUAL_ONLY 上。
         CapabilityId.SECURE_SETTINGS,
         CapabilityId.APPOPS_SET,
         CapabilityId.PKG_INSTALL,
         CapabilityId.APP_STOP,
         CapabilityId.SURFACE_VIRTUAL,
         CapabilityId.SYS_SHELL,
-        -> if (shellAvailable()) granted() else ProbeResult(SystemGrantState.MANUAL_ONLY, listOf(GrantGap.Shizuku))
-
+        // 完全 Shizuku 走同一条用户服务：缺口分环与 sys.shell 共用同一判据，
+        // 清单与闸门才不会各说一套。
+        CapabilityId.SYS_SHELL_FULL,
+        -> shizukuProbe()
         // 节点级操作只有无障碍这一条路：`performAction` 挂在节点树上，两块屏上的树都只能
         // 从这个服务里取（可信屏那棵走 getWindowsOnAllDisplays）。所以它们不像 ui.tap
         // 那样能在没有无障碍时靠可信屏兜底 —— 缺无障碍就是缺无障碍。
@@ -206,22 +224,35 @@ class SystemStateProbe(
         CapabilityId.CALENDAR_READ,
         CapabilityId.CALENDAR_WRITE,
         CapabilityId.LOCATION_READ,
-        CapabilityId.MEDIA_READ,
         CapabilityId.NOTIFY_POST,
         -> runtimeState(descriptor)
+
+        // 媒体读取**不按权限并集**回答：探测问的是「这条能力至少有一类现在读不读得到」，
+        // 图片/视频/音频三类各自只看自己的权限，一类可读就算系统侧可达。按并集回答，
+        // 「用户没给音频权限」会把完全可读的相册一起判成不可用——那正是能力清单
+        // 「缺权限」红点与真实调用脱节的场景。缺的是哪一类，由调用时按 kind 校验再报。
+        CapabilityId.MEDIA_READ -> mediaProbe(::granted, sdkInt)
+
+        // 设备状态：唯一的外部依赖 ACCESS_NETWORK_STATE 是安装时**普通**（normal）权限，
+        // 声明即授予，注册表没把它列进 runtimePermissions（列了就会被报成「缺权限待授」，
+        // 而系统侧没有任何要授的内容）。运行期权限表为空，这条能力系统侧无任何门槛。
+        CapabilityId.DEVICE_STATUS -> runtimeState(descriptor)
     }
 
     private fun granted() = ProbeResult(SystemGrantState.GRANTED, emptyList())
 
+    /**
+     * shell 族能力的探测结论：三环齐备 → GRANTED（此刻真能跑，闸门不留它）；
+     * 缺哪环 → MANUAL_ONLY 加上那一环的缺口，纯分环见伴生 [shizukuProbe]。
+     * 在跑/已授权/绑了三个独立事实直接喂进纯函数，不在壳里把"没就绪"合成一句。
+     */
+    private fun shizukuProbe(): ProbeResult = SystemStateProbe.shizukuProbe(
+        available(), grantedVerified(), userBound(),
+    )
+
     /** 需要运行期权限的能力：已授予则放行，未授予则列出还缺哪几条。 */
-    private fun runtimeState(descriptor: CapabilityDescriptor): ProbeResult {
-        val missing = descriptor.runtimePermissions.filterNot { granted(it) }
-        return if (missing.isEmpty()) {
-            granted()
-        } else {
-            ProbeResult(SystemGrantState.RUNTIME_ASKABLE, missing.map { GrantGap.RuntimePermission(it) })
-        }
-    }
+    private fun runtimeState(descriptor: CapabilityDescriptor): ProbeResult =
+        runtimeProbe(descriptor, ::granted)
 
     private fun granted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(appContext, permission) ==
@@ -301,8 +332,63 @@ class SystemStateProbe(
         )
     }.getOrDefault(AppOpsManager.MODE_ALLOWED) == AppOpsManager.MODE_IGNORED
 
-    private companion object {
-        const val SETTINGS_ACCESSIBILITY_SERVICES = "enabled_accessibility_services"
-        const val SETTINGS_ENABLED_LISTENERS = "enabled_notification_listeners"
+        internal companion object {
+            const val SETTINGS_ACCESSIBILITY_SERVICES = "enabled_accessibility_services"
+            const val SETTINGS_ENABLED_LISTENERS = "enabled_notification_listeners"
+
+            /**
+             * 探测结论的**纯判据**，收在伴生对象里供 JVM 单测直接穷举：设备构造
+             * [SystemStateProbe] 需要 Context 与无障碍服务，JVM 够不着；而「哪些能力此刻
+             * 该报什么状态」恰恰是能力清单红点与真实调用对齐的关键，必须可测。
+             */
+
+            /**
+             * shell 族能力的探测结论，纯判据供 JVM 单测穷举：**三环齐备就是 GRANTED**——
+             * 在跑（[running]）、已授权（[granted]）、执行侧用户服务绑上（[bound]）三者齐时
+             * shell 身份此刻真能跑，闸门不得留它；缺哪一环才回落 MANUAL_ONLY 并按环缺口：
+             * 没跑 → [GrantGap.Shizuku]（去启动），在跑没授权 → [GrantGap.ShizukuNotGranted]
+             * （去管理器放行），授权齐未绑 → [GrantGap.ShizukuNotBound]（点重连）。
+             */
+            internal fun shizukuProbe(running: Boolean, granted: Boolean, bound: Boolean): ProbeResult {
+                if (running && granted && bound) return ProbeResult(SystemGrantState.GRANTED, emptyList())
+                return ProbeResult(SystemGrantState.MANUAL_ONLY, listOf(shizukuGap(running, granted, bound)))
+            }
+
+            /**
+             * 缺环点名（[shizukuProbe] 落 MANUAL_ONLY 时用）：三环不齐是分派前提，
+             * 首个缺席的环点名——合成一句"服务没开"会把没授权的场景说成缺启动。
+             */
+            internal fun shizukuGap(running: Boolean, granted: Boolean, bound: Boolean): GrantGap = when {
+                !running -> GrantGap.Shizuku
+                !granted -> GrantGap.ShizukuNotGranted
+                !bound -> GrantGap.ShizukuNotBound
+                else -> GrantGap.Shizuku
+            }
+
+
+        /**
+         * 媒体读取的探测结论（口径见上面的分支注释）：一类可读即 GRANTED；完全不可读时
+         * 缺口按各类**主**权限回答，替代候选（选定照片）不进清单。
+         */
+        internal fun mediaProbe(granted: (String) -> Boolean, sdkInt: Int): ProbeResult =
+            if (MediaKinds.anyKindReadable(granted, sdkInt)) {
+                ProbeResult(SystemGrantState.GRANTED, emptyList())
+            } else {
+                ProbeResult(SystemGrantState.RUNTIME_ASKABLE, MediaKinds.allMissing(granted, sdkInt).map { GrantGap.RuntimePermission(it) })
+            }
+
+        /**
+         * 运行期权限表驱动的结论：表里**没有**的（如设备状态——它唯一的外部依赖
+         * `ACCESS_NETWORK_STATE` 是安装时普通权限，声明即授予）一律 GRANTED；
+         * 列进表里的才按「缺哪几条」回答。
+         */
+        internal fun runtimeProbe(descriptor: CapabilityDescriptor, granted: (String) -> Boolean): ProbeResult {
+            val missing = descriptor.runtimePermissions.filterNot(granted)
+            return if (missing.isEmpty()) {
+                ProbeResult(SystemGrantState.GRANTED, emptyList())
+            } else {
+                ProbeResult(SystemGrantState.RUNTIME_ASKABLE, missing.map { GrantGap.RuntimePermission(it) })
+            }
+        }
     }
 }

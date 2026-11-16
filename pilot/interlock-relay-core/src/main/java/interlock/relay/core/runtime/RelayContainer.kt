@@ -10,13 +10,13 @@ import interlock.relay.core.protocol.BackendId
 import interlock.relay.core.protocol.RELAY_PROTOCOL_VERSION
 import interlock.relay.core.protocol.CapabilityDescriptor
 import interlock.relay.core.protocol.CapabilityId
+import interlock.relay.core.protocol.CapabilityRegistry
 import interlock.relay.core.protocol.CapabilityState
 import interlock.relay.core.protocol.AccessTier
 import interlock.relay.core.protocol.GrantGap
 import interlock.relay.core.protocol.RelayError
 import interlock.relay.core.protocol.SurfaceKind
 import interlock.relay.core.protocol.SystemGrantState
-import interlock.relay.core.protocol.TierCeiling
 import interlock.relay.core.exec.RelayBackend
 import interlock.relay.core.exec.a11y.A11yBackend
 import interlock.relay.core.exec.a11y.RelayAccessibilityService
@@ -27,7 +27,6 @@ import interlock.relay.core.exec.direct.ScreenProjection
 import interlock.relay.core.exec.shizuku.ShizukuBackend
 import interlock.relay.core.exec.shizuku.ShizukuState
 import interlock.relay.core.interlock.InterlockBroker
-import interlock.relay.core.interlock.ConsentSurfaces
 import interlock.relay.core.interlock.InterlockPrompt
 import interlock.relay.core.interlock.RelayAskSurface
 import interlock.relay.core.interlock.AccessibilityGap
@@ -39,6 +38,12 @@ import interlock.relay.core.interlock.RelayA11yWatchdog
 import interlock.relay.core.interlock.SettingsIntents
 import interlock.relay.core.interlock.SystemStateProbe
 import interlock.relay.core.interlock.ShellOptIns
+import interlock.relay.core.interlock.ActivePreset
+import interlock.relay.core.interlock.ActivePresetStore
+import interlock.relay.core.interlock.CustomPresetStore
+import interlock.relay.core.interlock.ProtectedAppsStore
+import interlock.relay.core.interlock.TierPresets
+import interlock.relay.core.interlock.GlobalConfigState
 import interlock.relay.core.interlock.TierStore
 import interlock.relay.core.log.AuditLog
 import interlock.relay.core.log.LogEvent
@@ -50,6 +55,7 @@ import interlock.relay.core.storage.QuotaLedger
 import interlock.relay.core.storage.StorageReaper
 import interlock.relay.core.surface.BackendDispatcher
 import interlock.relay.core.surface.SurfacePolicy
+import interlock.relay.core.surface.TargetLandingTable
 import interlock.relay.core.surface.SurfacePreference
 import interlock.relay.core.surface.SurfacePreferences
 import interlock.relay.core.transport.GuestAssets
@@ -82,10 +88,29 @@ import java.security.SecureRandom
 /**
  * 记录本应用是否可见，用于两处「要用户在场」的判定：剪贴板读写，和界面内那张确认框
  * 此刻有没有人看得见。
+ *
+ * 可见性按**所有者**记账而不是单个布尔：助手独立页（PilotActivity）与宿主页签内嵌的
+ * 助手页是两个互不知情的写入方，生命周期会交错——宿主 Activity 的 ON_STOP 完全可能
+ * 落在新 Activity 的 onResume 之后，单布尔会被后到的那一写把前者的 true 覆盖成 false，
+ * 独立页实际在前台，呈现裁决却按后台走。所有者集合下各记各的，任一所有者声称可见
+ * 即为前台，两个都退才真正不可见。
+ *
+ * 已知限制：分屏/多窗口下两个所有者同时可见时，「前台」按真处理，页内卡会在每个
+ * 可见的宿主窗口各画一张（当前没有「用户正在交互的那个窗口」判据可依）。两处画的
+ * 是同一件事、答案只收一次，不算双入口裁决被绕过；触屏设备上单交互窗口是常态。
  */
 class ForegroundTracker {
-    @Volatile
-    var visible: Boolean = false
+
+    private val owners = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** 一个所有者的可见性写入口：false 即撤掉该所有者的在席记录，不影响别的所有者。 */
+    fun setOwnerVisible(owner: String, visible: Boolean) {
+        if (visible) owners.add(owner) else owners.remove(owner)
+    }
+
+    /** 任一所有者可见即为前台。 */
+    val visible: Boolean
+        get() = owners.isNotEmpty()
 }
 
 /**
@@ -126,6 +151,22 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     private val requestStateStore = RequestStateStore(paths.requestStateDir, runLog = runLog)
     private val tiers = TierStore(prefsApi)
 
+    /** 「常用自定义预设」的存储：编辑器保存与「使用」都经由它，保存与套用分两步。 */
+    private val customPreset = CustomPresetStore(prefsApi)
+
+    /**
+     * 当前生效预设的身份：与 40 条档位、已保存自定义分开持久化。选择器按它显示
+     * 当前条目，写入路径各自维护身份（40 条值不再反推）；没有身份的老升级场景
+     * 在 [activePresetIdentity] 里按旧判据迁移一次。
+     */
+    private val activePreset = ActivePresetStore(prefsApi)
+
+    /**
+     * 「受保护应用」名单：用户自选、无预设，独立于档位与任何预设，升级不得清空。
+     * 调用入口、无障碍与 Shizuku 执行场景、屏幕采集与实时流都从这里取实时读数。
+     */
+    private val protectedApps = ProtectedAppsStore(prefsApi)
+
     /** `sys.shell` 里"会改系统"那几条动词的逐条授权，与档位分开存。 */
     private val shellOptIns = ShellOptIns(prefsApi)
     private val surfacePreferences = SurfacePreferences(prefsApi)
@@ -141,9 +182,15 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
 
     private val probe = SystemStateProbe(
         appContext,
-        shellAvailable = { shizuku.available },
+        // 三个拆开的读数给 shell 族探测的"三环齐→GRANTED"用：在跑、已授权、用户服务
+        // 绑上——三环齐就是就绪（GRANTED），缺哪环按环缺口点名（启动 / 放行 / 重连）。
+        // 不再需要"在跑且已授权"的合成值：合成后的一句会把"没授权"说成"没跑"。
+        available = { shizuku.available },
+        grantedVerified = { shizuku.granted },
         // 那块可信屏在不在，决定 `ui.tap/text/key` 是否还需要无障碍服务。
         trustedDisplayAvailable = { trustedDisplayReady() },
+        // 执行侧用户服务的绑定状态：授权齐了还差这一环时，缺口说"点重连"，不说缺授权。
+        userBound = { shizukuBackend.boundSnapshot },
     )
 
     /** 待决确认框。界面订阅它，不必轮询队列。 */
@@ -155,7 +202,8 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
      *
      * 状态区要能写「待确认：当前 1 项（另有 N 项排队）」—— 只知道"有一件在等"的话，
      * 用户答完才发现还有下一张，节奏就从"一次问清楚"退化成"一次一次挤"。
-     * 呈现位置本身只作诊断读数，界面不据此改自己的画法。
+     * 呈现位置同时是页内卡的门禁：界面只在 `via == PAGE` 时画页内卡
+     * （判据见 PilotViewModel.approvalCardVisible），悬浮/通知在屏时页内不出现第二处可点。
      */
     private val approvalRoutingState = MutableStateFlow(
         InterlockQueue.Presentation(null, InterlockChannel.NONE, 0),
@@ -163,7 +211,7 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     val approvalRouting: StateFlow<InterlockQueue.Presentation> = approvalRoutingState
 
     /**
-     * 上一条「谁也问不到」的点名文案。回包侧引用它，让助手知道该去开通知还是退出后台模式。
+     * 上一条「谁也问不到」的点名文案。回包侧引用它，让助手知道该去开通知还是先答屏上的卡。
      */
     fun lastApprovalDeadEndReason(): String? = approvalQueue.lastDeadEndReason()
 
@@ -240,17 +288,19 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     }.getOrDefault(false)
 
     /**
-     * 悬浮窗这一条通路此刻必然看不见。
+     * 提问悬浮卡这一条此刻必然看不见。
      *
      * 判据是「可信虚拟屏在跑」：那块屏上的应用带着 HIDE_NON_SYSTEM_OVERLAY_WINDOWS，
-     * 平台会因此跨屏隐藏本应用的悬浮窗。悬浮窗那条路自己探得到这件事（拿不到焦点即算没上屏），
-     * 但那是先挂一张看不见的窗、白等一帧焦点判定；这里状态已经确定，直接不走那条路。
-     * 问不到人的那一条改由通知栏承接 —— 通知不受那条隐藏规则约束。
+     * 平台会因此跨屏隐藏本应用的悬浮窗。只服务**提问卡**：它没有第二条通路（没有通知兜底、
+     * 也没有页内卡），与其挂一张注定看不见的窗、白等一次焦点判定再回「hidden-by-platform」，
+     * 不如直接让位，把可行动的原因交回给助手。
      *
-     * 公开给宿主呈现面：提问卡与审批队列用同一判据，否则提问会在注定看不见的窗上
-     * 白等一次焦点判定，把「直接让位」错报成「挂了卡但没人看见」。
+     * 审批悬浮卡**不再使用**这一判据（修正）：审批有通知与页内两条后备通路，且
+     * 「屏在」不等于「窗必藏」——是否真被藏掉只有挂上之后拿焦点才验证得了，提前跳过
+     * 会把一条看得见的通路整条跳过，用户只能去通知栏里找。审批那条路由
+     * [InterlockQueue] 按真实呈现结果裁决（挂不上、拿不到焦点才降级，呈现器留失败日志）。
      *
-     * 仅供宿主呈现面装配使用，不得作为绕过队列纪律的入口。
+     * 仅供宿主呈现面（提问卡）装配使用，不得作为绕过队列纪律的入口。
      */
     fun overlayBlind(): Boolean = trustedDisplayReady()
 
@@ -262,8 +312,23 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         isForegroundCapable = surfaces::uiInForeground,
         onRouting = ::rerouteApprovalPresentation,
         overlay = approvalOverlay,
-        overlayBlind = ::overlayBlind,
+        // 改判进悬浮时的兜底挂卡：裁决在队列锁内算出，挂卡是挂起操作，交给进程级
+        // 作用域去跑。重复排程无害——串行在队列的互斥门上，后到的进门发现请求已换/
+        // 卡已在屏，空手而回。作用域未接或已取消时不执行（通道没在跑，本也没有审批可答；
+        // 单驱动模型下没有「在途」标记可卡死）。
+        overlayEnsureLauncher = { work -> scope?.launch { work() } },
         canNotify = { approvalNotifications?.canShow() == true },
+        // 悬浮被跳过时的点名：授权缺席、本问试砸过、提问卡占屏、
+        // 呈现面缺件，每个"为什么没尝试悬浮"都要在运行日志里查得到。
+        onOverlaySkipped = { prompt, at, reasons ->
+            runLog.warn(
+                LogSubsystem.GATE,
+                LogEvent.OVERLAY_UNAVAILABLE,
+                "cap" to prompt.capability.wire,
+                "cause" to reasons,
+                "at" to at,
+            )
+        },
         // 提问卡在屏时审批不去叠第二张卡（提问卡没有第二条通路，被盖住就只剩等到超时）；
         // 反方向由提问呈现器自己判（审批卡/页内卡在屏时它回忙），两条合起来才是"同屏只允许一张卡"。
         otherCardOnScreen = { askSurface.isPresented() },
@@ -271,7 +336,7 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     )
 
     private val broker = InterlockBroker(approvalQueue, runLog)
-    private val gatekeeper = InterlockGate(tiers, broker, runLog)
+    private val gatekeeper = InterlockGate(tiers, broker, runLog, onSessionGrant = ::scheduleRefresh)
 
     private val directBackend = DirectBackend(
         appContext,
@@ -286,6 +351,10 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         text = text,
         // 媒体库写入落点与占用对账（MediaLibraryUsage）共用同一个相册目录名：策略是唯一事实源。
         mediaAlbumDir = pathPolicy.mediaAlbumDir,
+        // 前台启动与屏幕采集下发前的受保护名单判定，读实时名单。
+        protectedPackages = { protectedApps.packages() },
+        // 本后端执行场景的名单拒绝记一条运行日志（事件与字段同 Shizuku 后端）。
+        runLog = runLog,
     )
 
     private val a11yBackend = A11yBackend(
@@ -294,8 +363,104 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         // 节点级那十一条要能在可信虚拟屏上既读又写，就得知道那块屏此刻的编号。
         // 后端之间互不可见是本模块的既有约束，这个数只能由装配根递进来。
         trustedDisplayId = { if (trustedDisplayReady()) shizukuBackend.displayId else -1 },
+        // 控件树读写与坐标/截图下发前的受保护名单判定，读实时名单。
+        protectedPackages = { protectedApps.packages() },
+        // 本后端执行场景（含滚动逐轮守卫）的名单拒绝记一条运行日志。
+        runLog = runLog,
     )
-    private val shizukuBackend = ShizukuBackend(shizuku, runLog, appContext, reaper)
+    private val shizukuBackend = ShizukuBackend(
+        shizuku,
+        runLog,
+        appContext,
+        reaper,
+        // 命令/取帧下发之前的受保护名单双保险，读实时名单。
+        protectedPackages = { protectedApps.packages() },
+    )
+
+    /**
+     * 流会话诊断读数的写入口：把「一次预览会话走到哪一步、结论如何、已经写出多少
+     * 字节」写进运行日志（手机助手「运行日志」页可见）。
+     *
+     * 控制器与控制端点**共用这一个实例**：两侧的读数因此带同一个宿主侧会话序号，
+     * 能对到同一场会话上。写日志这一侧由装配方注入，控制器与端点都不直接写日志。
+     */
+    private val streamSessionLog = interlock.relay.core.exec.stream.RunLogStreamSessionLog(runLog)
+
+    /**
+     * 实时流的宿主侧装配：编码在 Shizuku 用户服务进程，loopback HTTP 服务在
+     * 本进程。start/stop 由宿主（后续的面板半边）调用；通道停机时随 [stop] 收掉，
+     * 用户服务死亡则由 pipe 断流与设备侧自身的退出路径兜底。
+     */
+    val trustedStream = interlock.relay.core.exec.stream.TrustedStreamController(
+        interlock.relay.core.exec.stream.ShizukuStreamDevice(shizukuBackend),
+        // 数据面守卫（**恢复**）：受保护应用在虚拟屏前台时不提供预览/输入。
+        // 面板豁免 仅限能力路径的 UI 操作，不延伸到流/输入入口——tabToken 只是
+        // 会话归属凭据（多 tab 不串），不是沙盒隔离边界；要放行需宿主侧用户确认或
+        // 认证中继（未实现）。
+        protectedPackages = { protectedApps.packages() },
+        topPackage = { shizukuBackend.trustedTopPackageBlocking() },
+        // 开流与流中的名单拒绝记一条运行日志。
+        runLog = runLog,
+        // 流会话诊断读数：开流成败、收场原因与已写出的字节数。
+        sessionLog = streamSessionLog,
+    )
+
+    /**
+     * 实时流的**控制端点**：仅 loopback + 随机控制 token，start/stop/status
+     * 与 D 的 /input；DSH 的 Node 半经 rendezvous 文件（通道 run/ 下）拿到端口与
+     * token 后调用。端点随通道起停；绑定失败只降级（记 STREAM_CONTROL_UNAVAILABLE、
+     * 不写 rendezvous），不拖垮整条通道。
+     */
+    /** D：面板输入专用工人池；通道 stop 后下一次输入自动重建（容器可重启复用）。 */
+    private val panelInputWorkers = interlock.relay.core.exec.stream.PanelInputWorkers(2)
+
+    private val streamControl = interlock.relay.core.exec.stream.TrustedStreamControlEndpoint(
+        trustedStream,
+        sessionLog = streamSessionLog,
+        // D：面板输入（tap/swipe/back/home）落到 Shizuku 后端的低层 input 事务，
+        // 不走 gate/档位/审批（鉴权在控制 token + 会话归属 tabToken + 会话存活）。
+        // D：阻塞事务跑在**专用 2 线程池**上，执行口用 suspendCancellableCoroutine
+        // 挂起——端点的 withTimeoutOrNull 到点能真返回（回"结局未知"），**不中断远端事务**；
+        // worker 继续跑完、结果丢弃。注意：端点侧的 runBlocking 仍占端点 serve 池的一个
+        // 工人，并发输入由本池限到 2 条、其余在池里排队。
+        panelInput = { request ->
+            panelInputWorkers.execute {
+                // 专用池工人上 runBlocking 是有意的：阻塞事务只占本池工人，
+                // 端点的超时取消的是"等待"（suspendCancellableCoroutine 到点返回），
+                // 这里的 runBlocking 跑完即止，结果因协程已取消而被丢弃。
+                try {
+                    kotlinx.coroutines.runBlocking { shizukuBackend.panelInput(request) }
+                } catch (broken: Throwable) {
+                    false to ("panel input error: " + broken.javaClass.simpleName)
+                }
+            }
+        },
+        // 面板任务面（列任务/搬迁/释放）落 Shizuku 后端的低层事务；停流由端点
+        // 自己走 [trustedStream] 的既有收场通路，再进这里的 release 收屏。
+        // 搬迁方向决定 source/target：main = 虚拟屏→主屏（source 列虚拟屏认根），
+        // virtual = 主屏→虚拟屏（source 列 display 0 认根，"移回"不再恒失败）。
+        panelTasks = object : interlock.relay.core.exec.stream.TrustedStreamControlEndpoint.PanelTaskOps {
+            override suspend fun list(sourceIsVirtual: Boolean): Pair<Boolean, String> =
+                shizukuBackend.panelTaskList(sourceIsVirtual)
+
+            override suspend fun move(taskId: Int, direction: String): Pair<Boolean, String> {
+                val moveDirection =
+                    if (direction == interlock.relay.core.exec.stream.TrustedStreamControlEndpoint.DIRECTION_MAIN) {
+                        ShizukuBackend.PanelMoveDirection.MAIN
+                    } else {
+                        ShizukuBackend.PanelMoveDirection.VIRTUAL
+                    }
+                return shizukuBackend.panelTaskMove(taskId, moveDirection)
+            }
+
+            override suspend fun release(): Pair<Boolean, String> =
+                shizukuBackend.panelTaskRelease()
+
+            // 旋转 = 宽高交换走 resize（不 release/不重建，屏上任务保留）。
+            override suspend fun rotate(): Pair<Boolean, String> =
+                shizukuBackend.panelRotate()
+        },
+    )
 
     private val backends: Map<BackendId, RelayBackend> = configuredBackends(
         config.executor,
@@ -309,7 +474,10 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     private val dispatcher = BackendDispatcher(backends)
     private val policy = SurfacePolicy(
         preference = { surfacePreferences.preference() },
-        shellAvailable = { shizuku.available },
+        // 裁决里的「后台通路在不在」问的是 shell 身份能不能真执行：服务在跑但没授权时
+        // shell 族能力一条都调不动，按「在跑」放行会让裁决挑一条注定失败的后台路，
+        // 再让调用以 engine 级错误绕回前台。与探测（上方 [SystemStateProbe]）同一判据。
+        shellAvailable = { shizuku.available && shizuku.granted },
         backendCanServe = dispatcher::canServe,
     )
 
@@ -333,6 +501,15 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
 
     private val parkBridge = ParkBridgeHolder()
 
+    /**
+     * 目标落点登记簿：`app.launch` 的核验落点记在这里，后续界面/取帧调用按目标沿用。
+     * 随装配根存在 —— 会话重启即换新表，记录不跨会话；stop 时随通道一并清空。
+     */
+    private val landingTable = TargetLandingTable(
+        now = ::monotonicNow,
+        preference = { surfacePreferences.preference() },
+    )
+
     private val coordinator = RelayCoordinator(
         context = appContext,
         gatekeeper = gatekeeper,
@@ -343,8 +520,13 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         // 系统权限快照由调用方按裁决出的路线探测：闸门不再自带探测入口，
         // 能力清单与真调用读同一处口径。
         probe = probe,
-        // 只给 nodeId 的目标要靠控件树回查归属，闸门才知道要点的是不是系统授权按钮。
-        nodeOwner = { nodeId -> a11yBackend.targetOwner(nodeId) },
+        // 目标落点层：启动核验落点、界面调用按目标沿用、后台启动按性质分类兜底。
+        landingTable = landingTable,
+        trustedDisplayAlive = { shizukuBackend.displayAlive() },
+        topPackageOn = { display ->
+            if (display == 0) directBackend.userScreenTopPackage() else shizukuBackend.trustedTopPackage()
+        },
+        surfacePreference = { surfacePreferences.preference() },
         paths = paths,
         runLog = runLog,
         auditLog = auditLog,
@@ -356,14 +538,24 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         dispatchGuard = { id ->
             if (requestStateStore.get(id) == null) true else requestStateStore.markExecDispatchGuard(id)
         },
+        // 特权通路的执行身份随 Shizuku 快照走：授权记录的 uid 字段按它署名。
+        fullShellUid = { shizukuUid() },
         // 审批挂起-续行：等用户答复的请求在这里登记挂起、释放执行槽，答复或审批到点
         // 之后由信箱把续行体排回串行上下文。等待环跑在进程级作用域上，不占信箱并发名额。
         parkBridge = parkBridge,
         parkScope = { scope },
         isCancelRequested = { id -> requestStateStore.get(id)?.cancelRequested == true },
         // 「谁也问不到人」时回包里点名该开哪个开关。判据在队列的裁决里（它才知道
-        // 是通知被关、还是后台模式挡住了悬浮窗、还是两者都成立）。
+        // 是通知被关、还是提问卡占着屏、还是两者都成立）。
         approvalDeadEnd = { approvalQueue.lastDeadEndReason() },
+        // 调用侧裁决要看到"这台机器拒绝过建屏"这一结论：requiresMode 分支之前先问它，
+        // 用户被拒后切了前台也不会变成"请切回后台"（那是死循环）。实时标记产后端。
+        trustedDisplayDenied = { shizukuBackend.trustedDisplayDenied },
+        // 「运行时自检判过可信屏破坏主屏」走同一段裁决：清单一并如实降级，
+        // 调用侧在 requiresMode 之前按 E_SURFACE_TRUSTED_UNSAFE 回"改前台"。
+        trustedDisplayUnsafe = { shizukuBackend.trustedDisplayUnsafe },
+        // 进审批之前与派发之前按名单拒绝；挂起等待环每轮复查，批准不再是放行。
+        protectedApps = protectedApps,
     )
 
     private val assets = GuestAssets(
@@ -411,12 +603,6 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     )
 
     init {
-        // 系统授权界面的结构判据要问"这块窗的属主是不是系统 uid"，而那一问只有包管理器答得了。
-        // 接在这里而不是判据内部：ConsentSurfaces 是一个不带 Context 的 object，
-        // 且 JVM 侧要能在不碰框架的情况下把这条规则单测掉。
-        ConsentSurfaces.uidResolver = { pkg: String ->
-            runCatching { appContext.packageManager.getPackageInfo(pkg, 0).applicationInfo?.uid }.getOrNull()
-        }
         // 无障碍的绑与解绑由用户在系统页面里决定，本应用收不到系统回调；
         // 这条口子是能力清单与界面知道它变了的唯一途径。
         RelayAccessibilityService.onBoundChanged = {
@@ -428,6 +614,13 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         RelayNotificationListener.Holder.onBoundChanged = ::scheduleRefresh
         // Shizuku 的用户服务是异步绑上的：就绪那一声不在 Shizuku 状态里，而在连接回调里。
         shizukuBackend.onBoundChanged = ::scheduleRefresh
+        // 建屏被系统拒的那一刻清单就得跟着改：继续显示可用会让助手把「再建一次屏」
+        // 当成下一步，反复撞同一堵墙。拒绝标记清掉（建屏成功 / 重连对账屏活着）时
+        // 同一回调也让清单回到真实状态。
+        shizukuBackend.deniedListener = ::scheduleRefresh
+        // 自检判「可信屏不安全」（或一次建屏+自检通过把它解除）同样要立刻重铺清单：
+        // surface.virtual 的 usable/degradeReason 与 manifest 里的 unsafe 同一份事实。
+        shizukuBackend.unsafeListener = ::scheduleRefresh
         // 缺无障碍的这一次要说给界面：判定只有探测这一处，错误码有两处（闸门的
         // E_GATE_SYSTEM_MISSING 与执行期 A11yBackend 的 E_BACKEND_UNAVAILABLE），
         // 挂在判定上才不会漏掉其中一条。
@@ -514,33 +707,12 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     /**
      * 前台状态变化是审批呈现路由的输入之一：进出助手页都要请队列重算一次裁决。
      *
-     * 挂/撤不再由这里决定 —— 那是队列的事（[InterlockQueue.reroute]）。这里只补一件
-     * 队列看不到的事：可信虚拟屏是否刚好就绪或失效，它决定悬浮通路能不能用。
+     * 挂/撤不再由这里决定 —— 那是队列的事（[InterlockQueue.reroute]）。悬浮通路
+     * 能不能用由队列按真实呈现结果判定（修正后不再有可信虚拟屏层面的提前跳过），
+     * 这里没有队列之外的判据要补。
      */
     fun onForegroundChanged() {
-        checkTrustedDisplayFlip()
         approvalQueue.reroute()
-    }
-
-    /**
-     * 界面节拍上顺带看一眼可信虚拟屏的就绪状态。
-     *
-     * 那条屏在跑时平台会跨屏隐藏本应用的悬浮窗；它什么时候起、什么时候停没有回调，
-     * 只能靠比对。翻转的那一刻要重算一次裁决，否则要么继续挂一张看不见的悬浮卡，
-     * 要么在屏已经可用时还只回落到通知 —— 两种都让用户面前没有可点的东西。
-     */
-    fun onHeartbeat() {
-        checkTrustedDisplayFlip()
-    }
-
-    @Volatile
-    private var lastTrustedDisplayReady: Boolean? = null
-
-    private fun checkTrustedDisplayFlip() {
-        val ready = trustedDisplayReady()
-        val last = lastTrustedDisplayReady
-        lastTrustedDisplayReady = ready
-        if (last != null && last != ready) approvalQueue.reroute()
     }
 
     /**
@@ -584,20 +756,25 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         }
         if (pending != null) {
             // 本次呈现在哪里、还排着几项：事后只看得见这一行就能知道用户当时该去哪答。
-            runLog.info(
-                LogSubsystem.GATE,
-                LogEvent.APPROVAL_PRESENTER,
-                "via" to routing.via.wire,
-                "waiting" to routing.waitingCount.toString(),
-            )
-            // 通知这条通路最近一次的呈现状态进运行日志：可用≠可见，投递成功最多是
-            // 「已投递、可见性未证实」。只作诊断读数，不参与判定，也不接界面。
-            runLog.info(
-                LogSubsystem.GATE,
-                LogEvent.APPROVAL_ROUTED,
-                "cap" to pending.prompt.capability.wire,
-                "postState" to (approvalNotifications?.lastPostState() ?: "none"),
-            )
+            // 悬浮这一条只有卡真的挂在屏上才写：裁决先行的那一刻卡可能还在挂的路上
+            // （兜底挂卡跑在协程里），提前写会让日志说「在悬浮」而屏上什么都没有；
+            // 卡挂上的那一刻队列会再发一次带 overlayPresented=true 的裁决，日志落在这里。
+            if (routing.via != InterlockChannel.OVERLAY || routing.overlayPresented) {
+                runLog.info(
+                    LogSubsystem.GATE,
+                    LogEvent.APPROVAL_PRESENTER,
+                    "via" to routing.via.wire,
+                    "waiting" to routing.waitingCount.toString(),
+                )
+                // 通知这条通路最近一次的呈现状态进运行日志：可用≠可见，投递成功最多是
+                // 「已投递、可见性未证实」。只作诊断读数，不参与判定，也不接界面。
+                runLog.info(
+                    LogSubsystem.GATE,
+                    LogEvent.APPROVAL_ROUTED,
+                    "cap" to pending.prompt.capability.wire,
+                    "postState" to (approvalNotifications?.lastPostState() ?: "none"),
+                )
+            }
         }
     }
 
@@ -683,6 +860,29 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
             initStep(job, undo, "watchdog", undoStep = { RelayA11yWatchdog.cancel(appContext) }) {
                 RelayA11yWatchdog.schedule(appContext)
             }
+            // 流控制端点跟着通道：起不来只降级（该能力为增强项），不拖垮装配。
+            initStep(
+                job, undo, "stream_control",
+                undoStep = {
+                    interlock.relay.core.exec.stream.StreamRendezvous.delete(paths.entryDir)
+                    streamControl.stop()
+                },
+            ) {
+                val started = runCatching { streamControl.start() }.getOrDefault(false)
+                if (started) {
+                    interlock.relay.core.exec.stream.StreamRendezvous
+                        .write(paths.entryDir, streamControl.port, streamControl.token)
+                        .onFailure {
+                            runLog.warn(
+                                LogSubsystem.TRANSPORT, LogEvent.STREAM_CONTROL_UNAVAILABLE,
+                                "cause" to (it.message ?: it.javaClass.simpleName),
+                            )
+                        }
+                    runLog.info(LogSubsystem.TRANSPORT, LogEvent.STREAM_CONTROL_STARTED)
+                } else {
+                    runLog.warn(LogSubsystem.TRANSPORT, LogEvent.STREAM_CONTROL_UNAVAILABLE, "cause" to "bind failed")
+                }
+            }
             synchronized(this) {
                 if (!job.isActive || stateMachine.phase != RuntimePhase.STARTING) throw InitAborted()
                 stateMachine.commitRunning()
@@ -758,7 +958,15 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         scope = null
         shizuku.unregister(shizukuListener)
         mailbox.stop()
+        // 流会话先收：它压着一条远端编码会话与一条 loopback 端口，别拖到解绑之后。
+        runCatching { interlock.relay.core.exec.stream.StreamRendezvous.delete(paths.entryDir) }
+        panelInputWorkers.shutdown()  // 通道停机：排队中的输入不再落屏；重启后自动重建
+        streamControl.stop()
+        runLog.info(LogSubsystem.TRANSPORT, LogEvent.STREAM_CONTROL_STOPPED)
+        trustedStream.stop()
         shizukuBackend.disconnect()
+        // 会话收尾：落点记录不跨会话，登记簿随通道一并清空。
+        landingTable.clear()
         approvalQueue.cancelAll()
         // 悬浮窗不归界面管：通道停了还留着一个没人应答的浮窗，等于把用户钉在原地。
         approvalOverlay?.withdraw()
@@ -922,25 +1130,26 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     /**
      * 每一项能力的当前状态。界面与助手侧能力清单都从这里取，判定逻辑不在别处再算一遍。
      *
-     * [usable] 与分发时的判据一致：后端支持、系统权限可达、且助手档位不是「禁止」。
-     * 只按「任一后端支持」判定会让能力清单说可用、调用却拿不到后端。这条是给助手看的口径。
-     *
-     * [enabled] 是首页那个统计数用的口径：**这条已实现、档位没设成「禁止」、且系统那一侧
-     * 不构成阻挡**。阻挡只指"用户得去系统里给它才能用而此刻没有"（运行时权限没给、手动授权
-     * 没开）；「每次会话点一下系统授权框」那一类不算阻挡 —— 用户没有地方能永久授予它，
-     * 把它算成不可用会让面板长期写着缺权限而那一行「缺哪一项」根本没东西可写。
-     * 缺哪一项权限由 [gaps] 逐条说给界面，不再把「后端此刻连不连得上」混进这个数——
-     * 用户能做的两件事就是开档位与给权限，数字只该随这两件事动。
+     * [usable] 是**唯一**的"此刻能不能调"口径（后端支持、系统权限可达、档位不是「禁止」、
+     * 执行面可达）：首页的可用计数读它，能力详情与对外清单也读它——任何一处的数字或
+     * 红点另算一套，就会出现「首页说可用、点进去缺权限/缺授权」的两套话。
      */
     data class CapabilityRow(
         val descriptor: CapabilityDescriptor,
         val state: CapabilityState,
         val implemented: Boolean,
         val usable: Boolean,
+        /**
+         * 历史口径（已实现+档位开着+系统那侧不挡），**不参与任何可用性表达**：它不含
+         * "此刻够不够得着"（后端连接、授权、受拒标记），首页与清单都不再消费——留着
+         * 只为不便动到的旧接线不炸，新代码一律读 [usable]。
+         */
         val enabled: Boolean,
         val gaps: List<GrantGap>,
         val surface: SurfaceKind?,
         val degradeReason: String?,
+        /** 本会话授权此刻是否在效。与档位一起决定下一条。 */
+        val sessionGranted: Boolean,
     )
 
     fun capabilityRows(): List<CapabilityRow> {
@@ -948,51 +1157,92 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         // 标记按线程打，见 [listingThread] 的理由。
         listingThread.set(true)
         try {
-            return capabilities.all().map { descriptor ->
-                // 先裁决路线，再按**这条路线**探测系统权限：同一能力在不同路线上需要的
-                // 系统条件不同（坐标四条走可信屏就不需要无障碍）。先探测后裁决会拿
-                // 「另一条路」的权限状态写清单，与真调用对不上。
-                val decision = policy.decide(descriptor)
-                val probed = probe.probe(descriptor, decision.surface)
-                val systemState = probed.state
-                val tier = tiers.tierOf(descriptor.id)
-                // 「有没有实现」必须按**本次裁决出的那个执行模式**问，不能按「任一模式的并集」问：
-                // 并集判据会让能力清单报可用、真调用却挑不到后端。
-                val backend = dispatcher.pick(descriptor, decision.surface)
-                // 只有一个执行面的能力被偏好链卡死时（requiresMode 非空），落点不再写成
-                // 那个还没达成条件的模式：清单里 surface 置空、原因写成「需要该模式」，
-                // 助手读到的是「先切偏好/建屏」，而不是一个此刻跑不通的落点。
-                val modeRequired = decision.requiresMode != null
-                // 该模式下执行面尚未达成，今天调不动：usable 若仍为 true，使用说明就会承诺
-                // 「usable=true 就能调」，而实调回的却是 E_SURFACE_MODE_REQUIRED ——
-                // 清单口径必须与实调一致，卡死的这一行一并算不可用。
-                val usable = backend != null &&
-                    !InterlockGate.systemBlocks(systemState) && tier != AccessTier.DENIED &&
-                    !modeRequired &&
-                    capabilities.isUsable(descriptor.id)
-                CapabilityRow(
-                    descriptor = descriptor,
-                    state = CapabilityState(descriptor, systemState, tier),
-                    // 「有没有实现」问的是代码，不是后端此刻连不连得上：把两者混在一起，
-                    // Shizuku 掉线时 `app.install` 会在能力清单里写成 not_implemented，
-                    // 而它其实只差一次重新授权。此刻可达与否由 usable 与系统权限态各自说。
-                    implemented = servedSomewhere(descriptor),
-                    usable = usable,
-                    enabled = servedSomewhere(descriptor) &&
-                        tier != AccessTier.DENIED &&
-                        !InterlockGate.systemBlocks(systemState) &&
-                        !modeRequired,
-                    gaps = probed.gaps,
-                    surface = if (!modeRequired && usable) decision.surface else null,
-                    degradeReason = if (modeRequired) {
-                        RelayError.SURFACE_MODE_REQUIRED.code
-                    } else {
-                        decision.reason
-                    },
-                )
-            }
+            return capabilities.all().map(::capabilityRow)
         } finally {
             listingThread.set(false)
+        }
+    }
+
+    /**
+     * 界面消费的普通能力行：成员过滤在内核（[CapabilityRegistry.ordinaryMembers]），
+     * 特权能力不进三档列表，也不进首页「可用能力」的分子分母——它由特权模式页的
+     * 独立开关管理，混进普通列表会让一次全局拨档看起来也管到了它。
+     * 对外能力清单（[capabilitiesJson]）照常包含特权能力，助手要按它知道这条能力存在。
+     */
+    fun ordinaryCapabilityRows(): List<CapabilityRow> {
+        listingThread.set(true)
+        try {
+            return CapabilityRegistry.ordinaryMembers(capabilities.all()).map(::capabilityRow)
+        } finally {
+            listingThread.set(false)
+        }
+    }
+
+    private fun capabilityRow(descriptor: CapabilityDescriptor): CapabilityRow {
+        return run {
+            // 先裁决路线，再按**这条路线**探测系统权限：同一能力在不同路线上需要的
+            // 系统条件不同（坐标四条走可信屏就不需要无障碍）。先探测后裁决会拿
+            // 「另一条路」的权限状态写清单，与真调用对不上。
+            val decision = policy.decide(descriptor)
+            val probed = probe.probe(descriptor, decision.surface)
+            val systemState = probed.state
+            val tier = tiers.tierOf(descriptor.id)
+            // 「有没有实现」必须按**裁决出的那个执行模式**问，不能按「任一模式的并集」问：
+            // 并集判据会让能力清单报可用、真调用却挑不到后端。
+            val backend = dispatcher.pick(descriptor, decision.surface)
+            // 只有一个执行面的能力被偏好链卡死时（requiresMode 非空），落点不再写成
+            // 那个还没达成条件的模式：清单里 surface 置空、原因写成「需要该模式」，
+            // 助手读到的是「先切偏好/建屏」，而不是一个此刻跑不通的落点。
+            // `surface.virtual` 豁免——create/release/query 是管理动作
+            // 不是执行落点，前台偏好下也要可达（显式 create/release 是 unsafe 与残留屏的
+            // 解除通路）。判据与调用侧同一张表（[RelayCoordinator.modeRequiredFor]）：
+            // 两处各说一套时清单写"可调"、实调却回 E_SURFACE_MODE_REQUIRED。
+            val modeRequired = RelayCoordinator.modeRequiredFor(descriptor.id, decision.requiresMode) != null
+            // trusted 建屏被系统拒绝是这台机器上的固定结论：这一结论不解除，建屏调用
+            // 每次都会回同一个拒绝。能力清单必须先说出来——这条继续写可用，助手的
+            // 下一步就会是「再建一次屏」，循环撞同一堵墙。拒绝由建屏成功或重连后
+            // 对账屏活着来解除（见 ShizukuBackend 的 trustedDisplayDenied）。
+            // 判据收在纯函数 [trustedDisplayRefusal] 里，JVM 单测可直接穷举各组合。
+            val systemRefusedTrustedDisplay = trustedDisplayRefusal(
+                descriptor.id, shizukuBackend.trustedDisplayDenied,
+            )
+            // 复核：unsafe（自检判过"建屏破坏主屏"）**不降 surface.virtual 这一行**——
+            // 清单 usable=false 会把 create/release/query 一起封死，标记就成了不可解除的
+            // 死锁。unsafe 对清单的表达在 manifest 的 trustedDisplay.unsafe 与后台各行的
+            // 后端 supports 真值表里（见 ShizukuBackend.trustedSurfaceSupported）。
+            // 该模式下执行面尚未达成，今天调不动：usable 若仍为 true，使用说明就会承诺
+            // 「usable=true 就能调」，而实调回的却是 E_SURFACE_MODE_REQUIRED ——
+            // 清单口径必须与实调一致，卡死的这一行一并算不可用。
+            val usable = backend != null &&
+                !InterlockGate.systemBlocks(systemState) && tier != AccessTier.DENIED &&
+                !modeRequired &&
+                !systemRefusedTrustedDisplay &&
+                capabilities.isUsable(descriptor.id)
+            // 审批口径的派生（含 requiresApproval/sessionGrantable）统一在
+            // [CapabilityManifestEntries]：这里只供「会话授权此刻是否在效」这一项原始状态。
+            val sessionGranted = tiers.sessionGranted(descriptor.id, monotonicNow())
+            // degradeReason 的顺序在纯函数 [degradeReasonFor] 里：被拒优先于"模式够不着"。
+            // 用户被拒后切了前台，`surface.virtual` 的裁决会先说 E_SURFACE_MODE_REQUIRED
+            // ——若它先报，清单与插件就按"切回后台/建屏"给建议，用户又切回后台再撞一次
+            // 拒绝，绕成循环。拒绝是这台机器上的固定结论，永远优先。
+            val degrade = degradeReasonFor(systemRefusedTrustedDisplay, modeRequired, decision.reason)
+            CapabilityRow(
+                descriptor = descriptor,
+                state = CapabilityState(descriptor, systemState, tier),
+                // 「有没有实现」问的是代码，不是后端此刻连不连得上：把两者混在一起，
+                // Shizuku 掉线时 `app.install` 会在能力清单里写成 not_implemented，
+                // 而它只差一次重新授权。此刻可达与否由 usable 与系统权限态各自说。
+                implemented = servedSomewhere(descriptor),
+                usable = usable,
+                enabled = servedSomewhere(descriptor) &&
+                    tier != AccessTier.DENIED &&
+                    !InterlockGate.systemBlocks(systemState) &&
+                    !modeRequired,
+                gaps = probed.gaps,
+                surface = if (!modeRequired && usable) decision.surface else null,
+                degradeReason = degrade,
+                sessionGranted = sessionGranted,
+            )
         }
     }
 
@@ -1023,22 +1273,41 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
     }.getOrDefault(false)
 
     /**
-     * 「优先后台」落不到后台屏时缺的那一环。
+     * 「优先后后台」落不到后台屏时缺的那一环。
      *
      * 各环的下一步互不相同：装 Shizuku、启动它、在它里面放行本应用、让助手建屏，
      * 是四件不同的事，合成一条「后台不可用」等于什么都没说。本机 Android 版本不够时
      * 这四件事全做对了也不会有后台屏，所以那一档要单独说，不能拿「没装 Shizuku」去解释。
+     * 「系统拒绝建屏」也不能与「屏还没建」同档：前者的结论是这台机器给不出可信屏、
+     * 建再多次也一样（下一步是改前台/前台兜底），后者只差一次成功建屏。
      */
     enum class BackgroundSurfaceBlock {
         ANDROID_VERSION,
         SHIZUKU_NOT_INSTALLED,
         SHIZUKU_NOT_RUNNING,
         SHIZUKU_NOT_GRANTED,
+        DISPLAY_REFUSED,
+        /** 运行时自检判过「可信屏破坏主屏」：屏被释放、设备被标记，改前台是唯一出路。 */
+        DISPLAY_UNSAFE,
         DISPLAY_NOT_CREATED,
     }
 
-    /** 后台操控的落点是否就绪：Shizuku 可用且那块可信屏已经建起来。 */
-    private fun trustedDisplayReady(): Boolean = shizuku.available && shizukuBackend.displayAlive()
+    /**
+     * 后台操控的落点是否就绪：Shizuku 在跑**且已授权**，用户服务连着，那块可信屏已经建起来。
+     *
+     * 授权必须在这一问里：执行侧用户服务是由 shell 身份跑的独立进程，没授权时绑定
+     * 进不去（[ShizukuState.bindUserService] 直接拒绝），屏的存续判据会让退出
+     * Shizuku 管理器授权的那台机器继续报「屏在」。
+     */
+    /**
+     * 后台操控的落点是否就绪：Shizuku 在跑**且已授权**，用户服务连着，那块可信屏已经建起来。
+     *
+     * unsafe（自检判过"建屏破坏主屏"）也算不就绪（复核）：屏可能因 release
+     * 失败而残留，"屏在"不能被读成健康——探测侧据此把后台路由降回前台。
+     */
+    private fun trustedDisplayReady(): Boolean =
+        shizuku.available && shizuku.granted && shizukuBackend.displayAlive() &&
+            !shizukuBackend.trustedDisplayUnsafe
 
     /**
      * 用户选了「优先后台」，而此刻的后台屏在不在；不在的话缺哪一环。就绪或与执行模式
@@ -1048,20 +1317,19 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
      * 一处说出来的话，「优先后台」就会被读成「设置没生效」。屏在不在只有装配根问得到
      * （[trustedDisplayReady]），所以这一档从这里出，界面按档取词。
      */
-    fun backgroundSurfaceBlock(): BackgroundSurfaceBlock? {
-        if (surfacePreferences.preference() != SurfacePreference.BACKGROUND_PREFERRED) return null
-        if (Build.VERSION.SDK_INT < SurfacePolicy.MIN_BACKEND_SDK) return BackgroundSurfaceBlock.ANDROID_VERSION
-        if (trustedDisplayReady()) return null
-        return when {
-            !shizukuInstalled() -> BackgroundSurfaceBlock.SHIZUKU_NOT_INSTALLED
-            !shizuku.available -> BackgroundSurfaceBlock.SHIZUKU_NOT_RUNNING
-            !shizuku.granted -> BackgroundSurfaceBlock.SHIZUKU_NOT_GRANTED
-            // 前三环都对，只剩那块屏：它归助手建，不是本模块能替用户按的开关。
-            else -> BackgroundSurfaceBlock.DISPLAY_NOT_CREATED
-        }
-    }
+    fun backgroundSurfaceBlock(): BackgroundSurfaceBlock? =
+        backgroundBlockFor(
+            backgroundPreferred = surfacePreferences.preference() == SurfacePreference.BACKGROUND_PREFERRED,
+            versionOk = Build.VERSION.SDK_INT >= SurfacePolicy.MIN_BACKEND_SDK,
+            unsafe = shizukuBackend.trustedDisplayUnsafe,
+            ready = trustedDisplayReady(),
+            installed = shizukuInstalled(),
+            shizukuAvailable = shizuku.available,
+            granted = shizuku.granted,
+            denied = shizukuBackend.trustedDisplayDenied,
+        )
 
-    /** 档位写入由界面驱动，上限的收敛规则在存储层，界面无法突破。 */
+
     /** `sys.shell` 一条动词在界面上的样子：字面命令形状 + 此刻是否可用。 */
     /**
      * 一条 shell 动词在界面上的样子。[supported] 说这条命令的二进制在不在这台机器上：
@@ -1115,10 +1383,131 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         scheduleRefresh()
     }
 
+    /**
+     * 单独改一条档位。全局范围内的能力一旦手改，生效预设身份即落**混合**——
+     * 即使改完的 40 条恰好又与某个预设全等，身份也不自动回预设（改回某预设请显式
+     * 点选那个条目）。范围外的能力（完全 Shizuku 开关等）不动身份。
+     */
     fun setTier(id: CapabilityId, tier: AccessTier) {
         tiers.setTier(id, tier)
+        updateActivePreset { ActivePreset.afterTierChange(it, id) }
         scheduleRefresh()
     }
+
+    /**
+     * 一次把普通能力成员集拨到同一档。成员资格由注册表的 `privileged` 位决定（见
+     * [CapabilityRegistry.ordinaryMembers]，全局拨档、能力列表与首页计数消费的是同一个
+     * 成员集）：特权能力不进这个集合，也不被批量拨档波及。它只改助手审批档位：
+     * 系统权限、系统弹框、封闭动词表与逐条开关都不随之变动。
+     *
+     * 它就是五条目全局配置里「全部禁止 / 全部询问审批 / 全部完全访问」三个直接动作；
+     * 「默认配置」「常用自定义预设（配置/使用）」各走下面自己的入口。
+     */
+    fun setAllTiers(tier: AccessTier) {
+        CapabilityRegistry.ordinaryMembers(capabilities.all()).forEach { tiers.setTier(it.id, tier) }
+        updateActivePreset { ActivePreset.afterBulkTier(tier) }
+        scheduleRefresh()
+    }
+
+    /**
+     * 五条目里的「默认配置」直接动作：把内置默认配置写进 40 条普通能力。用户显式
+     * 点选才到这里—— 引导之外的任何时点都不批量覆盖既有档位。身份落默认配置。
+     */
+    fun applyDefaultPreset() {
+        tiers.applyPreset(TierPresets.DEFAULT)
+        updateActivePreset { ActivePreset.afterDefaultApply() }
+        scheduleRefresh()
+    }
+
+    /**
+     * 当前生效预设的身份：读单独持久化的身份（[ActivePresetStore.resolve]）；老升级
+     * 场景没有身份时按  旧判据从 40 条现值迁移一次并持久化，此后不再按值反推。
+     */
+    private fun activePresetIdentity(): ActivePreset {
+        val current = CapabilityRegistry.ordinaryMembers(capabilities.all())
+            .associate { it.id to tiers.tierOf(it.id) }
+        return activePreset.resolve(current, customPreset.load())
+    }
+
+    /** 写入路径上的身份维护：迁移先保证身份存在，再按动作落新身份（不变则不写盘）。 */
+    private fun updateActivePreset(next: (ActivePreset) -> ActivePreset) {
+        val current = activePresetIdentity()
+        val updated = next(current)
+        if (updated != current) activePreset.save(updated)
+    }
+
+    /**
+     * 全局选择器此刻该显示的条目：读单独持久化的身份，界面只按结果取词，不自算任何
+     * 权限结论，也不按 40 条值反推（身份与值分开存的理由见 [ActivePresetStore]）。
+     */
+    fun globalConfigState(): GlobalConfigState = activePresetIdentity().toGlobalConfigState()
+
+    /** 已保存的自定义配置；没保存过为 null。编辑器拿它当初始模板的优先来源。 */
+    fun savedCustomPreset(): Map<CapabilityId, AccessTier>? = customPreset.load()
+
+    fun hasSavedCustomPreset(): Boolean = customPreset.hasSaved()
+
+    /**
+     * 保存常用自定义预设：**只入库，不套用**——已应用的档位保持原样，套用必须走
+     * [applyCustomPreset]。范围不符（不是 40 条普通能力全覆盖）的表拒绝写入。
+     * 保存后的集合与当前 40 条全等时身份原样保留；否则落混合（入库的这份没有套用，
+     * 生效档位与任何预设身份都不再对应——它不是「使用」，不冒充任何条目）。
+     */
+    fun saveCustomPreset(tiers: Map<CapabilityId, AccessTier>): Boolean {
+        val saved = customPreset.save(tiers)
+        if (saved) {
+            val applied = CapabilityRegistry.ordinaryMembers(capabilities.all())
+                .associate { it.id to this.tiers.tierOf(it.id) }
+            updateActivePreset { ActivePreset.afterCustomSave(it, applied == tiers) }
+            scheduleRefresh()
+        }
+        return saved
+    }
+
+    /** 五条目里常用自定义预设的「使用」：把已保存的一次性套到 40 条上。没保存过返回 false。 */
+    fun applyCustomPreset(): Boolean {
+        val saved = customPreset.load() ?: return false
+        tiers.applyPreset(saved)
+        updateActivePreset { ActivePreset.afterCustomApply() }
+        scheduleRefresh()
+        return true
+    }
+
+    /**
+     * 完全 Shizuku 特权开关的当前档位：开=ALWAYS，关=DENIED，没有第三态。
+     * 判定仍在闸门（档位决定放行与否）；这里只是把用户已选的那一档读给界面。
+     */
+    fun fullShellTier(): AccessTier = tiers.tierOf(CapabilityId.SYS_SHELL_FULL)
+
+    // ──  受保护应用：界面的名单读写口 ──
+    //
+    // 名单不进能力清单、不进任何 manifest：助手侧看不到名单内容，只有拒绝回包里
+    // 点名的那个包。UI 的入口状态（未设置 / 已保护 N 个）读 [protectedAppCount]。
+
+    /** 名单条数：入口右侧的「已保护 N 个」读这一处。0 即「未设置」。 */
+    fun protectedAppCount(): Int = protectedApps.count()
+
+    /** 名单当前内容（UI 的勾选状态以它为准）。空集 = 未保护任何应用。 */
+    fun protectedPackages(): Set<String> = protectedApps.packages()
+
+    /**
+     * 整体写入名单（勾选即生效，无保存按钮）。非法包名整体拒绝、什么都不写，
+     * 返回 false 交由界面提示；成功返回 true。
+     */
+    fun setProtectedPackages(packages: Set<String>): Boolean = protectedApps.set(packages)
+
+    /**
+     * 拨特权开关。开即完全访问（不再有助手审批），关即禁止（闸门直接拒绝，
+     * 不回退到 `sys.shell` 的封闭表）。直接生效，不弹确认；改完重铺能力清单，
+     * 助手读到的 usable 才跟得上。
+     */
+    fun setFullShellEnabled(open: Boolean) {
+        tiers.setTier(CapabilityId.SYS_SHELL_FULL, if (open) AccessTier.ALWAYS else AccessTier.DENIED)
+        scheduleRefresh()
+    }
+
+    /** 特权通路的执行身份（Shizuku 服务端 uid）；读不到时为 -1，由界面如实说「未知」。 */
+    fun shizukuUid(): Int = shizukuSnapshot.value.uid
 
     fun surfacePreference(): SurfacePreference = surfacePreferences.preference()
 
@@ -1192,37 +1581,43 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         val array = JSONArray()
         capabilityRows().forEach { row ->
             val descriptor = row.descriptor
+            // 条目的派生与序列化在 [CapabilityManifestEntries]：纯函数，与真调用共用
+            // 同一张判定表，单测可直接对账，容器只负责喂已判定的状态。
             array.put(
-                JSONObject().apply {
-                    put("id", descriptor.id.wire)
-                    put("category", descriptor.id.category.name.lowercase())
-                    put("systemPermission", row.state.system.name)
-                    put("assistantTier", row.state.tier.name)
-                    put("ceiling", descriptor.ceiling.name)
-                    put("usable", row.usable)
-                    put("implemented", row.implemented)
-                    put("minSdk", descriptor.minSdk)
-                    put("surfaces", JSONArray(descriptor.surfaces.map(SurfaceKind::wire)))
-                    put("guide", descriptor.guideClass.name)
-                    row.surface?.let { put("surface", it.wire) }
-                    row.degradeReason?.let { put("degradeReason", it) }
-                    if (!row.implemented) put("reason", "not_implemented")
-                },
+                CapabilityManifestEntries.entry(
+                    id = descriptor.id.wire,
+                    category = descriptor.id.category.name.lowercase(),
+                    systemPermission = row.state.system.name,
+                    tier = row.state.tier,
+                    sessionGranted = row.sessionGranted,
+                    usable = row.usable,
+                    implemented = row.implemented,
+                    minSdk = descriptor.minSdk,
+                    surfaces = descriptor.surfaces.map(SurfaceKind::wire),
+                    guide = descriptor.guideClass.name,
+                    surface = row.surface?.wire,
+                    degradeReason = row.degradeReason,
+                ),
             )
         }
-        return JSONObject().apply {
-            put("protocol", RELAY_PROTOCOL_VERSION)
-            put("entry", paths.guestScript)
-            // 宿主自身包名：沙盒侧 `home` 命令用它把宿主带回前台
-            // （app.launch 对宿主包名的唯一豁免）。列表里也要有，助手才知道该跳到哪个应用。
-            put("host", JSONObject().put("package", appContext.packageName))
-            // 这里不放生成时刻：这份串同时是「变了才重铺」的比较对象，带一个每次都变的
-            // 字段等于每次都说内容变了，文件 mtime 会被无意义推进。助手要看新旧直接看 mtime。
-            //
-            // 后端链路分四个环节给出：只有一个 usable 布尔时看不出断在哪一环（服务端在跑、
-            // 已授权，而用户服务没连上时前三条都成立、shell 那几条照样全部不可用），
-            // 排查就只能靠猜。
-            put("backend", JSONObject().apply {
+        // 信封（协议版本、入口、宿主包名、core 标识）的拼装在 [CapabilityManifestEntries]：
+        // 纯函数，core 标识可直接对账。这里只补挂装配根才知道的后端链路实时状态。
+        // 这里不放生成时刻：这份串同时是「变了才重铺」的比较对象，带一个每次都变的
+        // 字段等于每次都说内容变了，文件 mtime 会被无意义推进。助手要看新旧直接看 mtime。
+        // 后端链路分四个环节给出：只有一个 usable 布尔时看不出断在哪一环（服务端在跑、
+        // 已授权，而用户服务没连上时前三条都成立、shell 那几条照样全部不可用），
+        // 各环节独立可读，才能定位断链环节。
+        val envelope = CapabilityManifestEntries.envelope(
+            protocol = RELAY_PROTOCOL_VERSION,
+            entryScript = paths.guestScript,
+            hostPackage = appContext.packageName,
+            coreVersion = hostVersionName(),
+            coreBuild = hostVersionCode(),
+            capabilities = array,
+        )
+        envelope.put(
+            "backend",
+            JSONObject().apply {
                 put("shizuku", JSONObject().apply {
                     val snapshot = shizukuSnapshot.value
                     put("running", snapshot.running)
@@ -1235,6 +1630,16 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
                         // 两个条件并一个，是为了让这段 JSON 里不出现「前三条都断了而屏还在」
                         // 这种自相矛盾的组合——助手按它既不会去重绑也不会去建屏。
                         put("alive", shizukuBackend.boundSnapshot && shizukuBackend.displayAlive())
+                        // 这台机器拒绝过可信建屏：助手读清单就该看见它，而不是把「再建一次屏」
+                        // 当下一步。拒绝由建屏成功或重连对账解除——两个端点都在这里同时
+                        // 反映到 surface.virtual 条目的 usable/degradeReason，同一份事实两处同口径。
+                        put("denied", shizukuBackend.trustedDisplayDenied)
+                        // 运行时自检判过「可信屏破坏主屏」：屏已当场释放（或 release 失败残留）、
+                        // 这台设备被标记。与 denied 各是各的病历。它**只封后台落点**——本能力
+                        // 的 create/release/query 仍可调：create 会对屏复检并在通过后解除标记，
+                        // release 清掉残留屏也解除；给助手的下一步是改前台模式，而不是把这条
+                        // 能力整行封死。
+                        put("unsafe", shizukuBackend.trustedDisplayUnsafe)
                         put("displayId", shizukuBackend.displayId)
                         // 节点级那十一条也声明在这块屏上，但"屏在"不等于"读得到那棵树的窗口"：
                         // 无障碍给不给第二块屏的窗口是平台的事，我们只能按上一次真取到的结果说。
@@ -1242,9 +1647,9 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
                         put("nodeTree", a11yBackend.trustedNodeTreeState(shizukuBackend.displayId))
                     })
                 })
-            })
-            put("capabilities", array)
-        }.toString(2) + "\n"
+            },
+        )
+        return envelope.toString(2) + "\n"
     }
 
     /** 系统媒体库里的落点：不受产物配额约束，必须单独报数。 */
@@ -1307,6 +1712,18 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
 
     fun clearArtifacts(): Long? = reaper.clearAllArtifacts()
 
+    /** 本安装包的版本名与版本号：能力清单的构建标识从这两个值取，缺省如实给空。 */
+    private fun hostVersionName(): String =
+        runCatching { appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName }
+            .getOrNull().orEmpty()
+
+    private fun hostVersionCode(): Long =
+        runCatching {
+            appContext.packageManager.getPackageInfo(appContext.packageName, 0).let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) it.longVersionCode else @Suppress("DEPRECATION") it.versionCode.toLong()
+            }
+        }.getOrDefault(0L)
+
     /** 界面用的状态快照。含文件读取，必须在非界面线程调用。 */
     fun diagnostics(): RelayDiagnostics = RelayDiagnostics(
         events = runLog.snapshot(),
@@ -1347,12 +1764,87 @@ class RelayContainer(context: Context, config: RelayConfig = RelayConfig()) {
         return generated
     }
 
-    private companion object {
-        const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
-        const val KEY_SALT = "digest_salt"
-        const val KEY_VERBOSE = "verbose_log"
-        const val SALT_BYTES = 16
-        const val DIAGNOSTIC_AUDIT_LINES = 40
+    companion object {
+        internal const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
+
+        /** 前台所有者名：助手独立页（PilotActivity）。 */
+        const val FOREGROUND_OWNER_PILOT = "pilot_activity"
+
+        /** 前台所有者名：宿主页签内嵌的助手页（MainScreen）。 */
+        const val FOREGROUND_OWNER_HOST = "host_main"
+
+        /**
+         * 「trusted 建屏被这台机器拒过」对这一条能力此刻还算不算数，纯判据供 JVM 单测：
+         * 只作用于建屏那条能力（其余能力不建屏，拒绝与它们的落地无关），标记为真即命中；
+         * 清除只有两个时刻——建屏真的成功、或重连后对账确认屏活着（标记由后端写回）。
+         */
+        /**
+         * 「优先后台」缺环判定的纯表（生产 [backgroundSurfaceBlock] 与 JVM
+         * 测试同走）。unsafe 排在 ready 之前：残留屏（release 失败）也必须显示
+         * DISPLAY_UNSAFE，不让"屏在"被读成健康——与 [trustedDisplayReady] 的 unsafe
+         * 因子同一份事实两处表达。
+         */
+        internal fun backgroundBlockFor(
+            backgroundPreferred: Boolean,
+            versionOk: Boolean,
+            unsafe: Boolean,
+            ready: Boolean,
+            installed: Boolean,
+            shizukuAvailable: Boolean,
+            granted: Boolean,
+            denied: Boolean,
+        ): BackgroundSurfaceBlock? = when {
+            !backgroundPreferred -> null
+            !versionOk -> BackgroundSurfaceBlock.ANDROID_VERSION
+            unsafe -> BackgroundSurfaceBlock.DISPLAY_UNSAFE
+            ready -> null
+            !installed -> BackgroundSurfaceBlock.SHIZUKU_NOT_INSTALLED
+            !shizukuAvailable -> BackgroundSurfaceBlock.SHIZUKU_NOT_RUNNING
+            !granted -> BackgroundSurfaceBlock.SHIZUKU_NOT_GRANTED
+            // 前三环都对：屏有两个独立的缺席原因。系统拒绝过建屏（这台机器给不出可信屏）
+            // 与"屏还没建出来"是两件事——把拒绝说成"还没建"，界面就会一直让人去建，
+            // 而建再多次也都是那个拒绝。
+            denied -> BackgroundSurfaceBlock.DISPLAY_REFUSED
+            else -> BackgroundSurfaceBlock.DISPLAY_NOT_CREATED
+        }
+
+        internal fun trustedDisplayRefusal(id: CapabilityId, denialMarked: Boolean): Boolean =
+            id == CapabilityId.SURFACE_VIRTUAL && denialMarked
+
+        /**
+         * 能力行 degradeReason 的顺序，纯判据供 JVM 单测穷举：被拒优先于"模式够不着"。
+         * 顺序写反会让调用方回绕：用户被拒后切了前台，surface.virtual 的裁决会先给出
+         * E_SURFACE_MODE_REQUIRED（前台不在允许集），清单与插件就按"切回后台/建屏"建议，
+         * 用户又切回后台再撞一次拒绝，绕成循环——拒绝是这台机器上的固定结论，永远优先。
+         *
+         * unsafe 不在这一表里（复核）：「自检判过破坏主屏」不降任何清单行的
+         * usable/degradeReason——surface.virtual 必须保持可调，create/release/query 是
+         * 复检与解除标记的通路；unsafe 在清单上的表达是 manifest 的
+         * `trustedDisplay.unsafe` 字段与后台各行的 supports 真值表，两处读的都是
+         * ShizukuBackend 的同一个标记。
+         */
+        internal fun degradeReasonFor(
+            systemRefused: Boolean,
+            modeRequired: Boolean,
+            decisionReason: String?,
+        ): String? = when {
+            systemRefused -> RelayError.SURFACE_TRUSTED_DENIED.code
+            modeRequired -> RelayError.SURFACE_MODE_REQUIRED.code
+            else -> decisionReason
+        }
+
+        /**
+         * 首页「可用能力」的计数判据，纯函数供 JVM 单测：**只数 usable**。历史口径
+         * [CapabilityRow.enabled] 说的是"已实现且档位开着且有实现"，含不了"此刻够不够得着"
+         * ——按它数会出现"首页说 N 条可用、点进去缺授权/缺后端"的两套话。分母是普通能力
+         * 条数（成员过滤在 [CapabilityRegistry.ordinaryMembers]，特权能力不进）。
+         */
+        fun readyUsableCount(rows: List<CapabilityRow>): Int = rows.count { it.usable }
+
+        internal const val KEY_SALT = RelayPrefs.KEY_DIGEST_SALT
+        private const val KEY_VERBOSE = "verbose_log"
+        private const val SALT_BYTES = 16
+        private const val DIAGNOSTIC_AUDIT_LINES = 40
     }
 }
 

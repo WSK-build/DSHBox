@@ -111,6 +111,20 @@ class SurfacePolicy(
         )
     }
 
+    /**
+     * 可信面此刻**建不建得出来**。
+     *
+     * 与 [rejectReason] 同源（同一组 SDK/shell 条件），不另立一套判据：「这台机器
+     * 现在能不能建出那块屏」只有一份答案，调用侧问的就是它。
+     *
+     * 问它的人有一处：调用侧在建议助手「先建屏再重试」之前先问这一句。那条建议
+     * 指向一个用户此刻做不到的动作（Android 10–12 的系统版本、Shizuku 没授权或
+     * 掉线），助手只会白弹一张建不出来的屏的审批卡；而裁决层本来就知道这些条件
+     * 缺了会给出准确原因（E_SURFACE_API_LEVEL / E_SURFACE_NO_SHELL），照那份
+     * 原因退回前台即可，不必绕一圈。
+     */
+    fun trustedSurfaceReachable(): Boolean = rejectReason(SurfaceKind.BACKEND_TRUSTED) == null
+
     private fun rejectReason(surface: SurfaceKind): String? = when (surface) {
         SurfaceKind.BACKEND_TRUSTED -> when {
             sdkInt < MIN_BACKEND_SDK -> RelayError.SURFACE_API_LEVEL.code

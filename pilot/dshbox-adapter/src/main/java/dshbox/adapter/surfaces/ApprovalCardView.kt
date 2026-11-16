@@ -137,8 +137,8 @@ internal class ApprovalCardView(
         cardBody.addView(actionRow(night, onChoose))
         // 两条呈现路径必须给同一组答案：悬浮窗若只给「允许一次」，等于在最常用的场合
         // （助手在别的应用里操作）把会话档藏起来，同一条能力每次都要再问一遍。
-        // 上限为 ASK_ONLY 的能力本来就拿不到会话档（`allowsSessionGrant` 为假），
-        // 所以这里不会给出一条绕过永久免弹通道的按钮。
+        // 询问审批档的卡上都带会话档（档位是唯一开关，见内核闸门）；
+        // 这里按提示单上的标记渲染，不自设第二套给不给的规则。
         if (prompt.allowsSessionGrant) {
             cardBody.addView(
                 pillButton(textColor = subColor, fillColor = Color.TRANSPARENT, strokeColor = lineColor).apply {

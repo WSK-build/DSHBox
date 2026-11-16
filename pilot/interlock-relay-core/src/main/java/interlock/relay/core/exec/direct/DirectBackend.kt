@@ -23,18 +23,25 @@ import android.webkit.MimeTypeMap
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import interlock.relay.core.R
 import interlock.relay.core.spi.RelayNotificationChannelSpec
 import interlock.relay.core.spi.RelayText
 import interlock.relay.core.protocol.CapabilityId
 import interlock.relay.core.protocol.ArgErrors
+import interlock.relay.core.interlock.ProtectedVerdict
+import interlock.relay.core.interlock.protectedVerdict
 import interlock.relay.core.protocol.RelayError
 import interlock.relay.core.protocol.SurfaceKind
 import interlock.relay.core.exec.BackendCall
 import interlock.relay.core.exec.BackendResult
 import interlock.relay.core.exec.RelayBackend
 import interlock.relay.core.exec.a11y.RelayAccessibilityService
+import interlock.relay.core.exec.shizuku.ShizukuBackend
+import interlock.relay.core.log.LogEvent
+import interlock.relay.core.log.LogSubsystem
+import interlock.relay.core.log.RunLog
 import interlock.relay.core.storage.RelayPaths
 import interlock.relay.core.storage.StorageReaper
 import kotlinx.coroutines.delay
@@ -69,11 +76,19 @@ class DirectBackend(
      * 就会在宿主换目录名时只改一半。
      */
     private val mediaAlbumDir: String = interlock.relay.core.spi.RelayPathPolicy.BuiltIn.mediaAlbumDir,
+    /**
+     * 「受保护应用」名单的实时读数，由装配根递进来。前台启动、屏幕采集（含观察）与
+     * 录屏在真正下发之前按目标/前台包名查一次；名单为空时零判定零查询。
+     */
+    private val protectedPackages: () -> Set<String> = { emptySet() },
+    /** 运行日志。执行场景拒绝在这里记一条；可空只为装配与测试的装配自由。 */
+    private val runLog: RunLog? = null,
 ) : RelayBackend {
 
     private val appContext = context.applicationContext
     private val appPackage = appContext.packageName
     private val audioCapture = AudioCapture(reaper)
+    private val deviceStatus = DeviceStatus(appContext)
 
     /**
      * 落点目录与 MIME 由本端固定：`kind` 之外不接受沙盒给出的路径。
@@ -107,6 +122,7 @@ class DirectBackend(
             CapabilityId.NOTIFY_POST,
             CapabilityId.NOTIFY_READ,
             CapabilityId.AUDIO_CAPTURE,
+            CapabilityId.DEVICE_STATUS,
             CapabilityId.SYS_INTENT,
             -> true
 
@@ -122,7 +138,7 @@ class DirectBackend(
             -> surface == SurfaceKind.FOREGROUND
 
             // 三条屏幕采集能力走 MediaProjection：无障碍没开时它们照样可用，
-            // 代价是每次会话要用户点一次系统弹框（能力上限 SESSION_ONLY 即由此而来）。
+            // 代价是每次会话要用户点一次系统弹框；那是系统弹框，与助手审批档位无关。
             CapabilityId.SCREEN_CAPTURE,
             CapabilityId.SCREEN_RECORD,
             -> true
@@ -150,14 +166,31 @@ class DirectBackend(
             CapabilityId.NOTIFY_POST -> postNotification(call.args)
             CapabilityId.NOTIFY_READ -> readNotifications(call.args)
             CapabilityId.AUDIO_CAPTURE -> audioCapture.capture(call)
-            CapabilityId.CLIPBOARD_READ -> readClipboard()
+            CapabilityId.DEVICE_STATUS -> ok(deviceStatus.snapshot())
+            CapabilityId.CLIPBOARD_READ -> {
+                // 数据面：读剪贴板读到的是"用户刚在前台应用里复制的内容"——前台是受保护
+                // 应用时，这份内容本身就是它的数据。下发之前按当前前台包名查一次名单
+                // （复用屏幕采集的 [foregroundProtectedGuard]，名单为空时零查询）；读不到
+                // 前台包名按 fail-closed 拒。`clip.write` 不在此列：写剪贴板不是读取
+                // 受保护应用的数据。
+                foregroundProtectedGuard(call.descriptor.id)?.let { return it }
+                readClipboard()
+            }
             CapabilityId.CLIPBOARD_WRITE -> writeClipboard(call.args.optString(KEY_TEXT))
             CapabilityId.SYS_INTENT -> semanticIntent(call.args)
             CapabilityId.SCREEN_CAPTURE,
             CapabilityId.SCREEN_OBSERVE,
-            -> projection.captureFrame(call)
+            -> {
+                // 取帧/观察落到的是用户眼前的画面，下发之前按当前前台包名查一次名单；
+                // 读不到按 fail-closed 拒。名单为空时零查询，行为照旧。
+                foregroundProtectedGuard(call.descriptor.id)?.let { return it }
+                projection.captureFrame(call)
+            }
 
-            CapabilityId.SCREEN_RECORD -> projection.record(call)
+            CapabilityId.SCREEN_RECORD -> {
+                foregroundProtectedGuard(call.descriptor.id)?.let { return it }
+                projection.record(call)
+            }
             else -> BackendResult.Failed(RelayError.CAPABILITY_NOT_IMPLEMENTED, call.descriptor.id.wire)
         }
     }
@@ -330,8 +363,12 @@ class DirectBackend(
             packageFilter = filter,
             includeOngoing = args.optBoolean(KEY_INCLUDE_ONGOING, false),
         )
+        // 数据面：不带 `package` 的"读全部"在入口不算点名（整条拒绝会把用户允许读的
+        // 其它应用一并挡掉），改由这里按名单过滤——受保护包的通知一条都不交出，其余条目
+        // 字段与顺序原样保留。判据是纯函数（[filterProtectedEntries]），生产与单测同走一份。
+        val visible = filterProtectedEntries(entries, { it.packageName }, protectedPackages())
         val items = JSONArray()
-        entries.forEach { entry ->
+        visible.forEach { entry ->
             items.put(
                 JSONObject().apply {
                     put("package", entry.packageName)
@@ -341,7 +378,7 @@ class DirectBackend(
                 },
             )
         }
-        return ok(JSONObject().put("count", entries.size).put("notifications", items))
+        return ok(JSONObject().put("count", visible.size).put("notifications", items))
     }
 
     /**
@@ -381,6 +418,8 @@ class DirectBackend(
      * 助手就会拿这个结论去操作桌面。
      */
     private suspend fun launchApp(packageName: String): BackendResult {
+        // `startActivity` 之前按目标包名查一次名单——与入口层双保险。
+        protectedBlocked(CapabilityId.APP_LAUNCH, packageName)?.let { return it }
         // 起的是本应用自己、而本应用已经在前台：什么都不做，直接回"已在前台"。
         // 唯一的自指启动是收尾用的「把宿主带回前台」；此时再 startActivity 一次会按
         // singleTask 把主界面抬到栈顶，把正开着的助手页顶掉——用户本来就在里面，
@@ -511,6 +550,72 @@ class DirectBackend(
         val focused = service.windows.orEmpty().firstOrNull { window -> window.isFocused }
         return focused?.root?.packageName?.toString()
             ?: service.rootInActiveWindow?.packageName?.toString()
+    }
+
+    /**
+     * 用户真屏此刻的顶层包名，给落点沿用的"目标还在不在最前面"一问用。
+     * 无障碍没连上或读不到焦点窗口时如实回 null —— null 表示"核验不了"。
+     */
+    fun userScreenTopPackage(): String? = foregroundPackage()
+
+    /** 目标包名命中名单时的一致拒绝。回包只说明该包受保护，不暴露完整名单。 */
+    private fun protectedBlocked(capability: CapabilityId, targetPackage: String): BackendResult? =
+        if (targetPackage in protectedPackages()) {
+            logProtectedBlock(capability, targetPackage)
+            BackendResult.Failed(
+                RelayError.PACKAGE_PROTECTED,
+                "package $targetPackage is on the user's protected-apps list: the assistant can " +
+                    "neither operate it nor read it",
+            )
+        } else {
+            null
+        }
+
+    /**
+     * 下发对象是"用户眼前这一块"的能力（屏幕采集截图/观察/录屏，以及读剪贴板——
+     * 剪贴板里是前台应用刚放进去的数据）在真正下发前的前台判定。按 [userScreenTopPackage]
+     * 读当前前台包名，命中即拒；读不到按 fail-closed 拒——「不能操作但能看」不允许出现。
+     * 名单为空时在这里就放行：[userScreenTopPackage] 是一次无障碍前台查询，
+     * 空名单不该为它付这笔开销。
+     */
+    private fun foregroundProtectedGuard(capability: CapabilityId): BackendResult? {
+        val packages = protectedPackages()
+        if (packages.isEmpty()) return null
+        return when (val verdict = protectedVerdict(packages, userScreenTopPackage())) {
+            ProtectedVerdict.Pass -> null
+            is ProtectedVerdict.Hit -> {
+                logProtectedBlock(capability, verdict.packageName)
+                BackendResult.Failed(
+                    RelayError.PACKAGE_PROTECTED,
+                    "package ${verdict.packageName} is in front and is on the user's protected-apps " +
+                        "list: the assistant can neither operate it nor read what it puts in front",
+                )
+            }
+            ProtectedVerdict.Unconfirmable -> {
+                logProtectedBlock(capability, null)
+                BackendResult.Failed(
+                    RelayError.PACKAGE_PROTECTED,
+                    "cannot confirm the foreground app (accessibility is not bound or no readable " +
+                        "focused window), and the protected-apps list is not empty: refusing to " +
+                        "read or capture in front",
+                )
+            }
+        }
+    }
+
+    /**
+     * 拒绝的一条运行日志：能力、目标包与层级，与 Shizuku / 无障碍后端同事件同字段
+     * （[ShizukuBackend.BLOCKED_AT_EXECUTION]；读不到前台包名时目标记 unknown）。
+     * 完整名单不进日志。
+     */
+    private fun logProtectedBlock(capability: CapabilityId, targetPackage: String?) {
+        runLog?.warn(
+            LogSubsystem.BACKEND,
+            LogEvent.PACKAGE_PROTECTED_BLOCKED,
+            "cap" to capability.wire,
+            "target" to (targetPackage ?: ShizukuBackend.UNKNOWN_FIELD),
+            "where" to ShizukuBackend.BLOCKED_AT_EXECUTION,
+        )
     }
 
     private fun readContacts(limit: Int): BackendResult {
@@ -810,24 +915,48 @@ class DirectBackend(
         }
     }
 
-    private fun readMedia(kind: String, limit: Int): BackendResult {
-        val collection = when (kind.lowercase()) {
-            "video" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-            // 未知 kind 不能落到照片集合：`{"kind":"audio"}` 会拿到一份照片列表，
+    /**
+     * 读系统媒体库。图片、视频、音频一条能力三类 `kind`，只读 MediaStore，
+     * 不做公共目录与共享目录。权限**按类型**校验，出闸判据是「这一类此刻读不读得到」
+     * （[MediaKinds.missingFor] 只在整类不可读时才非空）：Android 14 用户只给「选定照片」
+     * 时图片/视频照样放行；不可读时只报这一类的主权限——「用户没给音频权限」不会把
+     * 完全可读的图片/视频一起判死（探测侧的整条口径出自同一份判据）。
+     */
+    private fun readMedia(kindRaw: String, limit: Int): BackendResult {
+        val kind = MediaKind.fromWire(kindRaw.lowercase())
+            // 未知 kind 不能落到照片集合：`{"kind":"vido"}` 会拿到一份图片列表，
             // 一条看着合理其实是错的答案比一次失败更难查。
-            else -> return BackendResult.Failed(RelayError.TRANSPORT_MALFORMED, "kind must be image/video")
+            ?: return BackendResult.Failed(RelayError.TRANSPORT_MALFORMED, "kind must be image/video/audio")
+        val missing = MediaKinds.missingFor(kind, ::granted, Build.VERSION.SDK_INT)
+        if (missing.isNotEmpty()) {
+            return BackendResult.Failed(
+                RelayError.GATE_SYSTEM_MISSING,
+                "media kind $kind needs a permission that is not granted: ${missing.joinToString()}",
+            )
         }
-        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.DATE_MODIFIED)
+        val collection = when (kind) {
+            MediaKind.VIDEO -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            MediaKind.AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            MediaKind.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val projection = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.DATE_MODIFIED,
+        )
         val items = JSONArray()
         appContext.contentResolver.query(collection, projection, null, null, null)?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
             while (cursor.moveToNext() && items.length() < limit) {
                 items.put(
                     JSONObject().apply {
                         put("uri", Uri.withAppendedPath(collection, cursor.getString(idColumn)).toString())
                         put("name", cursor.getString(nameColumn))
+                        // 媒体库给出的修改时刻（秒级纪元）：有它，调用方才分得清
+                        // 两条同名条目哪一条更新，不必再发一次调用去问。
+                        put("date", cursor.getLong(dateColumn))
                     },
                 )
             }
@@ -835,7 +964,22 @@ class DirectBackend(
         return ok(JSONObject().put("count", items.length()).put("items", items))
     }
 
-    private fun postNotification(args: JSONObject): BackendResult {
+    /** 运行时权限此刻是否已授予。按类型媒体校验与其余数据读取共用这一处。 */
+    private fun granted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(appContext, permission) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * 发通知并核实它真的可见了。`notify()` 被系统接受不等于通知出现在用户眼前：
+     * 通知权限没给、渠道被关或系统拦截都会让通知静默消失。检查的是**本应用自己的**
+     * 活动通知——读自己不需要通知监听权限，通知监听继续只负责读别人的通知。
+     *
+     * 发送前先看权限与渠道（任一被关就拒绝发送，回系统权限类错误，字段口径照带）；
+     * 发送后在短窗口内复查活动通知里有没有**那一条**（同 id 旧通知不算，见 [NotifyPostChecks.visible]）。
+     * 复查到点仍不可见，说明系统收下了请求却看不见它，真实结局答不出来：按结果未知
+     * （`E_TRANSPORT_UNKNOWN`、已派发）处理，不回「已发送」。
+     */
+    private suspend fun postNotification(args: JSONObject): BackendResult {
         val manager = appContext.getSystemService<NotificationManager>()
             ?: return BackendResult.Failed(RelayError.CAPABILITY_UNAVAILABLE_ON_DEVICE, "no notification service")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -849,16 +993,65 @@ class DirectBackend(
                 ),
             )
         }
+        val notificationsEnabled = manager.areNotificationsEnabled()
+        val channelImportance = manager.getNotificationChannel(notifyChannel.id)?.importance
+        // 渠道缺失（null）不算「渠道开着」：它与被用户关闭是同一句诊断，字段口径也一致。
+        val channelEnabled = channelImportance != null && channelImportance != NotificationManager.IMPORTANCE_NONE
+        // id 在两个出口共用一次解析：省略 id 时拒绝回包与成功回包带的是同一个生成值。
+        val id = NotifyPostChecks.resolveId(args, System.currentTimeMillis())
+        // 发送前的把关用纯判据：权限被关与渠道被关是两件用户要做的不同的事，诊断分开写。
+        NotifyPostChecks.preCheck(notificationsEnabled, channelImportance)?.let { reason ->
+            return BackendResult.Failed(
+                RelayError.GATE_SYSTEM_MISSING,
+                reason,
+                data = NotifyPostChecks.payload(
+                    id = id,
+                    posted = false,
+                    verified = false,
+                    notificationsEnabled = notificationsEnabled,
+                    channelEnabled = channelEnabled,
+                ),
+            )
+        }
+        // 贴出时刻写死在通知上，复查用它配 postTime 认「这一条」：同 id 的旧通知必须排除。
+        val postedWhen = System.currentTimeMillis()
         // 标题与正文来自助手侧参数，属于用户数据，不是本模块的界面文案。
         val notification = NotificationCompat.Builder(appContext, notifyChannel.id)
             .setSmallIcon(R.drawable.ic_relay_notification)
             .setContentTitle(args.optString(KEY_TITLE))
             .setContentText(args.optString(KEY_TEXT))
+            .setWhen(postedWhen)
             .setAutoCancel(true)
             .build()
-        manager.notify(args.optInt(KEY_ID, System.currentTimeMillis().toInt()), notification)
-        return ok(JSONObject().put("posted", true))
+        manager.notify(id, notification)
+        // 可见性是异步落定的：短窗口复查（总量不越过调用预算的零头），命中即提前返回。
+        repeat(NOTIFY_VERIFY_TRIES) { attempt ->
+            if (NotifyPostChecks.visible(activeNotifications(manager), id, postedWhen)) {
+                return ok(
+                    NotifyPostChecks.payload(
+                        id = id,
+                        posted = true,
+                        verified = true,
+                        notificationsEnabled = notificationsEnabled,
+                        channelEnabled = channelEnabled,
+                    ),
+                )
+            }
+            if (attempt < NOTIFY_VERIFY_TRIES - 1) delay(NOTIFY_VERIFY_INTERVAL_MS)
+        }
+        return NotifyPostChecks.unknownOutcome(
+            id = id,
+            notificationsEnabled = notificationsEnabled,
+            channelEnabled = channelEnabled,
+            windowMs = NOTIFY_VERIFY_TRIES * NOTIFY_VERIFY_INTERVAL_MS,
+        )
     }
+
+    /** 本应用此刻自己的活动通知 (id, postTime) 对。读自己不需要通知监听权限。 */
+    private fun activeNotifications(manager: NotificationManager): List<Pair<Int, Long>> =
+        runCatching {
+            manager.activeNotifications.orEmpty().map { it.id to it.postTime }
+        }.getOrDefault(emptyList())
 
     /**
      * 读剪贴板。可用性只在执行期问：「此刻有没有焦点」是运行时事实，写进 `supports()`
@@ -928,6 +1121,7 @@ class DirectBackend(
             CapabilityId.NOTIFY_POST to ArgSpec(setOf(KEY_TITLE, KEY_TEXT, KEY_ID), setOf(KEY_TITLE)),
             CapabilityId.NOTIFY_READ to ArgSpec(setOf(KEY_LIMIT, KEY_PACKAGE, KEY_INCLUDE_ONGOING)),
             CapabilityId.AUDIO_CAPTURE to ArgSpec(setOf(KEY_SECONDS)),
+            CapabilityId.DEVICE_STATUS to ArgSpec(),
             CapabilityId.CLIPBOARD_READ to ArgSpec(),
             CapabilityId.CLIPBOARD_WRITE to ArgSpec(setOf(KEY_TEXT), setOf(KEY_TEXT)),
             CapabilityId.SCREEN_CAPTURE to ArgSpec(),
@@ -981,6 +1175,14 @@ class DirectBackend(
 
         /** 连续读不到任何窗口就不再等：无障碍没绑的机器上，等满预算换不来一条信息。 */
         const val FOREGROUND_POLL_BLANK_LIMIT = 3
+
+        /**
+         * 通知发送后的可见性复查窗口：命中即提前返回，因此这笔等待只花在确实没可见的
+         * 调用上。窗口总量（次数 × 间隔）收在 500ms 以内：可见性是异步落定的，等太久
+         * 会把一次已经成功的发送拖到调用预算的边缘，而更久也证实不了什么。
+         */
+        const val NOTIFY_VERIFY_TRIES = 10
+        const val NOTIFY_VERIFY_INTERVAL_MS = 50L
 
         /**
          * 应用分身的宿主容器。分身应用跑在这个进程的克隆实例里，窗口归属只读得到容器

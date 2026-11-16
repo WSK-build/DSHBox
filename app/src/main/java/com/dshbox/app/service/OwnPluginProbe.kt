@@ -88,7 +88,8 @@ internal object OwnPluginProbe {
      * @param bundleId `install.sh` 写进 `dsh.profile.bundles` 的包名
      * @param fingerprintFiles 参与一致性比对的文件（相对插件根）。
      *   **由调用方按暂存包的实际内容推导**，不要写死：两个包的组成并不相同
-     *   （适配包有 `lib/client.js`，mobile-pilot 空壳只有 `lib/index.js`）。
+     * （两个包现在都带 `lib/client.js`，但 mobile-pilot 另有 `bin/mobile-pilot`、
+     * `lib/mount.js` 等适配包没有的文件，工具集也不同）。
      *   写死过一份就会踩到"清单里有、包里没有"——那个文件永远 `test -f` 不过，
      *   于是每次都判为需安装，**每次启动都重装一遍**，而且看日志只像"更新了"。
      *

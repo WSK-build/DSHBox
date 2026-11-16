@@ -48,7 +48,6 @@ class InterlockQueueWaitingTurnTest {
     ) = InterlockQueue(
         isForegroundCapable = { foreground },
         onRouting = { seen.add(it.request) },
-        overlayBlind = { false },
         canNotify = { canNotify },
         now = { now },
         inlineWaitMs = inlineWaitMs,

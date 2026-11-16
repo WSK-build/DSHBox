@@ -56,7 +56,8 @@ internal fun idleTimeLeftMs(idleSinceMs: Long, nowMs: Long, idleExpiryMs: Long):
  *    来的，所以这里做一条「挂起—交棒—回填」的握手：把待启动的意图备好，交给那页透明的
  *    [interlock.relay.core.runtime.RelayConsentActivity] 点一次火，自己等结果。后台启动 Activity 在
  *    Android 10 起被限制，做成隐式行为只会时灵时不灵，因此带不动时如实报错而不是硬试。
- * 2. 系统弹框名义上是「每次会话」一次（能力上限 `SESSION_ONLY` 即照此定），但近版本系统上
+ * 2. 系统弹框名义上是「每次会话」一次（助手的会话授权窗口与之同宽，但两者互不替代：
+ * 前者是 Android 的框，后者只管助手自己的审批），但近版本系统上
  *    「一次会话」比字面意思窄得多：一个 token 只允许挂**一路**虚拟屏——建第二条时系统直接把
  *    整个会话判废（系统日志：`MediaProjectionManagerService: Reusing token: Throw exception
  *    due to invalid projection`），之后每条调用只剩 SecurityException。

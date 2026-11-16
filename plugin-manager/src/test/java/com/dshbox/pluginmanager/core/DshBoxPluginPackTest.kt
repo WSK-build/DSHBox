@@ -151,6 +151,7 @@ class DshBoxPluginPackTest {
             "mobile-pilot/plugin/package.json",
             "mobile-pilot/plugin/cordis.patch.yml",
             "mobile-pilot/plugin/lib/index.js",
+            "mobile-pilot/plugin/lib/client.js",
             "mobile-pilot/plugin/lib/mount.js",
             "mobile-pilot/plugin/lib/pilot.js",
             "mobile-pilot/plugin/lib/tools.js",

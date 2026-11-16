@@ -18,6 +18,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -112,6 +113,30 @@ class OverlayApprovalPresenter(
     override var onHidden: (() -> Unit)? = null
 
     /**
+     * 卡真的上屏（拿到焦点、用户点得到）时回调一次，带上屏的那一问：队列据此发一次
+     * 「在屏」真值的对账裁决 —— 用户的点击再快也晚于焦点下发，快速作答也留得下
+     * via=overlay 的日志。队列侧校验上屏的这一问仍是当下存在的。
+     */
+    @Volatile
+    override var onPresented: ((ApprovalPrompt) -> Unit)? = null
+
+    /** 当前挂起中那一趟的取消口；showAndWait 进出各设一次，幂等且线程安全。 */
+    @Volatile
+    private var currentCancel: CompletableDeferred<Unit>? = null
+
+    /**
+     * 收口代际：每次 [withdraw]（外部收口/改判/清场）自增。present 以**起点代际**校验，
+     * 覆盖取消口尚未立起（currentCancel 还没赋值）的那段空窗——起点之后发生过的收口
+     * 会让校验失败，绝不 `closed=false` 后又挂出 ghost 卡。长整型无溢出顾虑。
+     */
+    @Volatile
+    private var withdrawGeneration = 0L
+
+    override fun cancelCurrent() {
+        currentCancel?.complete(Unit)
+    }
+
+    /**
      * 这条通路是不是已经收了。
      *
      * 撤通道时收窗是 post 到主线程的，而用户那次点击也可能排在同一个队列里：不设这道闸，
@@ -144,6 +169,11 @@ class OverlayApprovalPresenter(
     override fun withdraw() {
         closed = true
         onScreen = false
+        // 代际前移：取消口还没立起（currentCancel 未赋值）的呈现，靠起点代际校验让位。
+        withdrawGeneration++
+        // 在途的那一趟呈现（正在挂/挂上了正等点击）立即返回：外部收口与改判离开悬浮
+        // 不把互斥门拖满确认窗口，提升的下一问不被拖住。
+        cancelCurrent()
         val owner = parked ?: current ?: return
         mainHandler.post { owner.retire() }
     }
@@ -152,28 +182,74 @@ class OverlayApprovalPresenter(
     override fun isPresented(): Boolean = onScreen
 
     override suspend fun present(prompt: ApprovalPrompt): InterlockChoice {
-        if (!canShow()) return InterlockChoice.UNABLE_TO_SHOW
-        waiting.incrementAndGet()
-        paintCounter()
-        var queued = true
-        return try {
-            windowLock.withLock {
-                waiting.decrementAndGet()
-                queued = false
-                paintCounter()
-                // 窗口与 View 只能在主线程操作：调用方是通道的分发线程，
-                // 直接 addView 会在建 Handler 时抛异常，表现为"弹不出来"。
-                withContext(Dispatchers.Main) { showAndWait(prompt) }
+        // 取消口在一切之前立起（canShow/排窗锁/切线程之前）：外部收口在任何——
+        // 排队等窗锁、挂窗前、等焦点、等点击——都能叫停这一趟，不留下 ghost 卡，
+        // 也不把队列的互斥门拖满确认窗口。
+        val cancelSignal = CompletableDeferred<Unit>()
+        // 起点代际先于取消口捕获：此刻之后发生的任何收口都会让代际校验失败。
+        val generationAtStart = withdrawGeneration
+        currentCancel = cancelSignal
+        try {
+            if (cancelSignal.isCompleted) return InterlockChoice.UNABLE_TO_SHOW
+            if (!canShow()) {
+                // 裁决以为悬浮可用才走进来，这里却挂不出窗：不留一行的话，日志里只见
+                // 「最终走了通知」，看不出悬浮那条路是因为授权缺席而让位的。
+                runLog().warn(
+                    LogSubsystem.GATE,
+                    LogEvent.OVERLAY_UNAVAILABLE,
+                    "cap" to prompt.capability.wire,
+                    "cause" to "overlay permission not granted",
+                    "at" to "present",
+                )
+                return InterlockChoice.UNABLE_TO_SHOW
+            }
+            waiting.incrementAndGet()
+            paintCounter()
+            var queued = true
+            return try {
+                windowLock.withLock {
+                    waiting.decrementAndGet()
+                    queued = false
+                    paintCounter()
+                    // 窗口与 View 只能在主线程操作：调用方是通道的分发线程，
+                    // 直接 addView 会在建 Handler 时抛异常，表现为"弹不出来"。
+                    withContext(Dispatchers.Main) {
+                        showAndWait(prompt, cancelSignal, generationAtStart)
+                    }
+                }
+            } finally {
+                // 排在锁上时被取消（上一条问题占着窗，而这一次调用的确认窗口到点）也要把
+                // 计数还回去：漏一次，之后每一张卡上都永远存在一条虚假的「还有 N 项待确认」。
+                if (queued) waiting.decrementAndGet()
+                if (waiting.get() < 0) waiting.set(0)
             }
         } finally {
-            // 排在锁上时被取消（上一条问题占着窗，而这一次调用的确认窗口到点）也要把
-            // 计数还回去：漏一次，之后每一张卡上都永远挂着一条虚假的「还有 N 项待确认」。
-            if (queued) waiting.decrementAndGet()
-            if (waiting.get() < 0) waiting.set(0)
+            // 无论哪条路离开，取消口都要还回来：下一趟呈现重新设口，旧的口不许干扰它。
+            if (currentCancel === cancelSignal) currentCancel = null
         }
     }
 
-    private suspend fun showAndWait(prompt: ApprovalPrompt): InterlockChoice {
+    private suspend fun showAndWait(
+        prompt: ApprovalPrompt,
+        cancelSignal: CompletableDeferred<Unit>,
+        generationAtStart: Long,
+    ): InterlockChoice {
+        // 排窗锁排队期间可能已被取消或收口：进门先查，不挂 ghost 卡。
+        if (cancelSignal.isCompleted || withdrawGeneration != generationAtStart) {
+            return InterlockChoice.UNABLE_TO_SHOW
+        }
+        return showAndWaitWindowed(prompt, cancelSignal, generationAtStart)
+    }
+
+    private suspend fun showAndWaitWindowed(
+        prompt: ApprovalPrompt,
+        cancelSignal: CompletableDeferred<Unit>,
+        generationAtStart: Long,
+    ): InterlockChoice {
+        // 取消的两个来源：显式 cancelCurrent（在途等待）与起点之后发生的收口
+        // （取消口还没立起的空窗，代际前移）。各的检查点一律用这一个判据。
+        fun cancelled(): Boolean =
+            cancelSignal.isCompleted || withdrawGeneration != generationAtStart
         val wm = appContext.getSystemService(WindowManager::class.java)
             ?: return InterlockChoice.UNABLE_TO_SHOW
         // 上一张还留在屏上时不再画第二张：两张叠着，用户分不清自己点的是哪一件事。
@@ -222,11 +298,20 @@ class OverlayApprovalPresenter(
         ).apply {
             gravity = Gravity.TOP or Gravity.START
         }
+        // 外部取消口：队列在外部收口/改判离开悬浮时经 cancelCurrent() 合上它，
+        // 与用户点击赛跑——谁先到都立即返回，挂卡互斥门不被拖满确认窗口。
+        val cancelSignal = CompletableDeferred<Unit>()
+        currentCancel = cancelSignal
         // 一次呈现的总时长承诺：[INLINE_APPROVAL_WAIT_MS] 与「到这一问的截止时刻」里取小的。
         // 下面两段等待都从这一份里扣，而不是各扣各的 —— 否则「等上屏 4 秒 + 等答复 8 秒」
         // 会让单次 `present` 走到 12 秒，调用方那边的确认窗口形同虚设。
         val startedAt = monotonicNow()
         val totalBudget = minOf(INLINE_APPROVAL_WAIT_MS, prompt.deadlineAtMs - startedAt).coerceAtLeast(0L)
+        if (cancelled()) {
+            // 挂窗前就被外部收口：无窗可收，直接让位——不挂 ghost 卡。
+            owner.retire()
+            return InterlockChoice.UNABLE_TO_SHOW
+        }
         return try {
             wm.addView(root, params)
             onScreen = true
@@ -237,7 +322,16 @@ class OverlayApprovalPresenter(
             // 这一帧只是给窗完成第一次布局的时间，同样要落在预算里：熄屏时 vsync 停住，
             // 裸的 awaitFrame() 永不返回，而这段跑在主线程上。
             withTimeoutOrNull(onScreenBudget) { awaitFrame() }
-            if (!awaitOnScreen(root, minOf(ON_SCREEN_BUDGET_MS, totalBudget - (monotonicNow() - startedAt)))) {
+            if (cancelled()) {
+                owner.retire()
+                return InterlockChoice.UNABLE_TO_SHOW
+            }
+            if (!awaitOnScreen(root, minOf(ON_SCREEN_BUDGET_MS, totalBudget - (monotonicNow() - startedAt)), isCancelled = { cancelled() })) {
+                if (cancelled()) {
+                    // 等焦点期间被外部收口：立即收窗让位，不算「被平台藏掉」。
+                    owner.retire()
+                    return InterlockChoice.UNABLE_TO_SHOW
+                }
                 // 窗挂上了却被系统整屏藏掉：前台应用带 HIDE_NON_SYSTEM_OVERLAY_WINDOWS 时
                 // （设置一类的系统页默认如此），第三方悬浮窗一律不显示，而 addView 不报错、
                 // 绘制回调也说 VISIBLE。宁可现在回「问不了」，也不要让用户对着看不见的窗等到
@@ -248,17 +342,33 @@ class OverlayApprovalPresenter(
                 return InterlockChoice.UNABLE_TO_SHOW
             }
             onScreen = true
+            onPresented?.invoke(prompt)
             paintCounter()
             // 两段等待都从这一次确认的总窗口里扣：截止时刻先到时不能接着等 —— 那时这张卡
             // 再留着也没人能答，占着的却是调用方的通道时间。
             val answerBudget = (totalBudget - (monotonicNow() - startedAt)).coerceAtLeast(0L)
+            var cancelled = false
             val waited = withTimeoutOrNull(answerBudget) {
-                choice.await()
+                // 用户点击与外部收口赛跑：谁先到都立即返回，窗不留、门不拖。
+                select {
+                    choice.onAwait { it }
+                    cancelSignal.onAwait { cancelled = true; null }
+                }
             }
             if (waited == null) {
+                if (cancelled) {
+                    owner.retire()
+                    return InterlockChoice.UNABLE_TO_SHOW
+                }
                 if (prompt.deadlineAtMs - monotonicNow() <= 0L) {
                     owner.retire()
                     return InterlockChoice.EXPIRED
+                }
+                // 超时与取消的夹缝：取消到了就收窗让位，绝不 park 一张没人等的卡；
+                // 用户恰在夹缝里点过的答案仍在 choice 里，调用方经 peekAnswered 认领。
+                if (cancelled()) {
+                    owner.retire()
+                    return if (choice.isCompleted) choice.getCompleted() else InterlockChoice.UNABLE_TO_SHOW
                 }
                 // 让开通道，窗留着：用户还能答，重试会接上同一张框。
                 // 到点仍没人答就自己收——留一条没人应答的浮窗等于把用户钉在原地。
@@ -309,10 +419,17 @@ class OverlayApprovalPresenter(
      * 按帧数封顶就把一次判定做成了机型相关。整段包在超时里也是这个原因 —— 熄屏时 vsync
      * 停住，裸的 awaitFrame() 永不返回，主线程上这张窗会变成一条没有下文的等待。
      */
-    private suspend fun awaitOnScreen(root: android.view.View, budgetMs: Long): Boolean {
+    private suspend fun awaitOnScreen(
+        root: android.view.View,
+        budgetMs: Long,
+        isCancelled: () -> Boolean,
+    ): Boolean {
         val focused = withTimeoutOrNull(budgetMs) {
             var seen = false
             while (!seen) {
+                // 取消在等焦点期间同样即时生效：熄屏时 vsync 停住、焦点可能永远不来，
+                // 不能让互斥门陪着等满预算。
+                if (isCancelled()) return@withTimeoutOrNull false
                 if (root.hasWindowFocus()) seen = true else awaitFrame()
             }
             seen

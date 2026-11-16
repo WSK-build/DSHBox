@@ -66,40 +66,27 @@ class CapabilityRegistryInvariantsTest {
     }
 
     /**
-     * 档位上限的三档语义逐条对照：`ASK_ONLY` 永不免弹、`SESSION_ONLY` 只在本会话内免弹、
-     * `ANY` 的「始终允许」长期免弹。上限填歪等于把不可逆能力升成永久免确认。
+     * 三档行为对注册表里每一条能力统一：弹不弹只由档位与会话授权决定，
+     * 描述符上保留的上限元数据不参与判定。少钉一种，就会出现「某一类能力
+     * 选了完全访问仍被别处压回询问」的第二套规则。
      */
     @Test
-    fun everyCeilingMeansWhatTheTierSemanticsSay() {
+    fun tierAloneDecidesApprovalForEveryCapability() {
         CapabilityRegistry.allDescriptors.forEach { descriptor ->
-            val ceiling = descriptor.ceiling
             val id = descriptor.id.wire
-            assertTrue("$id 的「询问审批」档在没有会话授权时必须弹框", InterlockGate.requiresApproval(AccessTier.ASK, ceiling, sessionGranted = false))
-            when (ceiling) {
-                TierCeiling.ASK_ONLY -> assertTrue(
-                    "$id 永不免弹",
-                    InterlockGate.requiresApproval(AccessTier.ALWAYS, ceiling, sessionGranted = true),
-                )
-
-                TierCeiling.SESSION_ONLY -> {
-                    assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, ceiling, sessionGranted = true))
-                    assertTrue(InterlockGate.requiresApproval(AccessTier.ALWAYS, ceiling, sessionGranted = false))
-                }
-
-                TierCeiling.ANY -> assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, ceiling, sessionGranted = false))
-            }
+            assertTrue(
+                "$id 询问审批档没有会话授权时必须弹框",
+                InterlockGate.requiresApproval(AccessTier.ASK, sessionGranted = false),
+            )
+            assertFalse(
+                "$id 询问审批档有会话授权时免弹",
+                InterlockGate.requiresApproval(AccessTier.ASK, sessionGranted = true),
+            )
+            assertFalse(
+                "$id 完全访问档免弹",
+                InterlockGate.requiresApproval(AccessTier.ALWAYS, sessionGranted = false),
+            )
         }
-    }
-
-    /** 以 shell 身份执行的那四条能力，免弹上限固定为 ASK_ONLY：降一档等于开一条无确认的系统写通路。 */
-    @Test
-    fun privilegedShellCapabilitiesStayAskOnly() {
-        listOf(
-            CapabilityId.SECURE_SETTINGS,
-            CapabilityId.APPOPS_SET,
-            CapabilityId.APP_STOP,
-            CapabilityId.PKG_INSTALL,
-        ).forEach { assertEquals(it.wire, TierCeiling.ASK_ONLY, CapabilityRegistry.find(it)?.ceiling) }
     }
 
     @Test
@@ -153,5 +140,52 @@ class CapabilityRegistryInvariantsTest {
 
     private companion object {
         const val MODULE_MIN_SDK = 29
+    }
+
+    /**
+     * 唯一的成员过滤函数 [CapabilityRegistry.ordinaryMembers]：成员资格只看描述符上的
+     * `privileged` 位，`globalTierEligible` 只是它的派生属性。40 条普通能力全入；
+     * 完全 Shizuku（`sys.shell.full`）是唯一的特权能力，被它排除——能力列表、首页
+     * 「可用能力」计数、全局档位选择器与批量拨档消费的都是这一个集合。
+     */
+    @Test
+    fun ordinaryMembersFollowsThePrivilegedFlagAlone() {
+        val registry = CapabilityRegistry.allDescriptors
+        val members = CapabilityRegistry.ordinaryMembers(registry)
+        assertEquals(40, members.size)
+        assertTrue(members.none { it.id == CapabilityId.SYS_SHELL_FULL })
+        assertEquals(
+            (CapabilityId.entries.toSet() - CapabilityId.SYS_SHELL_FULL),
+            members.map { it.id }.toSet(),
+        )
+        // 全局档位成员位与特权位是同一条判据的两种读法：逐条等价，不允许第二套成员位。
+        registry.forEach { descriptor ->
+            assertEquals(descriptor.id.wire, !descriptor.privileged, descriptor.globalTierEligible)
+        }
+        assertEquals(
+            members.map { it.id }.toSet(),
+            registry.filter { it.globalTierEligible }.map { it.id }.toSet(),
+        )
+
+        // 把一条普通能力标成特权，成员集恰好少它一个；资格是身份不是状态，
+        // 档位拨成禁止、系统权限缺失都不在函数输入里，自然不改变成员集。
+        val exited = registry.first { it.id != CapabilityId.SYS_SHELL_FULL }.copy(privileged = true)
+        val mixed = registry.map { if (it.id == exited.id) exited else it }
+        val mixedMembers = CapabilityRegistry.ordinaryMembers(mixed)
+        assertEquals(members.size - 1, mixedMembers.size)
+        assertFalse(mixedMembers.any { it.id == exited.id })
+    }
+
+    /**
+     * 设备状态的描述符口径：只读一组基础数据、无 Shizuku（唯一后端 DIRECT）、
+     * 运行期权限表为空——唯一的外部依赖 `ACCESS_NETWORK_STATE` 是安装时普通权限，
+     * 声明即授予；列进 runtimePermissions 会让探测把这条能力报成「缺权限待授」，
+     * 而系统侧没有任何要授的内容（能力清单的「缺权限」红点会永远点不掉）。
+     */
+    @Test
+    fun deviceStatusNeedsNoShizukuAndNoRuntimePermission() {
+        val descriptor = CapabilityRegistry.allDescriptors.single { it.id == CapabilityId.DEVICE_STATUS }
+        assertEquals(listOf(BackendId.DIRECT), descriptor.backends)
+        assertTrue(descriptor.runtimePermissions.isEmpty())
     }
 }

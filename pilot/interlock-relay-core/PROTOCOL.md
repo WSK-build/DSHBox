@@ -67,12 +67,12 @@ Single source: `RelayError`. Every code carries `retryable` and the CLI exit cod
 `E_TASK_SUSPENDED_BY_HOST`, `E_NO_EDITABLE_TARGET`, `E_NODE_NOT_FOUND`, `E_NODE_AMBIGUOUS`,
 `E_NODE_NOT_ACTIONABLE`, `E_ACTION_REJECTED`, `E_WAIT_TIMEOUT`, `E_GATE_NO_FOREGROUND`,
 `E_CLIPBOARD_NO_FOCUS`, `E_CAPABILITY_UNAVAILABLE_ON_DEVICE`, `E_NOT_IMPLEMENTED`,
-`E_NODE_NO_IME_ACTION`, `E_NODE_SYSTEM_CONSENT_TARGET`, `E_LAUNCH_NOT_LANDED`,
+`E_NODE_NO_IME_ACTION`, `E_LAUNCH_NOT_LANDED`,
 `E_SURFACE_API_LEVEL`, `E_SURFACE_NO_SHELL`, `E_SURFACE_TRUSTED_DENIED`, `E_SURFACE_UNAVAILABLE`,
 `E_SURFACE_MODE_REQUIRED`, `E_SURFACE_SYSTEM_CONSENT_REQUIRED`, `E_SURFACE_SECURE_WINDOW`,
 `E_BACKEND_SHIZUKU_DEAD`, `E_BACKEND_UNAVAILABLE`, `E_STORAGE_FULL`, `E_RATE_LIMITED`,
 `E_QUEUE_FULL`, `E_REQUEST_TOO_LARGE`, `E_TRANSPORT_MALFORMED`, `E_TRANSPORT_TIMEOUT`,
-`E_INTERNAL`.
+`E_TRANSPORT_UNKNOWN`, `E_INTERNAL`, `E_COMMAND_FAILED`, `E_COMMAND_NOT_PERMITTED`.
 
 ### Exit codes (CLI process)
 
@@ -87,6 +87,7 @@ Single source: `RelayExitCode`. The reply's `error.exitCode` wins over any local
 | 4 | the user must act first (grant, open a page); `status` also uses 4 for "no such request" |
 | 5 | retry later (rate limit, queue full, backend restarting); `cancel` also uses 5 for "recorded, not yet confirmed" |
 | 6 | host-side internal fault |
+| 7 | the command itself ran and failed (non-zero exit or a service-side refusal): read `data.output` / `data.stderr` / `data.exit` in the reply instead of retrying blind |
 
 ## v2 control channel
 

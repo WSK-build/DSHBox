@@ -17,6 +17,7 @@ import com.dshbox.pluginmanager.ui.LocalPluginPanelFullscreen
 import com.dshbox.pluginmanager.ui.PluginManagerHost
 import dshbox.adapter.dshboxRelayConfig
 import dshbox.adapter.ui.PilotScreen
+import interlock.relay.core.runtime.RelayContainer
 import interlock.relay.core.runtime.RelayRuntime
 import androidx.compose.foundation.background
 import androidx.compose.foundation.indication
@@ -731,12 +732,14 @@ private fun PilotTabContent(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(container, isActive, appStarted) {
-        container.foreground.visible = isActive && appStarted
+        // 前台按所有者记账：本页签与助手独立页（PilotActivity）各记各的，互不覆盖——
+        // 本宿主退后台时独立页可能正在前台（通知点进来），ON_STOP 不得把它按成后台。
+        container.foreground.setOwnerVisible(RelayContainer.FOREGROUND_OWNER_HOST, isActive && appStarted)
         container.onForegroundChanged()
     }
     DisposableEffect(container) {
         onDispose {
-            container.foreground.visible = false
+            container.foreground.setOwnerVisible(RelayContainer.FOREGROUND_OWNER_HOST, false)
             container.onForegroundChanged()
         }
     }

@@ -23,6 +23,12 @@ interface RelayPrefs {
 
         /** `sys.shell` 会改系统动词的逐条授权文件名。 */
         const val FILE_SHELL_VERBS = "relay_shell_verbs"
+
+        /**
+         * 审计摘要盐的键名（装配根首次构造即写入主文件）。它同时是  新老用户分界
+         * 的既有安装见证：老用户升级时这个键必然已在，新安装的文件里则还没有。
+         */
+        const val KEY_DIGEST_SALT = "digest_salt"
     }
 
     /** 缺省实现：applicationContext 的 SharedPreferences。 */

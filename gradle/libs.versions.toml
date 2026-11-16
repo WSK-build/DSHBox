@@ -5,6 +5,8 @@ coreKtx = "1.15.0"
 appcompat = "1.7.0"
 activityCompose = "1.9.3"
 composeBom = "2024.12.01"
+# GeckoView 158 的 lifecycle 2.11 要求 Compose runtime 1.11；gecko 变体单独对齐。
+composeBomGecko = "2026.04.01"
 lifecycle = "2.8.7"
 webkit = "1.12.1"
 geckoview = "158.0.20261021001945"
@@ -30,6 +32,7 @@ androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", 
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-bom-gecko = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBomGecko" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }

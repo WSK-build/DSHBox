@@ -14,7 +14,7 @@ const PACK_DIR = fileURLToPath(new URL('..', import.meta.url))
 const PKG_DIR_NAME = path.join('node_modules', '@local', 'mobile-pilot')
 const MANIFEST_NAME = '.mobile-pilot-install.json'
 const REQUIRED_FILES = [
-  'package.json', 'cordis.patch.yml', 'lib/index.js', 'lib/mount.js',
+  'package.json', 'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/stream.js', 'lib/mount.js',
   'lib/pilot.js', 'lib/tools.js', 'bin/mobile-pilot',
 ]
 

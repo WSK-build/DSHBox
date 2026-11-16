@@ -18,8 +18,8 @@ import interlock.relay.core.runtime.RelayRuntime
  *
  * 本界面**不拥有通道生命周期**：启动走 [RelayRuntime.start] 的进程级作用域，
  * 关闭时也不停通道——助手会话期间信箱要一直有人消费。
- * 本界面只负责「用户在场」这一件事：它可见时确认框画在这里，不可见时同一个问题
- * 由通知栏去问，不靠把这一页推到前台来要答案。
+ * 本界面只负责「用户在场」这一件事：它可见时确认框画在这里；不可见时按裁决换路，
+ * 先试悬浮卡、挂不上才由通知接手，不靠把这一页推到前台来要答案。
  */
 class PilotActivity : AppCompatActivity() {
 
@@ -34,19 +34,21 @@ class PilotActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         val container = RelayRuntime.get(applicationContext)
-        container.foreground.visible = true
+        // 前台按所有者记账：宿主页签与本页是两个互不知情的写入方，宿主的 ON_STOP
+        // 完全可能落在本页 onResume 之后——各记各的，谁也不会把谁的 true 覆盖掉。
+        container.foreground.setOwnerVisible(RelayContainer.FOREGROUND_OWNER_PILOT, true)
         // 语言是宿主那边改的，pilot 收不到任何回调；回到前台就是最近的一次对表时机，
         // 把常驻通知与渠道名换成当前手选语言（运行期还有通道那条服务的周期核对兜着）。
         PilotNotificationChannels.syncAll(applicationContext)
-        // 前台状态变化是审批呈现路由的输入：回到页内后页内卡接管，通知那条路收起。
+        // 前台状态变化是审批呈现路由的输入：回到页内后页内卡接管，通知与悬浮都收起。
         container.onForegroundChanged()
     }
 
     override fun onStop() {
         super.onStop()
         val container = RelayRuntime.get(applicationContext)
-        container.foreground.visible = false
-        // 离开后页内那张框问不到人了：还没有结论的待决项由通知补挂，同一个问题换条路接着问。
+        container.foreground.setOwnerVisible(RelayContainer.FOREGROUND_OWNER_PILOT, false)
+        // 离开后页内那张框问不到人了：裁决先试悬浮卡，挂不上才由通知接手。
         container.onForegroundChanged()
     }
 

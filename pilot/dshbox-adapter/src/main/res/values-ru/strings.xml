@@ -71,6 +71,9 @@
     <string name="pilot_perm_notification_listener">Доступ к уведомлениям</string>
     <string name="pilot_cap_missing_perm">·%1$s не выдано</string>
     <string name="pilot_cap_missing_service">·%1$s выключено</string>
+    <string name="pilot_cap_missing_grant">Shizuku не авторизовал это приложение</string>
+    <string name="pilot_cap_missing_service_shizuku">Shizuku не запущен; запустите его на странице привилегированного режима</string>
+    <string name="pilot_cap_missing_bound">Пользовательский сервис Shizuku не подключен</string>
     <string name="pilot_a11y_notice_title">Сервис специальных возможностей не подключён</string>
     <string name="pilot_a11y_notice_not_bound">%1$s требует службу специальных возможностей. Система по-прежнему перечисляет это приложение, значит разрешение не отозвано: приложение было закрыто в фоне. Достаточно снова открыть его, менять настройки не нужно.</string>
     <string name="pilot_a11y_notice_revoked">%1$s требует службу специальных возможностей, но система больше не перечисляет это приложение среди включённых: разрешение было выключено. Включите его заново.</string>
@@ -112,9 +115,47 @@
     <string name="pilot_tier_choice_ask">Запрос на каждый вызов</string>
     <string name="pilot_tier_choice_always">Полный доступ</string>
 
-    <string name="pilot_ceiling_any">Полный доступ можно выдать постоянно.</string>
-    <string name="pilot_ceiling_session">Постоянный доступ ограничен текущей сессией помощника.</string>
-    <string name="pilot_ceiling_ask_only">Требования безопасности подтверждают каждый вызов. Полный доступ его не пропускает.</string>
+    <string name="pilot_tier_note">Все три уровня действуют так, как выбрал пользователь. Полный доступ означает только то, что помощник больше не спрашивает; системные разрешения, системные окна и ограничение частоты остаются в силе.</string>
+
+    <!-- 能力页右上角的全局档位选择器：批量设置，不是批量授权，不弹确认框。 -->
+    <string name="pilot_tier_all_denied">Запретить все</string>
+    <string name="pilot_tier_all_ask">Спрашивать для всех</string>
+    <string name="pilot_tier_all_always">Полный доступ для всех</string>
+
+    <!-- глобальная конфигурация из пяти пунктов: предустановка, редактирование и применение своей. -->
+    <string name="pilot_config_default">Конфигурация по умолчанию</string>
+    <string name="pilot_config_custom">Своя сохранённая конфигурация</string>
+    <string name="pilot_config_unsaved">Смешанная</string>
+    <string name="pilot_config_action_edit">Настроить</string>
+    <string name="pilot_config_action_apply">Применить</string>
+    <string name="pilot_config_page_title">Своя сохранённая конфигурация</string>
+    <string name="pilot_config_save">Сохранить</string>
+    <string name="pilot_config_note">Правки меняют только черновик. «Сохранить» (справа вверху) делает её своей сохранённой конфигурацией; применение — отдельный шаг и не происходит само.</string>
+    <string name="pilot_config_scope_note">Это 40 обычных способностей. Выключатель полного Shizuku и предпочтение режима выполнения не входят ни в одну глобальную конфигурацию.</string>
+    <string name="pilot_config_missing_hint">Сохранённой своей конфигурации ещё нет: сначала настройте и сохраните её, затем примените здесь.</string>
+    <string name="pilot_config_save_failed">Не удалось сохранить; черновик остался на этой странице. Проверьте и повторите.</string>
+
+    <!-- защищённые приложения: список выбирает пользователь, вход в разделе контроля доступа. -->
+    <string name="pilot_page_protected_apps">Защищённые приложения</string>
+    <string name="pilot_protected_status_unset">Не задано</string>
+    <string name="pilot_protected_status_count">Защищено: %1$d</string>
+    <string name="pilot_protected_apps_note">Ассистент не может запускать, читать приложения из этого списка и работать с ними. Полный Shizuku (произвольные команды), ADB и root эти ограничения не затрагивают.</string>
+    <string name="pilot_protected_apps_search_hint">Поиск по названию или пакету</string>
+    <string name="pilot_protected_apps_empty">Пока нет защищённых приложений</string>
+    <string name="pilot_protected_apps_save_failed">Не удалось сохранить список, отметка вернулась к прежнему состоянию. Повторите попытку.</string>
+    <string name="pilot_protected_apps_add_by_package">Добавить по имени пакета</string>
+    <string name="pilot_protected_apps_package_placeholder">com.example.app</string>
+    <string name="pilot_protected_apps_add">Добавить</string>
+    <string name="pilot_protected_apps_invalid_package">Недопустимое имя пакета: оно должно начинаться с буквы и содержать только буквы, цифры, знаки подчёркивания и точки.</string>
+    <string name="pilot_protected_apps_unlisted">Нет в списке приложений</string>
+
+    <!-- 档位说明页：由用户主动点开，区分助手审批与系统弹框。 -->
+    <string name="pilot_page_capability_help">Об уровнях</string>
+    <string name="pilot_help_tier_only">Полный доступ означает лишь то, что помощник перестаёт спрашивать. Он не выдаёт разрешения Android, не обходит системные окна и не равен Shizuku или root.</string>
+    <string name="pilot_help_capture">Запись экрана и снимки на переднем плане проходят собственное подтверждение захвата экрана Android; только фоновый виртуальный экран обходится без системного окна.</string>
+    <string name="pilot_help_install">При установке приложения системное подтверждение установки по-прежнему появляется.</string>
+    <string name="pilot_help_runtime">Разрешения времени выполнения, доступ к уведомлениям и требование переднего плана для буфера обмена остаются в силе.</string>
+    <string name="pilot_help_shell">Системная оболочка по-прежнему ограничена закрытой таблицей команд и отдельными переключателями; команды вне таблицы требуют отдельного переключателя полного доступа Shizuku.</string>
 
     <string name="pilot_category_observe">Наблюдение</string>
     <string name="pilot_category_control">Управление</string>
@@ -132,6 +173,8 @@
     <string name="pilot_surface_bg_reason_shizuku_missing">Shizuku не установлен на этом устройстве.</string>
     <string name="pilot_surface_bg_reason_shizuku_offline">Shizuku не запущен.</string>
     <string name="pilot_surface_bg_reason_not_granted">Shizuku запущен, но не выдал разрешение этому приложению.</string>
+    <string name="pilot_surface_bg_reason_display_refused">Устройство отказалось создавать доверенный экран; доверенный фоновый экран здесь недоступен. Перейдите в режим переднего плана для этих задач.</string>
+    <string name="pilot_surface_bg_reason_display_unsafe">Доверенный экран нарушил работу главного экрана этого устройства, поэтому он был освобождён. Перейдите в режим переднего плана для этих задач.</string>
     <string name="pilot_surface_bg_reason_display_missing">Фоновый экран ещё не создан; это должен сделать ассистент.</string>
 
     <string name="pilot_surface_kind_foreground">Передний план</string>
@@ -146,6 +189,17 @@
     <string name="pilot_guide_accessibility_limit">Жесты действуют только на стандартном дисплее; снимок экрана без системного запроса требует Android 11 или новее.</string>
     <string name="pilot_guide_shizuku_steps">Установите Shizuku, запустите его через беспроводную отладку или с компьютера, затем вернитесь сюда и предоставьте этому приложению доступ. Привилегированные операции выполняются от имени shell и требуют его.</string>
     <string name="pilot_guide_shizuku_offline">Shizuku не запущен. Привилегированные возможности остаются заблокированы, пока его служба не будет обнаружена.</string>
+    <string name="pilot_fullshell_section">"Полные возможности Shizuku"</string>
+    <string name="pilot_fullshell_switch">"Разрешить помощнику выполнять любые команды shell"</string>
+    <string name="pilot_fullshell_identity">"Текущая учётная запись выполнения"</string>
+    <string name="pilot_fullshell_identity_shell">"shell (uid 2000)"</string>
+    <string name="pilot_fullshell_identity_root">"root (uid 0)"</string>
+    <string name="pilot_fullshell_identity_uid">"uid %1$d"</string>
+    <string name="pilot_fullshell_identity_unknown">"Неизвестна (сейчас не удаётся прочитать учётную запись выполнения)"</string>
+    <string name="pilot_fullshell_need_running">"Shizuku не запущен: запустите Shizuku, прежде чем включать этот переключатель."</string>
+    <string name="pilot_fullshell_need_granted">"У этого приложения нет авторизации в Shizuku: сначала выдайте её там, затем включите этот переключатель."</string>
+    <string name="pilot_fullshell_need_bound">"Пользовательская служба Shizuku не подключена: дождитесь переподключения или нажмите «Переподключить» выше, затем включите этот переключатель."</string>
+    <string name="pilot_fullshell_risk_note">"С включённым переключателем помощник может выполнять любые команды shell: без закрытой таблицы команд, без белого списка аргументов и без подтверждения помощника, без повторного подтверждения. Команды выполняются от имени, которое предоставляет Shizuku (shell, если Shizuku запущен через ADB или беспроводную отладку; root — только если сам Shizuku работает как root). Это не автоматический root и не обход разрешений и системных диалогов Android. На размер вывода и время выполнения по-прежнему действуют пределы — это границы стабильности, а не одобрения. Долгая команда занимает единственный канал выполнения shell и блокирует остальные вызовы, зависящие от Shizuku, пока не завершится; защитные фильтры хоста в отношении самого себя на произвольную команду не действуют."</string>
 
     <string name="pilot_perm_contacts">Контакты</string>
     <string name="pilot_perm_calendar">Календарь</string>
@@ -230,6 +284,8 @@
     <string name="pilot_overlay_asking">Разрешить %1$s?</string>
     <string name="pilot_overlay_allow">Разрешить</string>
     <string name="pilot_page_overlay">Всплывающее подтверждение</string>
+    <string name="pilot_page_developer_mode">Режим разработчика</string>
+    <string name="pilot_devmode_unavailable">Режим разработчика не инициализирован</string>
     <string name="pilot_overlay_note">У запроса три возможных места, в этом порядке: на экране помощника, когда он на переднем плане; поверх всего, когда он не на переднем плане, а это разрешение выдано; и панель уведомлений (откройте её и нажмите «Разрешить»), когда разрешения нет. Если уведомления тоже закрыты, нажимать больше нечего.</string>
     <string name="pilot_action_shizuku_request">Запросить доступ в Shizuku</string>
     <string name="pilot_section_artifacts">Артефакты помощника (у каждого свой срок автосбора)</string>
@@ -274,15 +330,15 @@
     <string name="relay_a11y_description">Позволяет помощнику читать содержимое текущего экрана, выполнять жесты и вводить текст от вашего имени (касания, долгие нажатия, свайпы, прокрутка, ввод и установка значений, отправка клавиш). Система выдаёт эту службу один раз; далее помощник запрашивает разрешение на каждую возможность по отдельности и никогда не управляет этим приложением.</string>
     <string name="relay_a11y_label">Помощник телефона DSHBox</string>
     <string name="relay_approval_char_count">%1$d символов</string>
-    <string name="relay_cap_app_install_summary">Устанавливает через Shizuku, по-прежнему может требовать подтверждения пользователя. Всегда запрашивает подтверждение.</string>
+    <string name="relay_cap_app_install_summary">Устанавливает через Shizuku. Системное подтверждение установки всё равно появляется.</string>
     <string name="relay_cap_app_install_title">Установка приложения</string>
     <string name="relay_cap_app_launch_summary">Запускает другое приложение на текущем экране.</string>
     <string name="relay_cap_app_launch_title">Запуск приложения</string>
     <string name="relay_cap_app_stop_summary">Принудительно останавливает другое приложение. Влияет на всё устройство.</string>
     <string name="relay_cap_app_stop_title">Остановка приложения</string>
-    <string name="relay_cap_appops_set_summary">Настраивает права операций для отдельных приложений через Shizuku. Всегда запрашивает подтверждение.</string>
+    <string name="relay_cap_appops_set_summary">Настраивает права операций для отдельных приложений через Shizuku.</string>
     <string name="relay_cap_appops_set_title">Изменение операций приложений</string>
-    <string name="relay_cap_audio_capture_summary">Записывает звук с микрофона, до 30 секунд за вызов.</string>
+    <string name="relay_cap_audio_capture_summary">Записывает звук с микрофона, до 120 секунд за вызов.</string>
     <string name="relay_cap_audio_capture_title">Запись с микрофона</string>
     <string name="relay_cap_cal_read_summary">Читает события календаря.</string>
     <string name="relay_cap_cal_read_title">Чтение календаря</string>
@@ -296,10 +352,12 @@
     <string name="relay_cap_contact_read_title">Чтение контактов</string>
     <string name="relay_cap_contact_write_summary">Добавляет контакты и изменяет их.</string>
     <string name="relay_cap_contact_write_title">Запись контактов</string>
+    <string name="relay_cap_device_status_summary">Читает набор базовых данных устройства только для чтения: время и часовой пояс, аккумулятор и зарядка, состояние экрана и блокировки, тип сети и подключение, громкость медиа/рингтона/уведомлений/будильника, яркость, а также производитель/модель/версия Android/разрешение/язык системы. Не требует Shizuku и не показывает запросов разрешений.</string>
+    <string name="relay_cap_device_status_title">Состояние устройства</string>
     <string name="relay_cap_loc_read_summary">Читает последние известные координаты; фоновое отслеживание не поддерживается.</string>
     <string name="relay_cap_loc_read_title">Чтение местоположения</string>
-    <string name="relay_cap_media_read_summary">Показывает список фото и видео в общем медиахранилище.</string>
-    <string name="relay_cap_media_read_title">Чтение фото и видео</string>
+    <string name="relay_cap_media_read_summary">Показывает список изображений, видео или аудио из системной медиатеки, один тип за вызов. Каждому типу нужен только его собственный доступ к медиа.</string>
+    <string name="relay_cap_media_read_title">Чтение медиа</string>
     <string name="relay_cap_media_write_summary">Записывает файлы в общие коллекции мультимедиа.</string>
     <string name="relay_cap_media_write_title">Сохранение в фото</string>
     <string name="relay_cap_notify_post_summary">Отправляет уведомления от имени этого приложения.</string>
@@ -318,7 +376,7 @@
     <string name="relay_cap_surface_virtual_title">Фоновый виртуальный дисплей</string>
     <string name="relay_cap_sys_intent_summary">"Отправляет фиксированный системный ярлык: установить будильник или таймер, открыть экран будильников или таймеров, страницу системных параметров, сведения о приложении, номеронабиратель (сам звонок не совершается) или страницу в браузере. Не требует доступности и Shizuku. Принимаются только шаблоны из таблицы, значения вне диапазона отклоняются, записей для удаления или отмены будильника в таблице нет, и ничего не отправляется, пока приложение в фоновом режиме без разрешения на наложение."</string>
     <string name="relay_cap_sys_intent_title">Системный ярлык</string>
-    <string name="relay_cap_sys_settings_write_summary">Изменяет защищённые настройки через Shizuku. Всегда запрашивает подтверждение.</string>
+    <string name="relay_cap_sys_settings_write_summary">Изменяет защищённые настройки через Shizuku.</string>
     <string name="relay_cap_sys_settings_write_title">Изменение системных настроек</string>
     <string name="relay_cap_sys_shell_summary">"Управляет телефоном с системными правами. По умолчанию включает команды только для чтения и некоторые базовые функции."</string>
     <string name="relay_cap_sys_shell_title">"Системная shell-возможность"</string>
@@ -363,12 +421,13 @@
     <string name="relay_err_gate_system_missing">Системное разрешение для этой возможности ещё не включено.</string>
     <string name="relay_err_gate_timeout">Диалог подтверждения истёк без ответа; вызов отклонён.</string>
     <string name="relay_err_gate_waiting_turn">Предыдущие подтверждения ещё ждут ответа, и для этого места не нашлось. Подождите немного и спросите снова.</string>
+    <string name="relay_err_command_failed">Команда выполнена и завершилась с ненулевым кодом (data.exit): это сбой самой команды, а не ошибка хоста. stdout и stderr — в data.output и data.stderr; прочитайте их, прежде чем решать, повторять ли.</string>
+    <string name="relay_err_command_not_permitted">Команда выполнена, но отклонена на стороне службы Android (Permission Denial или SecurityException, см. data.stderr): текущая личность Shizuku этого не может, и повтор в том же виде будет отклонён снова.</string>
     <string name="relay_err_internal">При обработке запроса возникла непредвиденная ошибка.</string>
     <string name="relay_err_launch_not_landed">"Запуск принят системой, но приложение не стало активным окном основного или виртуального экрана."</string>
     <string name="relay_err_malformed">Запрос не соответствует формату канала и отклонён.</string>
     <string name="relay_err_no_editable_target">Ни одно текстовое поле не в фокусе; нажмите поле и повторите.</string>
     <string name="relay_err_node_ambiguous">Селектор совпал с несколькими элементами; добавьте index или уточните цель</string>
-    <string name="relay_err_node_consent_target">Этот элемент относится к системному диалогу согласия, и приложение сразу его отклоняет: ответить на запрос разрешений может только пользователь; опустить package, перейти на nodeId или добавить view id не поможет.</string>
     <string name="relay_err_node_no_ime_action">"У этого узла нет действия метода ввода, которое можно вызвать: это не редактируемое поле."</string>
     <string name="relay_err_node_not_actionable">Этот элемент не поддерживает такое действие; выберите другой или работайте по координатам</string>
     <string name="relay_err_node_not_found">Подходящий элемент не найден; перечитайте экран и укажите цель заново</string>
@@ -382,7 +441,7 @@
     <string name="relay_err_surface_mode_required">Эта возможность выполняется только на доверенном экране в фоне; переключите предпочтение выполнения на «приоритет фона» и убедитесь, что этот экран создан.</string>
     <string name="relay_err_surface_no_shell">Shizuku не запущен, фоновая работа недоступна.</string>
     <string name="relay_err_surface_secure">Это окно помечено как защищённое, его содержимое захватить нельзя.</string>
-    <string name="relay_err_surface_trusted_denied">Система отказала в создании доверенного дисплея.</string>
+    <string name="relay_err_surface_trusted_denied">Эта прошивка отказывается создавать доверенные дисплеи для этого приложения. Не повторяйте попытки подряд; перейдите в режим переднего плана.</string>
     <string name="relay_err_surface_unavailable">Ни один режим выполнения сейчас не может обеспечить эту возможность.</string>
     <string name="relay_err_suspended_by_host">Окно помощника на переднем плане; уйдите с него и повторите.</string>
     <string name="relay_err_timeout">Хост не ответил в течение запрошенного срока.</string>

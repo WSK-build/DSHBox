@@ -3,7 +3,6 @@ package interlock.relay.core.interlock
 import interlock.relay.core.protocol.AccessTier
 import interlock.relay.core.protocol.RelayError
 import interlock.relay.core.protocol.SystemGrantState
-import interlock.relay.core.protocol.TierCeiling
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -18,7 +17,7 @@ import org.junit.Test
 class InterlockGateVerdictTest {
 
     private fun verdict(system: SystemGrantState, tier: AccessTier = AccessTier.ALWAYS) =
-        InterlockGate.verdict(system, tier, TierCeiling.ANY)
+        InterlockGate.verdict(system, tier)
 
     @Test
     fun grantedAndSessionConsentBothPassTheSystemCheck() {
@@ -101,22 +100,17 @@ class InterlockGateVerdictTest {
         }
     }
 
+    /** 「询问审批」档没有会话授权时必弹；有会话授权后免弹。 */
     @Test
-    /** 「询问审批」档没有会话授权时必弹；有会话授权后只剩永不免弹那一档还弹。 */
     fun askTierPromptsUntilTheSessionIsGranted() {
-        listOf(TierCeiling.ANY, TierCeiling.SESSION_ONLY, TierCeiling.ASK_ONLY).forEach { ceiling ->
-            assertTrue(InterlockGate.requiresApproval(AccessTier.ASK, ceiling, sessionGranted = false))
-        }
-        assertFalse(InterlockGate.requiresApproval(AccessTier.ASK, TierCeiling.ANY, sessionGranted = true))
-        assertFalse(InterlockGate.requiresApproval(AccessTier.ASK, TierCeiling.SESSION_ONLY, sessionGranted = true))
-        assertTrue(InterlockGate.requiresApproval(AccessTier.ASK, TierCeiling.ASK_ONLY, sessionGranted = true))
+        assertTrue(InterlockGate.requiresApproval(AccessTier.ASK, sessionGranted = false))
+        assertFalse(InterlockGate.requiresApproval(AccessTier.ASK, sessionGranted = true))
     }
 
+    /** 「完全访问」长期免弹，与是否已有会话授权无关。 */
     @Test
-    fun ceilingDecidesHowLongASessionGrantLasts() {
-        assertTrue(InterlockGate.requiresApproval(AccessTier.ALWAYS, TierCeiling.ASK_ONLY, sessionGranted = true))
-        assertTrue(InterlockGate.requiresApproval(AccessTier.ALWAYS, TierCeiling.SESSION_ONLY, sessionGranted = false))
-        assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, TierCeiling.SESSION_ONLY, sessionGranted = true))
-        assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, TierCeiling.ANY, sessionGranted = false))
+    fun alwaysTierNeverPromptsForOrdinaryCalls() {
+        assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, sessionGranted = false))
+        assertFalse(InterlockGate.requiresApproval(AccessTier.ALWAYS, sessionGranted = true))
     }
 }

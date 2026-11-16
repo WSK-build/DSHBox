@@ -35,12 +35,14 @@
 
 ## What's new
 
-Current version: **v1.5.4** (2026-11-14) — **Startup reliability · Writer-lock safety.**
+Current version: **v1.5.5** (2026-11-16) — **Phone control refinements · Virtual-display preview.**
 
-1. Added **atomic writer locks**: DSH writes the full PID before exclusively creating the lock, eliminating empty locks from forced kills; historical empty locks are safely recovered via kernel write leases;
-2. **Slow startups no longer killed at 30 s**: a live process that is not yet ready gets the full 120 s startup window, so plugin-heavy or low-end devices no longer restart repeatedly;
-3. **Orphaned empty locks auto-recover**: a kernel lease confirms no live writer before clearing historical empty locks at startup, so they no longer block startup permanently;
-4. **Emergency instance warning & repair guidance enhanced**: clearly labels main (.dsh) and emergency (.dsh-emergency) data directories, temporary purpose, and operation boundaries; adds a foldable, copyable repair prompt template (6 languages).
+1. The phone assistant gains **global tiers and custom presets**: switch all 40 regular capabilities between Default config / Block all / Ask for all / Full access for all, or save a custom preset; fresh installs get recommended tiers and existing users keep their chosen tiers;
+2. New **Protected apps** list: listed apps cannot be launched, read, or controlled by the assistant; apps added while an approval is pending are checked again before dispatch (the Full Shizuku / ADB / root channels are not restricted by this list);
+3. New **Full Shizuku capability** switch (off by default): independent of regular capability approvals, it allows any shell command outside the built-in capability table and shows the current execution identity and activation requirements;
+4. New **Device status** capability: read time, battery, screen, network, volume, brightness and device information; media reading supports audio, and microphone recording is capped at 120 seconds;
+5. New **live virtual-display preview** in the DSH right sidebar: tap, swipe, back, Home, refresh, rotate, move to the main display, move back, and release; release only closes apps on the virtual display and leaves the main display on DSHBox;
+6. Fixes approval entries going missing or appearing twice, tiers being blocked by a second approval layer, background-preferred mode silently switching to the foreground, false notification results, and generic Shizuku status messages; background-preferred mode now follows the target landing surface, and large screens create trusted displays with a safe size.
 
 See **[CHANGES.md](CHANGES.md)** for the complete changes in each version.
 
@@ -113,7 +115,7 @@ Browser handles **embedded web pages** and Pilot handles **native phone apps**, 
 
 #### (1) A safe, controlled phone-assistant channel (the app provides approval interception)
 
-A built-in **catalog of 39 phone-control capabilities** and a **mailbox channel** between the embedded sandbox and the Android app layer (file delivery, no network, no shared memory) let sandboxed DSH control and connect to the phone safely and under control. It is embedded with a two-layer structure of “UI adaptation + core platform”; the core is published independently under **Apache-2.0** in the [interlock-relay](https://github.com/WSK-build/interlock-relay) repository, and this repository calls it and provides the UI adaptation.
+A built-in **catalog of 40 regular phone-control capabilities**, plus an independent **Full Shizuku** privileged switch, and a **mailbox channel** between the embedded sandbox and the Android app layer (file delivery, no network, no shared memory) let sandboxed DSH control and connect to the phone safely and under control. It is embedded with a two-layer structure of “UI adaptation + core platform”; the core is published independently under **Apache-2.0** in the [interlock-relay](https://github.com/WSK-build/interlock-relay) repository, and this repository calls it and provides the UI adaptation.
 
 | Execution backend (three) | Description |
 |---|---|
@@ -126,9 +128,13 @@ A built-in **catalog of 39 phone-control capabilities** and a **mailbox channel*
 | Foreground | Visible, direct operation, paired with the accessibility / direct-platform backends |
 | Background virtual display | The user keeps using the device in the foreground while AI operates in the background; automatically degrades to foreground operation under some apps' restrictions |
 
-- **Approval and interaction constraints**: every path above is constrained; per capability you can choose Deny / Ask for approval / Full access, interacting through dialogs.
+- **Right-sidebar virtual-display panel**: the DSH right sidebar gains a Virtual display tab with live preview plus tap / swipe / back / Home; it supports refresh, rotate (without recreating the display; apps on it are preserved), move to the main display, move back, and release. Release only closes apps on the virtual display and does not move tasks to the main display; to keep an app, move it to the main display first.
+- **Approval and interaction constraints**: every path above is constrained; per capability you can choose Deny / Ask for approval / Full access. The capability page also provides five global tiers — Default config / Block all / Ask for all / Full access for all / Saved custom preset — and a per-capability editor for saving a custom preset.
+- **Protected apps**: search, select, or add packages by name; listed apps cannot be launched, read, or controlled by the assistant, and apps added while an approval is pending are checked again before dispatch (the Full Shizuku / ADB / root channels are not restricted by this list).
+- **Full Shizuku capability**: the Privileged page provides an independent switch (off by default) that is not part of the regular three-tier approval; when enabled it allows any shell command outside the built-in capability table and shows the current execution identity and activation requirements.
 - **Floating-window questions**: when the user leaves the DSHBox page, AI can raise a floating window to ask questions; the user can select options, reject them all, or ask for the question again.
 - **Native tools for DSH**: the bundled `@local/mobile-pilot` plugin provides a set of `phone_*` tools so the agent can call our core mailbox mechanism directly. This plugin can be toggled freely under “DSH phone connection” in Cordis.
+- **Device status & media**: read time, battery, screen, network, volume, brightness and device information; read images / video / audio in three categories, with microphone recording capped at 120 seconds per clip.
 
 #### (2) Developer mode (ADB + root, permissions fully handed to the user)
 
@@ -295,6 +301,8 @@ Settings has moved to the upper-right corner of Home and keeps Appearance (theme
 - **Worker / PDF support is not the same as main-page compatibility**: System WebView Workers use an isolated environment; for now diagnostics are provided but no Worker compatibility patches are injected. PDF, Excel or flows depending on newer Worker APIs may need a WebView update, or the embedded Gecko build.
 - **The two APKs cannot be installed at the same time**: the System WebView and Gecko builds share a package name and signature and can only overwrite each other; installing the other build does not wipe Debian, the sandbox, user-data or created workspaces.
 - **Developer mode is an advanced capability**: ADB / Root bypass the Pilot approval system. Users should understand the risks of wireless debugging, external-device access and Root commands and bear the consequences of their own operations. `su`, wireless debugging, hiding and authorization behavior can differ across ROMs.
+- **Protected apps have explicit exemptions**: the Full Shizuku / ADB / root channels are not restricted by the list; it protects the assistant's regular controlled paths and is not system-level isolation.
+- **Virtual-display preview depends on the DSH sidebar API**: it requires DSH `0.2.2-rc.1` or later; the entry is absent on older runtimes, while tools and the CLI are unaffected.
 - **Plugin compatibility is decided jointly by the host and the plugin**: the marketplace checks known host capabilities, carriers and dependency differences, but cannot guarantee every third-party plugin installs or runs on all DSH versions.
 - **Remote connection depends on the peer plugin and the network**: the corresponding remote plugin must be installed and enabled on the computer; proxy mode requires the phone to reach the peer address, and direct mode supports HTTPS only. Login, Cookie and download behavior may differ across plugins.
 - **iroh transport is not supported yet**: iroh addresses of saya-ch / dsh-mobile are explicitly rejected; please use LAN or ordinary HTTPS modes such as Cloudflare instead.
@@ -339,7 +347,7 @@ The archiving script then runs the release contract gate, checking both APKs' DS
 | `terminal-session` | The terminal session layer (multi-window, PRoot terminal command construction) |
 | `terminal-view` / `terminal-emulator` | Termux terminal libraries (v0.118.0, unmodified) |
 | `plugin-manager` | Plugin management: provisioning control, the marketplace (catalog retrieval / compatibility checks / install guards), official plugin switches, absolute safe mode, plugin loading records and crash-recovery assistance (opencode) |
-| `pilot` (`interlock-relay-core` + `dshbox-adapter` + `developer-access`) | The phone-assistant core and UI adaptation; developer-mode ADB, Root, wireless pairing, devices, keys and channel panels |
+| `pilot` (`interlock-relay-core` + `dshbox-adapter` + `developer-access`) | Phone-assistant core and UI adaptation (global tiers, protected apps, Full Shizuku, device status, virtual-display panel); developer-mode ADB, Root, wireless pairing, devices, keys and channel panels |
 | `browser` (`browser-api` / `browser-runtime` / `browser-bridge` / `browser-devtools`) | Browser contracts, the WebView session runtime, sandbox tool bridging and controlled advanced debugging; UI integration lives in app |
 
 Runtime-layer build scripts are in `runtime-bundle/` (each layer's `tar.zst` is built by `build_base.sh` / `build_node.sh` / `build_android_side.sh` on Linux/WSL2); the build manual is `docs/BUILD_RUNBOOK.md` and the preflight script is `tools/pipeline_dryrun.sh`. Note: when building from source, developers must first extract the `android-side` layer from the runtime archive published with a Release and place it at `runtime/android-assets/runtime/android-side.tar.zst` required by the build; otherwise the compiled APK lacks that runtime layer and cannot install the runtime properly.

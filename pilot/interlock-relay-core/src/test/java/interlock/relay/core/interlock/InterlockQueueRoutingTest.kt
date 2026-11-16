@@ -30,7 +30,6 @@ class InterlockQueueRoutingTest {
         identity: String? = null,
         volatile: Boolean = false,
         ttlMs: Long = 60_000L,
-        allowsSessionGrant: Boolean = true,
     ) = ApprovalPrompt(
         capability = capability,
         // 身份默认与显示文字无关：真要比的是参数。各用例里凡按「对象/明细不同」
@@ -43,7 +42,7 @@ class InterlockQueueRoutingTest {
         risk = RiskLevel.HIGH,
         callIndexInSession = 1,
         paramDetail = detail,
-        allowsSessionGrant = allowsSessionGrant,
+        allowsSessionGrant = true,
         deadlineAtMs = now + ttlMs,
     )
 
@@ -54,7 +53,6 @@ class InterlockQueueRoutingTest {
     ) = InterlockQueue(
         isForegroundCapable = { foreground },
         onRouting = { seen.add(it.request) },
-        overlayBlind = { false },
         canNotify = { canNotify },
         now = { now },
         inlineWaitMs = inlineWaitMs,
@@ -155,20 +153,6 @@ class InterlockQueueRoutingTest {
         }
         assertEquals(InterlockChoice.ALLOW_ONCE, outcome)
         assertNull(seen.last())
-    }
-
-    /** 上限为「每次询问」的能力拿不到会话档：通知栏漏判时这里必须降级。 */
-    @Test
-    fun sessionGrantDowngradesWhenCeilingIsAskOnly() {
-        val q = queue(inlineWaitMs = 2_000L)
-        val outcome = runBlocking {
-            val waiting = async { q.present(prompt(allowsSessionGrant = false)) }
-            while (seen.isEmpty()) yield()
-            val id = seen.last()!!.id
-            assertTrue(q.resolveCurrent(InterlockChoice.ALLOW_SESSION, id))
-            waiting.await()
-        }
-        assertEquals(InterlockChoice.ALLOW_ONCE, outcome)
     }
 
     /** 通道停了要能把挂着的那张收掉，别让通知栏留一条没人应答的按钮。 */

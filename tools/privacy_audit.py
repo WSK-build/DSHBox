@@ -111,6 +111,8 @@ def is_allowed(hit: str, line: str = "", rel: str = "", label: str = "") -> bool
     """仅豁免当前命中，不能用同一行的样例文本掩盖其他敏感值。"""
     if hit == "/home/recents" and "back/home/recents" in line:
         return True
+    if hit == "/home/A" and "type/home/A=" in line:
+        return True
     relative = rel.replace("\\", "/")
     if label == "设备序列号样式" and hit in {"MERCHAN" "TABILITY", "NONIN" "FRINGEMENT"}:
         if relative.startswith("licenses/") or relative == "common/LICENSE-TABLER.txt":

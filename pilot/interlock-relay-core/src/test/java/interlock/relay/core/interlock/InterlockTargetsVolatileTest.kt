@@ -43,9 +43,10 @@ class InterlockTargetsVolatileTest {
 
     /**
      * 参数只说"读哪一格"、没说"读到什么"的那一类：剪贴板、位置、通知列表、麦克风，
-     * 递交上去的那个文件的字节，以及四条"把此刻设备上有什么列出来"的读。
+     * 递交上去的那个文件的字节，以及五条"把此刻设备上有什么列出来"的读。
      * 一份迟到 49 秒的同意放行的是另一段时间、另一个内容 —— `{"kind":"image","limit":20}`
      * 说全了"最近 20 张"，没说全是哪 20 张：中间有人拍一张，换掉的那一格用户从未见过。
+     * 设备状态同理：电量、网络、屏幕读的是调用那一刻，不是用户点头那一刻。
      */
     @Test
     fun liveSourceReadsAreVolatile() {
@@ -59,6 +60,7 @@ class InterlockTargetsVolatileTest {
         assertTrue(InterlockTargets.volatileFor(CapabilityId.MEDIA_READ, hasTreeOrPointTarget = false))
         assertTrue(InterlockTargets.volatileFor(CapabilityId.CONTACT_READ, hasTreeOrPointTarget = false))
         assertTrue(InterlockTargets.volatileFor(CapabilityId.CALENDAR_READ, hasTreeOrPointTarget = false))
+        assertTrue(InterlockTargets.volatileFor(CapabilityId.DEVICE_STATUS, hasTreeOrPointTarget = false))
     }
 
     /** 参数里给了树或坐标之外的目标形状时，任何能力都按钉不住算。 */
@@ -97,6 +99,7 @@ class InterlockTargetsVolatileTest {
             "screen.capture", "screen.observe", "screen.record",
             "audio.capture", "clip.read", "loc.read", "notify.read",
             "app.install", "media.write", "pkg.query", "media.read", "contact.read", "cal.read",
+            "device.status",
         )
 
         /** 参数把目标说尽了的那些：一次迟到同意花的仍是同一件事。 */
@@ -104,6 +107,8 @@ class InterlockTargetsVolatileTest {
             "surface.virtual", "app.launch", "app.stop", "notify.post",
             "clip.write", "contact.write", "cal.write",
             "sys.settings.write", "appops.set", "sys.intent", "sys.shell",
+            // 特权通路与 sys.shell 同形：命令串就是参数本身，说的尽要跑的是什么。
+            "sys.shell.full",
         )
     }
 }
