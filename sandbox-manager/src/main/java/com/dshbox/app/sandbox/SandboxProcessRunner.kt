@@ -215,6 +215,11 @@ class SandboxProcessRunner(
         add("--bind=/apex")
         add("--bind=/proc")
         add("--bind=/dev")
+        // NPU / GPU 运行时都在 /vendor：QNN 库、Adreno OpenCL 驱动、
+        // Vulkan ICD 配置（/vendor/etc/vulkan/icd.d）。不绑这一项，guest 内
+        // 既看不到这些库也枚举不到 GPU 设备，本地加速等于整体不可用。
+        // 只读需求：vendor 分区对 App 本就是只读的，绑定不引入写风险。
+        add("--bind=/vendor")
         if (!nodeDir.isNullOrBlank()) add("--bind=$nodeDir:/usr/local")
         if (!dshDir.isNullOrBlank()) add("--bind=$dshDir:/opt/dshapp/runtime")
         if (!shimHostDir.isNullOrBlank()) add("--bind=$shimHostDir:${Constants.DSH_LINK_SHIM_GUEST_DIR}")
