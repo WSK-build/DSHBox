@@ -27,6 +27,7 @@
 #include <jni.h>
 #include <stdio.h>
 #include <limits.h>
+#include <android/log.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -106,15 +107,47 @@ static void stage_progress(void) {
     g_progress.last_progress_ms = now_ms();
 }
 
-/* 线程安全的日志：写 stderr（logcat 可抓），不依赖外部状态。 */
+/*
+ * 日志：走 __android_log_print。
+ * 实测：Android 真机上 native 的 stderr **不进 logcat**，只用 fprintf 的话，
+ * 失败时 logcat 里只剩一行 "status=-7"，看不到是哪一步挂的。
+ * stderr 保留一份，便于 adb shell 直跑时观察。
+ */
 static void nlog(const char *fmt, ...) {
     char line[1024];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(line, sizeof(line), fmt, ap);
     va_end(ap);
+    __android_log_print(ANDROID_LOG_INFO, "DSHNPU", "%s", line);
     fprintf(stderr, "[DSHNPU] %s\n", line);
     fflush(stderr);
+}
+
+/*
+ * QNN 运行时探测。
+ *
+ * 为什么单独探：`libGenie.so` 的 DT_NEEDED 里**没有** QNN（只有 libc/libm/libdl/liblog），
+ * 它是在 GenieDialog_create 内部用 dlopen 加载 QNN 的。所以缺 QNN 时
+ * dlopen("libGenie.so") 会成功、符号也齐全，直到 create 才返回非 0 ——
+ * 表现为一个没有上下文的失败码（实测 status=-7）。
+ *
+ * 实测（iQOO 15 / Android 17）：QNN 库在 /odm/lib64/npuhw/qnnv3/，但
+ *   · 不在 /vendor/etc/public.libraries.txt（grep qnn = 0）
+ *   · app 的 linker namespace 访问不到 /odm
+ * 所以它**必须**打包进 APK 的 jniLibs。
+ */
+static int probe_qnn(void) {
+    void *h = dlopen("libQnnHtp.so", RTLD_NOW);
+    if (!h) {
+        nlog("dlopen libQnnHtp.so 失败: %s", dlerror());
+        nlog("提示：QNN 库对 app 不可达（/odm/lib64/npuhw/qnnv3 不在 namespace，"
+             "也不在 public.libraries.txt）。需把 libQnnHtp.so / libQnnSystem.so / "
+             "libQnnHtpV81Stub.so / libQnnHtpV81Skel.so 放进 jniLibs/arm64-v8a/。");
+        return -1;
+    }
+    dlclose(h);
+    return 0;
 }
 
 /* ------------------------------------------------------------------ 加载 */
@@ -123,6 +156,8 @@ static int load_genie(void) {
     if (g_lib) return 0;
 
     stage_enter(NPU_STAGE_LOADING);
+    if (probe_qnn() != 0) return -3;
+
     /*
      * libGenie.so **不在设备上**——实测 iQOO 15（Android 17）的
      * /odm/lib64/npuhw/qnnv3 与 /vendor/lib64 都没有它，只有 QNN 的
