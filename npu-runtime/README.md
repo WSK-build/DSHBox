@@ -14,6 +14,41 @@
 （利用率仅 20–25%）。这说明还有优化空间，但不在运行时配置层——
 需要用更好的 ctx-bin 编译（QAIRT 生成质量）来提升，运行时参数已探到底。
 
+## 为什么需要这个模块（与其他方案对比）
+
+同机同模型的实测（详见 DSHBox#99 讨论与 `docs/`）：
+
+| 方案 | 3B decode | 需要装第三方 App | 占用主 CPU | 备注 |
+|---|---|---|---|---|
+| **本模块（QNN/Genie）** | **7.2 tok/s** | ❌ 不需要 | 极低 | 直接调设备上的 QNN/Genie |
+| llama.cpp + `libggml-htp-v81.so` | 22.4 tok/s | ✅ 需要（或需自编 llama.cpp） | 极低 | 需要 Hexagon SDK 编译 hexagon 后端 |
+| MNN CPU 0.8B | 134.5 tok/s | ❌（可内置） | 高（吃满多核） | 能力弱，适合窄任务 |
+| MNN CPU 3B | 未验证 | ❌ | 高 | 模型导出缺元数据 |
+
+**所以本模块的定位不是「最快」，而是「不依赖第三方 App、不占主 CPU」**：
+
+- 设备上没有任何现成 NPU 运行时（PocketOrca 之类）时，这是唯一的内置路径；
+- 主进程在做重活（UI、沙箱、Node）时，NPU 只占 0.1–0.2% CPU，比 CPU 推理省得多；
+- 代价是吞吐只有 llama.cpp HTP 的 1/3 —— 这个取舍写在代码注释里，不藏着。
+
+如果你只追求最快且能接受多装一个 App，llama.cpp HTP 更合适；
+如果你要求零外部依赖，这条路是当前唯一可用的。
+
+## 如何获取模型
+
+本模块**不分发模型**（3 GB 级 ctx-bin 不适合进仓库）。需要：
+
+1. 找一个与设备 QAIRT 版本匹配、且按本机 SoC 编译的 ctx-bin 包。
+   实测可用的一例：`Kyudan/Qwen3-Instruct-QAIRT-2.51-v81`（Qwen3-4B w4a16，4 段）
+   与 `Llama-3.2-3B w4a16 v81`（3 段）。
+2. 放进 `<filesDir>/npu/models/<modelId>/`，并写 `manifest.json`（见下方「目录约定」）。
+   **`ctxBinFiles` 必须写精确字节数**，否则预检会拒绝启动。
+3. 首次调用 `NpuEngine.generate()` 会自动生成 `cfg32.json` / `htp_backend_ext_config.json`。
+
+**版本硬约束**：ctx-bin 的编译版本不能高于设备运行时版本（实测 QAIRT 2.42 的包在 2.40
+运行时上 `GenieDialog_create` 直接返回 -1）。`NpuPreflight` 会提前拦，但前提是
+`manifest.json` 里填了 `qairtVersion`。
+
 ## 用法
 
 ```kotlin
