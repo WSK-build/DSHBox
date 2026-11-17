@@ -26,6 +26,7 @@
  */
 #include <jni.h>
 #include <stdio.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -122,10 +123,33 @@ static int load_genie(void) {
     if (g_lib) return 0;
 
     stage_enter(NPU_STAGE_LOADING);
+    /*
+     * libGenie.so **不在设备上**——实测 iQOO 15（Android 17）的
+     * /odm/lib64/npuhw/qnnv3 与 /vendor/lib64 都没有它，只有 QNN 的
+     * libQnnHtp/libQnnSystem 等。Genie 需要从 QAIRT SDK 取：
+     *   qairt/<ver>/lib/aarch64-android/libGenie.so
+     * 然后二选一：
+     *   a) 放进 APK 的 jniLibs/arm64-v8a/（随应用分发，注意其许可）
+     *   b) 由使用方提供并放到应用私有目录，用绝对路径 dlopen
+     *
+     * 这里先试 soname（对应 a），再试应用私有目录（对应 b），
+     * 都不行就报明确原因——不要只抛一个 "not found" 让人猜。
+     */
     g_lib = dlopen("libGenie.so", RTLD_NOW | RTLD_GLOBAL);
     if (!g_lib) {
-        nlog("dlopen libGenie.so 失败: %s", dlerror());
-        return -1;
+        char priv[PATH_MAX];
+        const char *dir = getenv("DSH_NPU_LIBDIR");
+        if (dir && *dir) {
+            snprintf(priv, sizeof(priv), "%s/libGenie.so", dir);
+            g_lib = dlopen(priv, RTLD_NOW | RTLD_GLOBAL);
+        }
+        if (!g_lib) {
+            nlog("dlopen libGenie.so 失败: %s", dlerror());
+            nlog("提示：本机 /vendor /odm 下没有 libGenie.so，需从 QAIRT SDK 取 "
+                 "qairt/<ver>/lib/aarch64-android/libGenie.so，放进 jniLibs/arm64-v8a/，"
+                 "或置于私有目录并设 DSH_NPU_LIBDIR");
+            return -1;
+        }
     }
     nlog("libGenie.so 已加载");
 

@@ -128,14 +128,39 @@ DSP 侧回收 User PD → 立刻恢复）。因此推理跑在 `:npu` 独立进�
 
 ## 为什么不打包厂商二进制
 
-本模块**不**随 APK 分发 `libQnnHtp.so` / `libGenie.so` 等：
+本模块默认**不**随 APK 分发厂商二进制，但这里有一个必须说明的例外：
 
-- `libcdsprpc.so` 在设备的 `/vendor/etc/public.libraries.txt` 里，
-  打进 APK 会**遮蔽真库**并引入坏依赖（实测 `dlopen "libvndksupport.so"` 失败）；
-- 其余库体积大（合计约 32 MB）且受各自许可约束，随 GPL 仓库分发有合规问题。
+| 库 | 设备上有吗 | 本模块怎么处理 |
+|---|---|---|
+| `libcdsprpc.so` | ✅ 在 `/vendor/etc/public.libraries.txt` | **绝不打包**——打了会遮蔽真库（实测 `dlopen "libvndksupport.so"` 失败） |
+| `libQnnHtp.so` / `libQnnSystem.so` | ✅ `/odm/lib64/npuhw/qnnv3/` | 走 `dlopen(soname)` 用设备那份 |
+| **`libGenie.so`** | ❌ **没有**（实测 `/vendor`、`/odm` 全无） | **必须由使用方自备**，见下 |
 
-因此全部走 `dlopen(soname)`，由系统 linker namespace 解析到设备上的那一份。
-设备没有对应运行时时，`isAvailable()` 返回 false，调用方回退 CPU 路径。
+### libGenie.so 怎么来（重要）
+
+Genie 不在 AOSP 也不在任何 vendor 分区里，只存在于 **QAIRT SDK**：
+
+```
+qairt/<version>/lib/aarch64-android/libGenie.so      # 约 11 MB
+```
+
+两条路，二选一：
+
+1. **打进 APK**：放到 `npu-runtime/src/main/jniLibs/arm64-v8a/libGenie.so`。
+   注意其许可（Qualcomm 专有），自行确认分发合规性。
+2. **运行时提供**：把库放到应用私有目录，并设环境变量
+   `DSH_NPU_LIBDIR=<那个目录>`。native 层会先试 soname，失败再试
+   `<DSH_NPU_LIBDIR>/libGenie.so`。
+
+两者都没有时，`nativeRun` 会返回明确错误（而不是只抛一个 "not found"）：
+
+```
+dlopen libGenie.so 失败: ...
+提示：本机 /vendor /odm 下没有 libGenie.so，需从 QAIRT SDK 取 ...
+```
+
+**版本要匹配设备运行时**：实测设备 QNN 运行时 API 2.40，ctx-bin 若用 QAIRT 2.42
+编译则 `GenieDialog_create` 直接 -1。Genie 库本身也应与 ctx-bin 的 QAIRT 版本同代。
 
 ## 内存门槛
 
