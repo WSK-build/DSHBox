@@ -133,8 +133,36 @@ DSP 侧回收 User PD → 立刻恢复）。因此推理跑在 `:npu` 独立进�
 | 库 | 设备上有吗 | 本模块怎么处理 |
 |---|---|---|
 | `libcdsprpc.so` | ✅ 在 `/vendor/etc/public.libraries.txt` | **绝不打包**——打了会遮蔽真库（实测 `dlopen "libvndksupport.so"` 失败） |
-| `libQnnHtp.so` / `libQnnSystem.so` | ✅ `/odm/lib64/npuhw/qnnv3/` | 走 `dlopen(soname)` 用设备那份 |
+| `libQnnHtp.so` / `libQnnSystem.so` / `*V81Stub/Skel` | ⚠️ 在 `/odm/lib64/npuhw/qnnv3/`，但**app 访问不到** | **必须打包进 jniLibs** |
 | **`libGenie.so`** | ❌ **没有**（实测 `/vendor`、`/odm` 全无） | **必须由使用方自备**，见下 |
+
+### 为什么 QNN 也必须打包（实测推翻直觉）
+
+一开始的假设是「设备上 `/odm/lib64/npuhw/qnnv3/` 有 QNN，走 `dlopen(soname)` 用设备那份就行」。
+真机实测**不成立**：
+
+```
+$ grep -c qnn  /vendor/etc/public.libraries.txt     → 0
+$ grep -c genie /vendor/etc/public.libraries.txt    → 0
+app 的 linker namespace  → 访问不到 /odm
+```
+
+`libGenie.so` 的 `DT_NEEDED` 只有 `libc/libm/libdl/liblog`，它在
+`GenieDialog_create` 内部才 `dlopen` QNN。所以缺 QNN 时：
+`dlopen("libGenie.so")` 成功、符号齐全 → create 返回非 0 →
+调用方只看到一个失败码（实测 `status=-7`），很难定位。
+
+现在 `probe_qnn()` 会在加载 Genie 之前先探 `libQnnHtp.so`，失败时直接打印
+「QNN 库对 app 不可达 + 需要打包哪几个文件」，失败码变为 `-3`。
+
+需要打包的四个（合计约 29 MB）：
+
+```
+libQnnHtp.so            4.1 MB
+libQnnSystem.so         4.1 MB
+libQnnHtpV81Stub.so     0.8 MB
+libQnnHtpV81Skel.so    20.7 MB   ← DSP 侧 skel，必须能被 adsprpc 找到
+```
 
 ### libGenie.so 怎么来（重要）
 
