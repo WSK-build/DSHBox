@@ -14,4 +14,7 @@ LOCAL_CFLAGS := -std=c11 -O2 -fvisibility=hidden -Wall -Wextra
 # 故对齐选项必须写在这里（与 terminal-emulator 模块同一处理）。
 LOCAL_LDFLAGS := -Wl,-z,max-page-size=16384
 
+# __android_log_print 需要 liblog（stderr 在 Android 真机不进 logcat）
+LOCAL_LDLIBS := -llog
+
 include $(BUILD_SHARED_LIBRARY)
