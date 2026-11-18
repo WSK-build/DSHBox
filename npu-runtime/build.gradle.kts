@@ -1,9 +1,12 @@
 plugins {
-    id("com.android.library")
-    id("org.jetbrains.kotlin.android")
+    // 不要加 id("org.jetbrains.kotlin.android")：上游是 AGP 9.x，Kotlin 已内置。
+    // 再叠一个独立 Kotlin 插件会直接让配置期失败：
+    //   AgpWithBuiltInKotlinAppliedCheck ...
+    // 照抄上游 common/build.gradle.kts 的写法即可（library + 顶层 kotlin{}）。
+    alias(libs.plugins.android.library)
 }
 
-android {
+extensions.configure<com.android.build.api.dsl.LibraryExtension> {
     namespace = "com.dshbox.app.npu"
     compileSdk = 36
 
@@ -15,7 +18,7 @@ android {
         }
         externalNativeBuild {
             ndkBuild {
-                // 原生库由 scripts/build-llama-htp.sh 产出到 jniLibs/，
+                // 原生库由 scripts/build-llama-htp.sh 产出（或 downloadNpuLibs 下载），
                 // 这里只编我们自己的 JNI 桥。
                 arguments += "-j4"
             }
@@ -34,7 +37,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
 }
 
-// 本模块不依赖 :common —— JNI + Kotlin 都是自包含的，减少与宿主的耦合。
+// AGP 9 的内置 Kotlin 用顶层 kotlin{} 设 jvmTarget，kotlinOptions{} 已经不用了
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
