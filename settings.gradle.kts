@@ -29,6 +29,10 @@ include(":terminal-emulator")
 include(":terminal-view")
 include(":terminal-session")
 include(":plugin-manager")
+// 端侧 NPU 推理（llama.cpp + Qualcomm Hexagon HTP）。
+// 关键在 AndroidManifest 的 uses-native-library：不声明则 App 的 linker
+// namespace 拿不到 DSP 那条链所需的系统库（libvndksupport/libbinder 等）。
+include(":npu-runtime")
 // 实例注册：DSH 主/应急实例的槽位持有、持久化与 home 目录操作。
 include(":instance-manager")
 include(":pilot")

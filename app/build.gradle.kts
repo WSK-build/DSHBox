@@ -122,6 +122,7 @@ dependencies {
     add("geckoImplementation", enforcedPlatform(libs.androidx.compose.bom.gecko))
 
     implementation(project(":common"))
+    implementation(project(":npu-runtime"))
     implementation(project(":browser:browser-api"))
     implementation(project(":browser:browser-runtime"))
     implementation(project(":browser:browser-bridge"))

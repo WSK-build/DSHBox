@@ -1,0 +1,49 @@
+name: NPU module build verify
+
+# 只验证 npu-runtime 模块能编过（JNI + Kotlin + manifest 合并）。
+# 不构建完整 App —— 上游 App 构建包含 i18n/隐私审计/单测，与本改动无关。
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'npu-runtime/**'
+      - '.github/workflows/npu-verify.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: android-actions/setup-android@v3
+        with: { packages: 'platform-tools' }
+      - name: SDK + NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          for pkg in "platforms;android-36" "build-tools;36.0.0" "platform-tools"; do
+            for try in 1 2 3; do sdkmanager "$pkg" && break; echo "retry $pkg"; sleep 5; done
+          done
+          # NDK 显式装：npu-runtime 用 ndkBuild。sdkmanager 偶发 zip 损坏（实测一次），
+          # 所以加重试。
+          for try in 1 2 3; do sdkmanager "ndk;27.0.12077973" && break; echo "retry ndk"; sleep 5; done
+      - name: Assemble npu-runtime
+        run: |
+          set -o pipefail
+          chmod +x gradlew tools/*.sh npu-runtime/scripts/*.sh 2>/dev/null || true
+          ./gradlew :npu-runtime:assembleDebug --no-daemon --stacktrace
+      - name: Assert JNI lib built
+        run: |
+          set -o pipefail
+          SO=$(find npu-runtime/build -name 'libnpu-llama.so' | head -1)
+          echo "so=$SO"
+          [ -n "$SO" ] || { echo "::error::libnpu-llama.so 未产出"; exit 1; }
+          # 16 KB 对齐（Android 15+ 要求）
+          readelf -lW "$SO" | grep -E 'LOAD' | awk '{print $NF}' | sort -u
+          readelf -lW "$SO" | grep -E 'LOAD' | grep -q '0x4000' || { echo "::error::未 16 KB 对齐"; exit 1; }
+          # 不应链接 libllama（全部 dlsym），否则没装模型的设备会启动失败
+          if readelf -d "$SO" | grep -q libllama; then
+            echo "::error::libnpu-llama.so 硬链接了 libllama.so，应全部走 dlopen"; exit 1
+          fi
+          echo "OK"
