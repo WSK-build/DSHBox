@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      ★ 这是整个方案能成立的关键声明 ★
+
+      Android 12+ 起，App 的 linker namespace 默认只能加载 public 原生库
+      （/vendor/etc/public.libraries.txt 里的那些）。DSP 那条链需要的库大多
+      不在其中 —— 实测不声明时：
+
+        dlopen("libcdsprpc.so") →
+          library "libvndksupport.so" not found:
+          needed by .../libhidlbase.so in namespace clns-9
+
+      uses-native-library 让系统把这些库放进 App 的 namespace。声明之后
+      同一份 libcdsprpc.so 就能加载，且**不需要**把这些 vendor 库打进 APK
+      （打包会遮蔽真库、引入 38 MB 体积、并在 Android 15+ 上撞 16 KB 对齐检查）。
+
+      实测对照（iQOO 15 / SM8850 / Android 17）：
+        · 不声明 → dlopen 失败，报上面那条
+        · 声明后 → dlopen 成功，ggml 枚举出 dev[0]=HTP0，skel 在 cDSP
+          domain 3 上建立 dspqueue，模型加载 + decode 正常
+
+      这些库在设备上均已存在（/system/lib64 或 /vendor/lib64），
+      required="false" 让没有 DSP 的设备优雅降级到 CPU。
+    -->
+    <application>
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+        <uses-native-library android:name="libhidlbase.so" android:required="false" />
+        <uses-native-library android:name="libutils.so" android:required="false" />
+        <uses-native-library android:name="libbase.so" android:required="false" />
+        <uses-native-library android:name="libcutils.so" android:required="false" />
+        <uses-native-library android:name="libhardware.so" android:required="false" />
+        <uses-native-library android:name="libdmabufheap.so" android:required="false" />
+        <uses-native-library android:name="libvmmem.so" android:required="false" />
+        <uses-native-library android:name="libc++.so" android:required="false" />
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libbinder.so" android:required="false" />
+        <uses-native-library android:name="libbinder_ndk.so" android:required="false" />
+        <uses-native-library android:name="libdl_android.so" android:required="false" />
+        <uses-native-library android:name="vendor.qti.hardware.dsp-V1-ndk.so" android:required="false" />
+        <uses-native-library android:name="android.hardware.common-V2-ndk.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+
+        <!--
+          推理跑在独立进程：DSP 会话卡死时唯一恢复手段是杀掉持会话的进程。
+          实测子进程跟随主进程 cgroup，独立进程不丢调度优先级。
+        -->
+        <service
+            android:name=".NpuInferenceService"
+            android:exported="false"
+            android:process=":npu" />
+    </application>
+</manifest>
